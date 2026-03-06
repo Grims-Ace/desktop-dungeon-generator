@@ -31,19 +31,39 @@ pub fn generate_layout(
     rows: usize,
     target_room_count: usize,
     seed: u64,
+    min_room_size: usize,
+    max_room_size: usize,
+    square_rooms_only: bool,
 ) -> DungeonLayout {
     let mut rng = SimpleRng::new(seed ^ ((cols as u64) << 32) ^ rows as u64);
     let mut rooms = Vec::new();
     let mut corridors = Vec::new();
     let mut occupied_corridor_cells = HashSet::new();
 
-    let min_room_size = 2;
-    if cols < min_room_size || rows < min_room_size || target_room_count == 0 {
+    if cols < 2 || rows < 2 || target_room_count == 0 {
         return DungeonLayout { rooms, corridors };
     }
 
-    let max_room_width = (cols / 3).clamp(min_room_size, cols.min(12));
-    let max_room_height = (rows / 3).clamp(min_room_size, rows.min(12));
+    let mut min_size = min_room_size.max(2);
+    let mut max_size = max_room_size.max(min_size);
+
+    if square_rooms_only {
+        let hard_max = cols.min(rows);
+        if min_size > hard_max {
+            min_size = hard_max;
+        }
+        if max_size > hard_max {
+            max_size = hard_max;
+        }
+    } else {
+        min_size = min_size.min(cols.min(rows));
+        max_size = max_size.min(cols.max(rows));
+    }
+
+    if min_size == 0 || max_size < min_size {
+        return DungeonLayout { rooms, corridors };
+    }
+
     let max_attempts = target_room_count.saturating_mul(40).max(50);
 
     for _ in 0..max_attempts {
@@ -51,8 +71,26 @@ pub fn generate_layout(
             break;
         }
 
-        let width = rng.range_inclusive(min_room_size, max_room_width);
-        let height = rng.range_inclusive(min_room_size, max_room_height);
+        let width;
+        let height;
+
+        if square_rooms_only {
+            let side = rng.range_inclusive(min_size, max_size.min(cols.min(rows)));
+            width = side;
+            height = side;
+        } else {
+            let width_max = max_size.min(cols);
+            let height_max = max_size.min(rows);
+            if min_size > width_max || min_size > height_max {
+                continue;
+            }
+            width = rng.range_inclusive(min_size, width_max);
+            height = rng.range_inclusive(min_size, height_max);
+        }
+
+        if width > cols || height > rows {
+            continue;
+        }
         let x = rng.range_inclusive(0, cols - width);
         let y = rng.range_inclusive(0, rows - height);
 

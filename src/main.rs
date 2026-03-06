@@ -18,6 +18,9 @@ struct DungeonApp {
     cols: usize,
     rows: usize,
     room_count: usize,
+    min_room_size: usize,
+    max_room_size: usize,
+    square_rooms_only: bool,
     seed: u64,
     layout: DungeonLayout,
 }
@@ -27,13 +30,27 @@ impl Default for DungeonApp {
         let cols = 24;
         let rows = 18;
         let room_count = 8;
+        let min_room_size = 2;
+        let max_room_size = 6;
+        let square_rooms_only = false;
         let seed = 1;
-        let layout = generate_layout(cols, rows, room_count, seed);
+        let layout = generate_layout(
+            cols,
+            rows,
+            room_count,
+            seed,
+            min_room_size,
+            max_room_size,
+            square_rooms_only,
+        );
 
         Self {
             cols,
             rows,
             room_count,
+            min_room_size,
+            max_room_size,
+            square_rooms_only,
             seed,
             layout,
         }
@@ -99,15 +116,70 @@ impl eframe::App for DungeonApp {
                         .changed();
                 });
 
+                ui.add_space(8.0);
+                ui.label("Min Room Size");
+                ui.horizontal(|ui| {
+                    settings_changed |= ui
+                        .add(egui::Slider::new(&mut self.min_room_size, 2..=30).show_value(false))
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.min_room_size)
+                                .speed(1.0)
+                                .range(2..=200),
+                        )
+                        .changed();
+                });
+
+                ui.add_space(8.0);
+                ui.label("Max Room Size");
+                ui.horizontal(|ui| {
+                    settings_changed |= ui
+                        .add(egui::Slider::new(&mut self.max_room_size, 2..=30).show_value(false))
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.max_room_size)
+                                .speed(1.0)
+                                .range(2..=200),
+                        )
+                        .changed();
+                });
+
+                ui.add_space(8.0);
+                settings_changed |= ui
+                    .checkbox(&mut self.square_rooms_only, "Square Rooms Only")
+                    .changed();
+
                 ui.add_space(10.0);
                 if ui.button("Generate New Layout").clicked() {
                     self.seed = self.seed.wrapping_add(1);
-                    self.layout = generate_layout(self.cols, self.rows, self.room_count, self.seed);
+                    self.layout = generate_layout(
+                        self.cols,
+                        self.rows,
+                        self.room_count,
+                        self.seed,
+                        self.min_room_size,
+                        self.max_room_size,
+                        self.square_rooms_only,
+                    );
                 }
             });
 
+        if self.min_room_size > self.max_room_size {
+            self.max_room_size = self.min_room_size;
+        }
+
         if settings_changed {
-            self.layout = generate_layout(self.cols, self.rows, self.room_count, self.seed);
+            self.layout = generate_layout(
+                self.cols,
+                self.rows,
+                self.room_count,
+                self.seed,
+                self.min_room_size,
+                self.max_room_size,
+                self.square_rooms_only,
+            );
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
