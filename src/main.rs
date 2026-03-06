@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
-use layout::{DungeonLayout, generate_layout};
+use layout::{DungeonLayout, shortest_path_cells};
 use ui::{UiSettings, draw_side_panel};
 
 fn main() -> eframe::Result<()> {
@@ -23,13 +23,13 @@ fn main() -> eframe::Result<()> {
 struct DungeonApp {
     settings: UiSettings,
     layout: DungeonLayout,
-    room_drag: Option<RoomDragState>,
+    drag_state: Option<DragState>,
 }
 
 impl Default for DungeonApp {
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
-        let layout = generate_layout(
+        let layout = layout::generate_layout(
             settings.cols,
             settings.rows,
             settings.room_count,
@@ -43,7 +43,7 @@ impl Default for DungeonApp {
         Self {
             settings,
             layout,
-            room_drag: None,
+            drag_state: None,
         }
     }
 }
@@ -64,11 +64,7 @@ impl eframe::App for DungeonApp {
             self.settings.max_room_size = self.settings.min_room_size;
         }
 
-        if panel_result.reset_clicked {
-            self.regenerate_layout();
-        }
-
-        if panel_result.settings_changed {
+        if panel_result.reset_clicked || panel_result.settings_changed {
             self.regenerate_layout();
         }
 
@@ -77,7 +73,7 @@ impl eframe::App for DungeonApp {
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
-            self.handle_room_drag(&response, &geometry);
+            self.handle_drag(&response, &geometry);
             draw_layout(&painter, &geometry, &self.layout);
         });
     }
@@ -85,8 +81,8 @@ impl eframe::App for DungeonApp {
 
 impl DungeonApp {
     fn regenerate_layout(&mut self) {
-        self.room_drag = None;
-        self.layout = generate_layout(
+        self.drag_state = None;
+        self.layout = layout::generate_layout(
             self.settings.cols,
             self.settings.rows,
             self.settings.room_count,
@@ -99,28 +95,38 @@ impl DungeonApp {
         );
     }
 
-    fn handle_room_drag(&mut self, response: &egui::Response, geometry: &GridGeometry) {
+    fn handle_drag(&mut self, response: &egui::Response, geometry: &GridGeometry) {
         if response.drag_started()
             && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some((room_idx, offset_x, offset_y)) =
                 self.room_at_pointer(pointer_pos, geometry)
         {
-            self.room_drag = Some(RoomDragState {
+            self.drag_state = Some(DragState::Room(RoomDragState {
                 room_idx,
                 offset_x,
                 offset_y,
-            });
+            }));
+        } else if response.drag_started()
+            && let Some(pointer_pos) = response.interact_pointer_pos()
+            && let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry)
+        {
+            self.drag_state = Some(DragState::Corridor(corridor_drag));
         }
 
         if response.dragged()
             && let Some(pointer_pos) = response.interact_pointer_pos()
-            && let Some(drag) = self.room_drag
+            && let Some(drag_state) = self.drag_state.clone()
         {
-            self.drag_room_to_pointer(drag, pointer_pos, geometry);
+            match drag_state {
+                DragState::Room(drag) => self.drag_room_to_pointer(drag, pointer_pos, geometry),
+                DragState::Corridor(drag) => {
+                    self.drag_corridor_to_pointer(drag, pointer_pos, geometry)
+                }
+            }
         }
 
         if response.drag_stopped() || !response.ctx.input(|i| i.pointer.primary_down()) {
-            self.room_drag = None;
+            self.drag_state = None;
         }
     }
 
@@ -156,13 +162,13 @@ impl DungeonApp {
         };
 
         if drag.room_idx >= self.layout.rooms.len() {
-            self.room_drag = None;
+            self.drag_state = None;
             return;
         }
 
-        let (old_x, old_y, width, height) = {
+        let (width, height, old_x, old_y) = {
             let room = &self.layout.rooms[drag.room_idx];
-            (room.x, room.y, room.width, room.height)
+            (room.width, room.height, room.x, room.y)
         };
         let max_x = self.settings.cols.saturating_sub(width);
         let max_y = self.settings.rows.saturating_sub(height);
@@ -178,68 +184,96 @@ impl DungeonApp {
 
         self.layout.rooms[drag.room_idx].x = new_x;
         self.layout.rooms[drag.room_idx].y = new_y;
-        self.adjust_corridors_for_room_move(old_x, old_y, width, height, new_x, new_y);
+        self.reroute_corridors_for_room(drag.room_idx);
     }
 
-    fn adjust_corridors_for_room_move(
+    fn reroute_corridors_for_room(&mut self, room_idx: usize) {
+        let empty = HashSet::new();
+        for corridor in &mut self.layout.corridors {
+            if corridor.start_room_id != room_idx && corridor.end_room_id != room_idx {
+                continue;
+            }
+
+            let start = self.layout.rooms[corridor.start_room_id].center_cell();
+            let end = self.layout.rooms[corridor.end_room_id].center_cell();
+            corridor.path =
+                shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &empty)
+                    .unwrap_or_else(|| vec![start, end]);
+        }
+    }
+
+    fn corridor_drag_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<CorridorDragState> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
+        let corridor_index = self
+            .layout
+            .corridors
+            .iter()
+            .position(|corridor| corridor.path.contains(&clicked))?;
+
+        Some(CorridorDragState {
+            corridor_index,
+            original_path: self.layout.corridors[corridor_index].path.clone(),
+            original_cell: clicked,
+        })
+    }
+
+    fn drag_corridor_to_pointer(
         &mut self,
-        old_x: usize,
-        old_y: usize,
-        width: usize,
-        height: usize,
-        new_x: usize,
-        new_y: usize,
+        drag: CorridorDragState,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
     ) {
-        let dx = new_x as isize - old_x as isize;
-        let dy = new_y as isize - old_y as isize;
-        if dx == 0 && dy == 0 {
+        let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) else {
+            return;
+        };
+
+        if drag.corridor_index >= self.layout.corridors.len() {
+            self.drag_state = None;
             return;
         }
 
-        let room_cells = RoomCells {
-            x: old_x,
-            y: old_y,
-            width,
-            height,
+        let target = (
+            (grid_x.floor().max(0.0) as usize).min(self.settings.cols.saturating_sub(1)),
+            (grid_y.floor().max(0.0) as usize).min(self.settings.rows.saturating_sub(1)),
+        );
+
+        let Some(new_path) = reroute_path_through_cell(
+            &drag.original_path,
+            drag.original_cell,
+            target,
+            self.settings.cols,
+            self.settings.rows,
+        ) else {
+            return;
         };
 
-        for corridor in &mut self.layout.corridors {
-            if room_cells.contains(corridor.from) {
-                corridor.from = shift_cell(
-                    corridor.from,
-                    dx,
-                    dy,
-                    self.settings.cols,
-                    self.settings.rows,
-                );
-            }
-            if room_cells.contains(corridor.to) {
-                corridor.to =
-                    shift_cell(corridor.to, dx, dy, self.settings.cols, self.settings.rows);
-            }
-        }
+        self.layout.corridors[drag.corridor_index].path = new_path;
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct RoomDragState {
     room_idx: usize,
     offset_x: f32,
     offset_y: f32,
 }
 
-struct RoomCells {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
+#[derive(Debug, Clone)]
+struct CorridorDragState {
+    corridor_index: usize,
+    original_path: Vec<(usize, usize)>,
+    original_cell: (usize, usize),
 }
 
-impl RoomCells {
-    fn contains(&self, cell: (usize, usize)) -> bool {
-        let (cx, cy) = cell;
-        cx >= self.x && cx < self.x + self.width && cy >= self.y && cy < self.y + self.height
-    }
+#[derive(Debug, Clone)]
+enum DragState {
+    Room(RoomDragState),
+    Corridor(CorridorDragState),
 }
 
 struct GridGeometry {
@@ -302,11 +336,10 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
     let mut corridor_edges_set = HashSet::new();
 
     for corridor in &layout.corridors {
-        let cells = corridor_cells(corridor.from, corridor.to);
-        for cell in &cells {
-            corridor_cells_set.insert(*cell);
+        for &cell in &corridor.path {
+            corridor_cells_set.insert(cell);
         }
-        for pair in cells.windows(2) {
+        for pair in corridor.path.windows(2) {
             corridor_edges_set.insert(normalized_edge(pair[0], pair[1]));
         }
     }
@@ -374,35 +407,6 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
     }
 }
 
-fn corridor_cells(from: (usize, usize), to: (usize, usize)) -> Vec<(usize, usize)> {
-    let mut cells = Vec::new();
-    if from.0 == to.0 {
-        let x = from.0;
-        let start = from.1.min(to.1);
-        let end = from.1.max(to.1);
-        for y in start..=end {
-            cells.push((x, y));
-        }
-    } else if from.1 == to.1 {
-        let y = from.1;
-        let start = from.0.min(to.0);
-        let end = from.0.max(to.0);
-        for x in start..=end {
-            cells.push((x, y));
-        }
-    } else {
-        // If an endpoint drift makes a segment diagonal, render it as an L path.
-        let corner = (to.0, from.1);
-        cells.extend(corridor_cells(from, corner));
-        for cell in corridor_cells(corner, to) {
-            if cells.last().copied() != Some(cell) {
-                cells.push(cell);
-            }
-        }
-    }
-    cells
-}
-
 fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
     let left = geometry.rect.left() + col as f32 * geometry.cell_size;
     let top = geometry.rect.top() + row as f32 * geometry.cell_size;
@@ -426,14 +430,68 @@ fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(
     Some((x, y))
 }
 
-fn shift_cell(
-    cell: (usize, usize),
-    dx: isize,
-    dy: isize,
+fn reroute_path_through_cell(
+    original_path: &[(usize, usize)],
+    original_cell: (usize, usize),
+    target_cell: (usize, usize),
     cols: usize,
     rows: usize,
-) -> (usize, usize) {
-    let x = (cell.0 as isize + dx).clamp(0, cols.saturating_sub(1) as isize) as usize;
-    let y = (cell.1 as isize + dy).clamp(0, rows.saturating_sub(1) as isize) as usize;
-    (x, y)
+) -> Option<Vec<(usize, usize)>> {
+    let (&start, &end) = (original_path.first()?, original_path.last()?);
+    if start == end {
+        return None;
+    }
+
+    let mut blocked = HashSet::new();
+    blocked.insert(original_cell);
+    blocked.remove(&start);
+    blocked.remove(&end);
+    blocked.remove(&target_cell);
+
+    let first_leg = shortest_path_cells(start, target_cell, cols, rows, &blocked)?;
+
+    let mut blocked_second = blocked.clone();
+    for &cell in first_leg
+        .iter()
+        .skip(1)
+        .take(first_leg.len().saturating_sub(2))
+    {
+        if cell != target_cell && cell != end {
+            blocked_second.insert(cell);
+        }
+    }
+
+    let second_leg = shortest_path_cells(target_cell, end, cols, rows, &blocked_second)
+        .or_else(|| shortest_path_cells(target_cell, end, cols, rows, &blocked))?;
+
+    let mut full_path = first_leg;
+    for cell in second_leg.into_iter().skip(1) {
+        if full_path.last().copied() != Some(cell) {
+            full_path.push(cell);
+        }
+    }
+
+    simplify_path_loops(&mut full_path);
+
+    if full_path.len() < 2 || !full_path.contains(&target_cell) {
+        return None;
+    }
+
+    if original_cell != start && original_cell != end && full_path.contains(&original_cell) {
+        return None;
+    }
+
+    Some(full_path)
+}
+
+fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
+    let mut out = Vec::new();
+    for &cell in path.iter() {
+        if let Some(pos) = out.iter().position(|&c| c == cell) {
+            out.truncate(pos + 1);
+        } else {
+            out.push(cell);
+        }
+    }
+    *path = out;
 }

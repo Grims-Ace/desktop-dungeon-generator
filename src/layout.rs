@@ -1,5 +1,6 @@
-use crate::seed;
 use std::collections::{HashSet, VecDeque};
+
+use crate::seed;
 
 #[derive(Debug, Clone)]
 pub struct Room {
@@ -17,8 +18,11 @@ impl Room {
 
 #[derive(Debug, Clone)]
 pub struct Corridor {
-    pub from: (usize, usize),
-    pub to: (usize, usize),
+    #[allow(dead_code)]
+    pub id: u64,
+    pub start_room_id: usize,
+    pub end_room_id: usize,
+    pub path: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +53,7 @@ pub fn generate_layout(
     let mut room_rng = SimpleRng::new(seed::derive_seed(base_seed, 1));
     let mut graph_rng = SimpleRng::new(seed::derive_seed(base_seed, 2));
     let mut path_rng = SimpleRng::new(seed::derive_seed(base_seed, 3));
+
     let mut rooms = Vec::new();
     let mut corridors = Vec::new();
 
@@ -124,31 +129,36 @@ pub fn generate_layout(
     let target_dead_end_rooms = ((rooms.len() * dead_end_room_percent.min(50)) + 50) / 100;
     let room_edges =
         build_room_connection_edges(&centers, randomness, target_dead_end_rooms, &mut graph_rng);
-    let mut occupied_corridor_cells = HashSet::new();
 
-    for (a_idx, b_idx) in room_edges {
-        let a = centers[a_idx];
-        let b = centers[b_idx];
+    let mut next_corridor_id = 1u64;
+    for (start_room_id, end_room_id) in room_edges {
+        let start = centers[start_room_id];
+        let end = centers[end_room_id];
 
-        let preferred = if randomness <= 0.001 {
-            shortest_path(a, b, cols, rows).unwrap_or_else(|| vec![a, b])
+        let path = if randomness <= 0.001 {
+            shortest_path_cells(start, end, cols, rows, &HashSet::new())
         } else {
-            noisy_path(a, b, cols, rows, randomness, &mut path_rng)
-        };
+            Some(noisy_path(
+                start,
+                end,
+                cols,
+                rows,
+                randomness,
+                &mut path_rng,
+            ))
+        }
+        .or_else(|| shortest_path_cells(start, end, cols, rows, &HashSet::new()));
 
-        if !try_place_cell_path(
-            &preferred,
-            &mut occupied_corridor_cells,
-            &mut corridors,
-            true,
-        ) {
-            let fallback = shortest_path(a, b, cols, rows).unwrap_or_else(|| vec![a, b]);
-            let _ = try_place_cell_path(
-                &fallback,
-                &mut occupied_corridor_cells,
-                &mut corridors,
-                false,
-            );
+        if let Some(path) = path
+            && path.len() >= 2
+        {
+            corridors.push(Corridor {
+                id: next_corridor_id,
+                start_room_id,
+                end_room_id,
+                path,
+            });
+            next_corridor_id = next_corridor_id.wrapping_add(1);
         }
     }
 
@@ -273,71 +283,18 @@ fn shuffle_indices(indices: &mut [usize], rng: &mut SimpleRng) {
     }
 }
 
-fn try_place_cell_path(
-    path: &[(usize, usize)],
-    occupied: &mut HashSet<(usize, usize)>,
-    corridors: &mut Vec<Corridor>,
-    enforce_gap: bool,
-) -> bool {
-    if path.len() < 2 {
-        return false;
-    }
-
-    if enforce_gap && !has_required_corridor_gap(path, occupied) {
-        return false;
-    }
-
-    for segment in path.windows(2) {
-        if segment[0] != segment[1] {
-            corridors.push(Corridor {
-                from: segment[0],
-                to: segment[1],
-            });
-        }
-    }
-
-    for &cell in path {
-        occupied.insert(cell);
-    }
-
-    true
-}
-
-fn has_required_corridor_gap(path: &[(usize, usize)], occupied: &HashSet<(usize, usize)>) -> bool {
-    if path.len() < 3 {
-        return true;
-    }
-
-    for idx in 1..(path.len() - 1) {
-        let (x, y) = path[idx];
-        let x = x as isize;
-        let y = y as isize;
-
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                let nx = x + dx;
-                let ny = y + dy;
-                if nx < 0 || ny < 0 {
-                    continue;
-                }
-                if occupied.contains(&(nx as usize, ny as usize)) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    true
-}
-
-fn shortest_path(
+pub fn shortest_path_cells(
     start: (usize, usize),
     end: (usize, usize),
     cols: usize,
     rows: usize,
+    blocked: &HashSet<(usize, usize)>,
 ) -> Option<Vec<(usize, usize)>> {
     if start == end {
         return Some(vec![start]);
+    }
+    if blocked.contains(&start) || blocked.contains(&end) {
+        return None;
     }
 
     let total = cols.saturating_mul(rows);
@@ -372,6 +329,9 @@ fn shortest_path(
         ];
 
         for neighbor in neighbors.into_iter().flatten() {
+            if blocked.contains(&neighbor) {
+                continue;
+            }
             let n_idx = index(neighbor);
             if !visited[n_idx] {
                 visited[n_idx] = true;
@@ -482,7 +442,7 @@ fn noisy_path(
     }
 
     if current != end
-        && let Some(tail) = shortest_path(current, end, cols, rows)
+        && let Some(tail) = shortest_path_cells(current, end, cols, rows, &HashSet::new())
     {
         for &cell in tail.iter().skip(1) {
             path.push(cell);
