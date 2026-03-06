@@ -1,5 +1,7 @@
 mod layout;
 
+use std::collections::HashSet;
+
 use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{DungeonLayout, generate_layout};
@@ -295,13 +297,65 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
 fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &DungeonLayout) {
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
-    let outline_stroke = Stroke::new(1.0, Color32::BLACK);
+    let outline_stroke = Stroke::new(3.0, Color32::BLACK);
+    let mut corridor_cells_set = HashSet::new();
+    let mut corridor_edges_set = HashSet::new();
 
     for corridor in &layout.corridors {
+        corridor_edges_set.insert(normalized_edge(corridor.from, corridor.to));
         for (col, row) in corridor_cells(corridor.from, corridor.to) {
-            let cell_rect = cell_rect(geometry, col, row);
-            painter.rect_filled(cell_rect, 0.0, corridor_fill);
-            painter.rect_stroke(cell_rect, 0.0, outline_stroke, egui::StrokeKind::Middle);
+            corridor_cells_set.insert((col, row));
+        }
+    }
+
+    for &(col, row) in &corridor_cells_set {
+        painter.rect_filled(cell_rect(geometry, col, row), 0.0, corridor_fill);
+    }
+
+    for &(col, row) in &corridor_cells_set {
+        let rect = cell_rect(geometry, col, row);
+        let right = (col + 1, row);
+        let bottom = (col, row + 1);
+
+        if col == 0 || !corridor_cells_set.contains(&(col - 1, row)) {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.top()),
+                    egui::pos2(rect.left(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
+        }
+        if !corridor_cells_set.contains(&right)
+            || !corridor_edges_set.contains(&normalized_edge((col, row), right))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.right(), rect.top()),
+                    egui::pos2(rect.right(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
+        }
+        if row == 0 || !corridor_cells_set.contains(&(col, row - 1)) {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.top()),
+                    egui::pos2(rect.right(), rect.top()),
+                ],
+                outline_stroke,
+            );
+        }
+        if !corridor_cells_set.contains(&bottom)
+            || !corridor_edges_set.contains(&normalized_edge((col, row), bottom))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.bottom()),
+                    egui::pos2(rect.right(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
         }
     }
 
@@ -344,4 +398,8 @@ fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
         egui::pos2(left, top),
         egui::vec2(geometry.cell_size, geometry.cell_size),
     )
+}
+
+fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if a <= b { (a, b) } else { (b, a) }
 }
