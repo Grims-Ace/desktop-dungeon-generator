@@ -21,6 +21,7 @@ pub enum ExportFormat {
     Jpeg,
     Webp,
     Svg,
+    Folder,
 }
 
 impl Default for ExportFormat {
@@ -36,6 +37,7 @@ impl ExportFormat {
             ExportFormat::Jpeg => "jpeg",
             ExportFormat::Webp => "webp",
             ExportFormat::Svg => "svg",
+            ExportFormat::Folder => "folder",
         }
     }
 
@@ -45,11 +47,43 @@ impl ExportFormat {
             ExportFormat::Jpeg => ".jpeg",
             ExportFormat::Webp => ".webp",
             ExportFormat::Svg => ".svg",
+            ExportFormat::Folder => "Folder (Composite)",
         }
     }
 
-    pub fn is_raster(self) -> bool {
+    pub fn supports_resolution(self) -> bool {
         !matches!(self, ExportFormat::Svg)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MaskFormat {
+    Png,
+    Jpeg,
+    Webp,
+}
+
+impl Default for MaskFormat {
+    fn default() -> Self {
+        Self::Png
+    }
+}
+
+impl MaskFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            MaskFormat::Png => "png",
+            MaskFormat::Jpeg => "jpeg",
+            MaskFormat::Webp => "webp",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MaskFormat::Png => ".png",
+            MaskFormat::Jpeg => ".jpeg",
+            MaskFormat::Webp => ".webp",
+        }
     }
 }
 
@@ -71,6 +105,7 @@ pub struct UiSettings {
     pub allow_middle_corridor_doors: bool,
     pub colorblind_mode: bool,
     pub export_format: ExportFormat,
+    pub mask_format: MaskFormat,
     pub export_width: u32,
     pub export_height: u32,
     pub allow_export_aspect_change: bool,
@@ -95,6 +130,7 @@ impl Default for UiSettings {
             allow_middle_corridor_doors: false,
             colorblind_mode: false,
             export_format: ExportFormat::Png,
+            mask_format: MaskFormat::Png,
             export_width: 1920,
             export_height: 1080,
             allow_export_aspect_change: false,
@@ -211,10 +247,29 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
                 ui.selectable_value(&mut settings.export_format, ExportFormat::Jpeg, ".jpeg");
                 ui.selectable_value(&mut settings.export_format, ExportFormat::Webp, ".webp");
                 ui.selectable_value(&mut settings.export_format, ExportFormat::Svg, ".svg");
+                ui.selectable_value(
+                    &mut settings.export_format,
+                    ExportFormat::Folder,
+                    "Folder (Composite)",
+                );
             });
     });
 
-    if settings.export_format.is_raster() {
+    if settings.export_format == ExportFormat::Folder {
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label("Mask Format");
+            egui::ComboBox::from_id_salt("mask_format")
+                .selected_text(settings.mask_format.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut settings.mask_format, MaskFormat::Png, ".png");
+                    ui.selectable_value(&mut settings.mask_format, MaskFormat::Jpeg, ".jpeg");
+                    ui.selectable_value(&mut settings.mask_format, MaskFormat::Webp, ".webp");
+                });
+        });
+    }
+
+    if settings.export_format.supports_resolution() {
         ui.add_space(8.0);
         ui.checkbox(
             &mut settings.allow_export_aspect_change,
@@ -243,9 +298,7 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
         ui.label("Resolution Height");
         ui.horizontal(|ui| {
             height_changed |= ui
-                .add(
-                    egui::Slider::new(&mut settings.export_height, 1..=10_000).show_value(false),
-                )
+                .add(egui::Slider::new(&mut settings.export_height, 1..=10_000).show_value(false))
                 .changed();
             height_changed |= ui
                 .add(

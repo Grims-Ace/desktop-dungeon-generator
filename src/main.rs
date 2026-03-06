@@ -393,7 +393,7 @@ fn draw_layout(
 
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
-    let outline_stroke = Stroke::new(wall_width_px, Color32::BLACK);
+    let wall_color = Color32::BLACK;
     let mut corridor_cells_set = HashSet::new();
     let mut corridor_edges_set = HashSet::new();
     let mut room_cells_set = HashSet::new();
@@ -436,24 +436,24 @@ fn draw_layout(
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
                     .unwrap_or(true))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.top()),
-                    egui::pos2(rect.left(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.top()),
+                egui::pos2(rect.left(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
         if (!corridor_cells_set.contains(&right)
             || !corridor_edges_set.contains(&normalized_edge((col, row), right)))
             && !door_edges_set.contains(&normalized_edge((col, row), right))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.right(), rect.top()),
-                    egui::pos2(rect.right(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.right(), rect.top()),
+                egui::pos2(rect.right(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
         if row == 0
@@ -462,24 +462,24 @@ fn draw_layout(
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
                     .unwrap_or(true))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.top()),
-                    egui::pos2(rect.right(), rect.top()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.top()),
+                egui::pos2(rect.right(), rect.top()),
+                wall_width_px,
+                wall_color,
             );
         }
         if (!corridor_cells_set.contains(&bottom)
             || !corridor_edges_set.contains(&normalized_edge((col, row), bottom)))
             && !door_edges_set.contains(&normalized_edge((col, row), bottom))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.bottom()),
-                    egui::pos2(rect.right(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.bottom()),
+                egui::pos2(rect.right(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
     }
@@ -516,23 +516,23 @@ fn draw_layout(
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
                     .unwrap_or(true))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.top()),
-                    egui::pos2(rect.left(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.top()),
+                egui::pos2(rect.left(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
         if !room_cells_set.contains(&right)
             && !door_edges_set.contains(&normalized_edge((col, row), right))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.right(), rect.top()),
-                    egui::pos2(rect.right(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.right(), rect.top()),
+                egui::pos2(rect.right(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
         if row == 0
@@ -541,23 +541,23 @@ fn draw_layout(
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
                     .unwrap_or(true))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.top()),
-                    egui::pos2(rect.right(), rect.top()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.top()),
+                egui::pos2(rect.right(), rect.top()),
+                wall_width_px,
+                wall_color,
             );
         }
         if !room_cells_set.contains(&bottom)
             && !door_edges_set.contains(&normalized_edge((col, row), bottom))
         {
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.bottom()),
-                    egui::pos2(rect.right(), rect.bottom()),
-                ],
-                outline_stroke,
+            draw_wall_segment(
+                painter,
+                egui::pos2(rect.left(), rect.bottom()),
+                egui::pos2(rect.right(), rect.bottom()),
+                wall_width_px,
+                wall_color,
             );
         }
     }
@@ -601,6 +601,35 @@ fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
         egui::pos2(left, top),
         egui::vec2(geometry.cell_size, geometry.cell_size),
     )
+}
+
+fn draw_wall_segment(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    width: f32,
+    color: Color32,
+) {
+    let half = width * 0.5;
+    if (from.x - to.x).abs() <= f32::EPSILON {
+        let x = from.x.min(to.x);
+        let y0 = from.y.min(to.y);
+        let y1 = from.y.max(to.y);
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(x - half, y0 - half),
+            egui::pos2(x + half, y1 + half),
+        );
+        painter.rect_filled(rect, 0.0, color);
+    } else {
+        let y = from.y.min(to.y);
+        let x0 = from.x.min(to.x);
+        let x1 = from.x.max(to.x);
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(x0 - half, y - half),
+            egui::pos2(x1 + half, y + half),
+        );
+        painter.rect_filled(rect, 0.0, color);
+    }
 }
 
 fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {

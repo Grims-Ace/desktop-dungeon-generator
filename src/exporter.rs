@@ -7,7 +7,7 @@ use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
 use crate::layout::{Door, DungeonLayout, Room};
-use crate::ui::{ExportFormat, UiSettings};
+use crate::ui::{ExportFormat, MaskFormat, UiSettings};
 
 const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
 const GRID: (u8, u8, u8, u8) = (130, 130, 130, 255);
@@ -17,6 +17,7 @@ const BLACK: (u8, u8, u8, u8) = (0, 0, 0, 255);
 const OPEN_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
 const LOCKED_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
 const ARCHWAY: (u8, u8, u8, u8) = (70, 130, 220, 255);
+const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
 
 #[derive(Debug, Clone, Copy)]
 enum DoorStyle {
@@ -77,10 +78,54 @@ impl ExportGeometry {
     }
 }
 
+#[derive(Default)]
+struct SceneData {
+    corridor_cells: HashSet<(usize, usize)>,
+    corridor_edges: HashSet<((usize, usize), (usize, usize))>,
+    room_cells: HashSet<(usize, usize)>,
+    door_edges: HashSet<((usize, usize), (usize, usize))>,
+}
+
+fn collect_scene_data(layout: &DungeonLayout) -> SceneData {
+    let mut scene = SceneData::default();
+
+    for door in &layout.doors {
+        scene.door_edges.insert(norm_edge(door.from, door.to));
+    }
+
+    for corridor in &layout.corridors {
+        for &cell in &corridor.path {
+            scene.corridor_cells.insert(cell);
+        }
+        for pair in corridor.path.windows(2) {
+            scene.corridor_edges.insert(norm_edge(pair[0], pair[1]));
+        }
+    }
+
+    for room in &layout.rooms {
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                scene.room_cells.insert((x, y));
+            }
+        }
+    }
+
+    scene
+}
+
 pub fn export_with_dialog(
     layout: &DungeonLayout,
     settings: &UiSettings,
 ) -> Result<PathBuf, String> {
+    if settings.export_format == ExportFormat::Folder {
+        let folder = FileDialog::new()
+            .set_title("Export composite masks folder")
+            .pick_folder()
+            .ok_or_else(|| "Export canceled".to_string())?;
+        export_composite_masks(layout, settings, &folder)?;
+        return Ok(folder);
+    }
+
     let ext = settings.export_format.extension();
     let default_name = format!("dungeon_export.{ext}");
 
@@ -110,11 +155,12 @@ pub fn export_with_dialog(
                 ExportFormat::Png => ImageFormat::Png,
                 ExportFormat::Jpeg => ImageFormat::Jpeg,
                 ExportFormat::Webp => ImageFormat::WebP,
-                ExportFormat::Svg => unreachable!(),
+                ExportFormat::Svg | ExportFormat::Folder => unreachable!(),
             };
             img.save_with_format(&path, format)
                 .map_err(|e| format!("Failed writing image: {e}"))?;
         }
+        ExportFormat::Folder => unreachable!(),
     }
 
     Ok(path)
@@ -122,6 +168,7 @@ pub fn export_with_dialog(
 
 fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
     let g = ExportGeometry::new(settings.cols, settings.rows);
+    let scene = collect_scene_data(layout);
     let mut pixmap =
         Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
     fill_bg(&mut pixmap, BG);
@@ -131,33 +178,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
 
     draw_grid(&mut pixmap, &g);
 
-    let mut corridor_cells = HashSet::new();
-    let mut corridor_edges = HashSet::new();
-    let mut room_cells = HashSet::new();
-    let mut door_edges = HashSet::new();
-
-    for door in &layout.doors {
-        door_edges.insert(norm_edge(door.from, door.to));
-    }
-
-    for corridor in &layout.corridors {
-        for &cell in &corridor.path {
-            corridor_cells.insert(cell);
-        }
-        for pair in corridor.path.windows(2) {
-            corridor_edges.insert(norm_edge(pair[0], pair[1]));
-        }
-    }
-
-    for room in &layout.rooms {
-        for x in room.x..(room.x + room.width) {
-            for y in room.y..(room.y + room.height) {
-                room_cells.insert((x, y));
-            }
-        }
-    }
-
-    for &(x, y) in &corridor_cells {
+    for &(x, y) in &scene.corridor_cells {
         fill_rect_cell(&mut pixmap, &g, x, y, CORRIDOR);
         if settings.colorblind_mode {
             let (cx, cy) = g.cell_center(x, y);
@@ -175,18 +196,18 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     draw_cell_walls(
         &mut pixmap,
         &g,
-        &corridor_cells,
-        Some(&corridor_edges),
-        &door_edges,
+        &scene.corridor_cells,
+        Some(&scene.corridor_edges),
+        &scene.door_edges,
         wall_w,
         BLACK,
     );
     draw_cell_walls(
         &mut pixmap,
         &g,
-        &room_cells,
+        &scene.room_cells,
         None,
-        &door_edges,
+        &scene.door_edges,
         wall_w,
         BLACK,
     );
@@ -212,6 +233,92 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     }
 
     Ok(pixmap)
+}
+
+fn export_composite_masks(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+    folder: &std::path::Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(folder).map_err(|e| format!("Failed creating folder: {e}"))?;
+
+    let g = ExportGeometry::new(settings.cols, settings.rows);
+    let scene = collect_scene_data(layout);
+    let wall_w = (g.cell / 5.0).max(1.0);
+    let door_w = (g.cell / 10.0).max(1.0);
+
+    let mut floors = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate floors mask canvas".to_string())?;
+    fill_bg(&mut floors, BG);
+    for &(x, y) in &scene.corridor_cells {
+        fill_rect_cell(&mut floors, &g, x, y, WHITE);
+    }
+    for room in &layout.rooms {
+        fill_rect_room(&mut floors, &g, room, WHITE);
+    }
+
+    let mut walls = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate walls mask canvas".to_string())?;
+    fill_bg(&mut walls, BG);
+    draw_cell_walls(
+        &mut walls,
+        &g,
+        &scene.corridor_cells,
+        Some(&scene.corridor_edges),
+        &scene.door_edges,
+        wall_w,
+        WHITE,
+    );
+    draw_cell_walls(
+        &mut walls,
+        &g,
+        &scene.room_cells,
+        None,
+        &scene.door_edges,
+        wall_w,
+        WHITE,
+    );
+
+    let mut doors = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate doors mask canvas".to_string())?;
+    fill_bg(&mut doors, BG);
+    for door in &layout.doors {
+        draw_door(&mut doors, &g, door, door_w, WHITE, DoorStyle::Solid);
+    }
+
+    let mut grid = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
+    fill_bg(&mut grid, BG);
+    draw_grid_color(&mut grid, &g, WHITE);
+
+    save_mask_image(folder, "floors_mask", &floors, settings)?;
+    save_mask_image(folder, "walls_mask", &walls, settings)?;
+    save_mask_image(folder, "doors_mask", &doors, settings)?;
+    save_mask_image(folder, "grid_mask", &grid, settings)?;
+
+    Ok(())
+}
+
+fn save_mask_image(
+    folder: &std::path::Path,
+    stem: &str,
+    pixmap: &Pixmap,
+    settings: &UiSettings,
+) -> Result<(), String> {
+    let ext = settings.mask_format.extension();
+    let path = folder.join(format!("{stem}.{ext}"));
+    let img = raster_image_from_pixmap(pixmap, settings)?;
+    img.save_with_format(&path, mask_image_format(settings.mask_format))
+        .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
+    Ok(())
+}
+
+fn mask_image_format(format: MaskFormat) -> ImageFormat {
+    match format {
+        MaskFormat::Png => ImageFormat::Png,
+        MaskFormat::Jpeg => ImageFormat::Jpeg,
+        MaskFormat::Webp => ImageFormat::WebP,
+    }
 }
 
 fn raster_image_from_pixmap(
@@ -428,6 +535,10 @@ fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
 }
 
 fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
+    draw_grid_color(pixmap, g, GRID);
+}
+
+fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, u8, u8)) {
     for c in 0..=g.cols {
         let x = g.left() + c as f32 * g.cell;
         draw_line(
@@ -437,7 +548,7 @@ fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
             x,
             g.top() + g.rows as f32 * g.cell,
             1.0,
-            GRID,
+            color,
             DoorStyle::Solid,
         );
     }
@@ -450,7 +561,7 @@ fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
             g.left() + g.cols as f32 * g.cell,
             y,
             1.0,
-            GRID,
+            color,
             DoorStyle::Solid,
         );
     }
@@ -559,7 +670,7 @@ fn draw_cell_walls(
 
             let right_connected = connected_edges
                 .map(|set| set.contains(&norm_edge((col, row), right)))
-                .unwrap_or(false);
+                .unwrap_or(true);
             let should_right = (!cells.contains(&right) || !right_connected)
                 && !door_edges.contains(&norm_edge((col, row), right));
 
@@ -569,12 +680,12 @@ fn draw_cell_walls(
 
             let bottom_connected = connected_edges
                 .map(|set| set.contains(&norm_edge((col, row), bottom)))
-                .unwrap_or(false);
+                .unwrap_or(true);
             let should_bottom = (!cells.contains(&bottom) || !bottom_connected)
                 && !door_edges.contains(&norm_edge((col, row), bottom));
 
             if should_left {
-                draw_line(
+                draw_wall_segment(
                     pixmap,
                     rect.left(),
                     rect.top(),
@@ -582,11 +693,10 @@ fn draw_cell_walls(
                     rect.bottom(),
                     width,
                     color,
-                    DoorStyle::Solid,
                 );
             }
             if should_right {
-                draw_line(
+                draw_wall_segment(
                     pixmap,
                     rect.right(),
                     rect.top(),
@@ -594,11 +704,10 @@ fn draw_cell_walls(
                     rect.bottom(),
                     width,
                     color,
-                    DoorStyle::Solid,
                 );
             }
             if should_top {
-                draw_line(
+                draw_wall_segment(
                     pixmap,
                     rect.left(),
                     rect.top(),
@@ -606,11 +715,10 @@ fn draw_cell_walls(
                     rect.top(),
                     width,
                     color,
-                    DoorStyle::Solid,
                 );
             }
             if should_bottom {
-                draw_line(
+                draw_wall_segment(
                     pixmap,
                     rect.left(),
                     rect.bottom(),
@@ -618,11 +726,41 @@ fn draw_cell_walls(
                     rect.bottom(),
                     width,
                     color,
-                    DoorStyle::Solid,
                 );
             }
         }
     }
+}
+
+fn draw_wall_segment(
+    pixmap: &mut Pixmap,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    width: f32,
+    color: (u8, u8, u8, u8),
+) {
+    let half = width * 0.5;
+    let rect = if (x1 - x2).abs() <= f32::EPSILON {
+        let x = x1.min(x2);
+        let y0 = y1.min(y2);
+        let y1 = y1.max(y2);
+        Rect::from_xywh(x - half, y0 - half, width, (y1 - y0) + width)
+    } else {
+        let y = y1.min(y2);
+        let x0 = x1.min(x2);
+        let x1 = x1.max(x2);
+        Rect::from_xywh(x0 - half, y - half, (x1 - x0) + width, width)
+    };
+
+    let Some(rect) = rect else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
 fn append_svg_walls(
@@ -648,7 +786,7 @@ fn append_svg_walls(
 
         let right_connected = connected_edges
             .map(|set| set.contains(&norm_edge((col, row), right_cell)))
-            .unwrap_or(false);
+            .unwrap_or(true);
         let right_edge = (!cells.contains(&right_cell) || !right_connected)
             && !door_edges.contains(&norm_edge((col, row), right_cell));
 
@@ -658,32 +796,44 @@ fn append_svg_walls(
 
         let bottom_connected = connected_edges
             .map(|set| set.contains(&norm_edge((col, row), bottom_cell)))
-            .unwrap_or(false);
+            .unwrap_or(true);
         let bottom_edge = (!cells.contains(&bottom_cell) || !bottom_connected)
             && !door_edges.contains(&norm_edge((col, row), bottom_cell));
 
         if left_edge {
             let _ = writeln!(
                 out,
-                "<line x1='{left}' y1='{top}' x2='{left}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+                "<rect x='{}' y='{}' width='{width}' height='{}' fill='black'/>",
+                left - (width * 0.5),
+                top - (width * 0.5),
+                (bottom - top) + width
             );
         }
         if right_edge {
             let _ = writeln!(
                 out,
-                "<line x1='{right}' y1='{top}' x2='{right}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+                "<rect x='{}' y='{}' width='{width}' height='{}' fill='black'/>",
+                right - (width * 0.5),
+                top - (width * 0.5),
+                (bottom - top) + width
             );
         }
         if top_edge {
             let _ = writeln!(
                 out,
-                "<line x1='{left}' y1='{top}' x2='{right}' y2='{top}' stroke='black' stroke-width='{width}'/>"
+                "<rect x='{}' y='{}' width='{}' height='{width}' fill='black'/>",
+                left - (width * 0.5),
+                top - (width * 0.5),
+                (right - left) + width
             );
         }
         if bottom_edge {
             let _ = writeln!(
                 out,
-                "<line x1='{left}' y1='{bottom}' x2='{right}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+                "<rect x='{}' y='{}' width='{}' height='{width}' fill='black'/>",
+                left - (width * 0.5),
+                bottom - (width * 0.5),
+                (right - left) + width
             );
         }
     }
