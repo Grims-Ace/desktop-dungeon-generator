@@ -21,6 +21,8 @@ struct DungeonApp {
     min_room_size: usize,
     max_room_size: usize,
     square_rooms_only: bool,
+    corridor_randomness: usize,
+    dead_end_rooms_percent: usize,
     seed: u64,
     layout: DungeonLayout,
 }
@@ -33,6 +35,8 @@ impl Default for DungeonApp {
         let min_room_size = 2;
         let max_room_size = 6;
         let square_rooms_only = false;
+        let corridor_randomness = 0;
+        let dead_end_rooms_percent = 0;
         let seed = 1;
         let layout = generate_layout(
             cols,
@@ -42,6 +46,8 @@ impl Default for DungeonApp {
             min_room_size,
             max_room_size,
             square_rooms_only,
+            corridor_randomness,
+            dead_end_rooms_percent,
         );
 
         Self {
@@ -51,6 +57,8 @@ impl Default for DungeonApp {
             min_room_size,
             max_room_size,
             square_rooms_only,
+            corridor_randomness,
+            dead_end_rooms_percent,
             seed,
             layout,
         }
@@ -151,6 +159,42 @@ impl eframe::App for DungeonApp {
                     .checkbox(&mut self.square_rooms_only, "Square Rooms Only")
                     .changed();
 
+                ui.add_space(8.0);
+                ui.label("Corridor Randomness (%)");
+                ui.horizontal(|ui| {
+                    settings_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.corridor_randomness, 0..=100)
+                                .show_value(false),
+                        )
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.corridor_randomness)
+                                .speed(1.0)
+                                .range(0..=100),
+                        )
+                        .changed();
+                });
+
+                ui.add_space(8.0);
+                ui.label("Dead-End Rooms (%)");
+                ui.horizontal(|ui| {
+                    settings_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.dead_end_rooms_percent, 0..=50)
+                                .show_value(false),
+                        )
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.dead_end_rooms_percent)
+                                .speed(1.0)
+                                .range(0..=50),
+                        )
+                        .changed();
+                });
+
                 ui.add_space(10.0);
                 if ui.button("Generate New Layout").clicked() {
                     self.seed = self.seed.wrapping_add(1);
@@ -162,6 +206,8 @@ impl eframe::App for DungeonApp {
                         self.min_room_size,
                         self.max_room_size,
                         self.square_rooms_only,
+                        self.corridor_randomness,
+                        self.dead_end_rooms_percent,
                     );
                 }
             });
@@ -179,6 +225,8 @@ impl eframe::App for DungeonApp {
                 self.min_room_size,
                 self.max_room_size,
                 self.square_rooms_only,
+                self.corridor_randomness,
+                self.dead_end_rooms_percent,
             );
         }
 
@@ -246,13 +294,14 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
 
 fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &DungeonLayout) {
     let room_fill = Color32::from_rgb(70, 120, 160);
-    let room_stroke = Stroke::new(1.0, Color32::from_rgb(35, 65, 95));
     let corridor_fill = Color32::from_rgb(210, 190, 120);
+    let outline_stroke = Stroke::new(1.0, Color32::BLACK);
 
     for corridor in &layout.corridors {
         for (col, row) in corridor_cells(corridor.from, corridor.to) {
             let cell_rect = cell_rect(geometry, col, row);
             painter.rect_filled(cell_rect, 0.0, corridor_fill);
+            painter.rect_stroke(cell_rect, 0.0, outline_stroke, egui::StrokeKind::Middle);
         }
     }
 
@@ -264,7 +313,7 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
         let room_rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
         painter.rect_filled(room_rect, 0.0, room_fill);
-        painter.rect_stroke(room_rect, 0.0, room_stroke, egui::StrokeKind::Middle);
+        painter.rect_stroke(room_rect, 0.0, outline_stroke, egui::StrokeKind::Middle);
     }
 }
 
