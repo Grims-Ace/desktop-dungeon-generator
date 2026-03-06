@@ -1,6 +1,6 @@
 # Desktop Dungeon Generator
 
-**Pre-release Notice:** This program is incomplete and functionality is subject to change and it might break, you've been warned.
+**Pre-release Notice:** This program is incomplete and functionality is subject to change and it might break, you've been warned. *though releases should at least be stable enough to run*
 
 A Rust desktop app for generating simple tabletop dungeon layouts.
 
