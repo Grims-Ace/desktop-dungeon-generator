@@ -50,6 +50,7 @@ impl Default for UiSettings {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SidePanelResult {
     pub settings_changed: bool,
+    pub reset_clicked: bool,
 }
 
 pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePanelResult {
@@ -132,6 +133,11 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
             result.settings_changed = true;
         }
     });
+
+    ui.add_space(8.0);
+    if ui.button("Reset").clicked() {
+        result.reset_clicked = true;
+    }
 }
 
 fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
