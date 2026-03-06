@@ -1,5 +1,8 @@
+mod layout;
+
 use eframe::egui;
 use egui::{Color32, Stroke};
+use layout::{DungeonLayout, generate_layout};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
@@ -14,16 +17,33 @@ fn main() -> eframe::Result<()> {
 struct DungeonApp {
     cols: usize,
     rows: usize,
+    room_count: usize,
+    seed: u64,
+    layout: DungeonLayout,
 }
 
 impl Default for DungeonApp {
     fn default() -> Self {
-        Self { cols: 12, rows: 8 }
+        let cols = 24;
+        let rows = 18;
+        let room_count = 8;
+        let seed = 1;
+        let layout = generate_layout(cols, rows, room_count, seed);
+
+        Self {
+            cols,
+            rows,
+            room_count,
+            seed,
+            layout,
+        }
     }
 }
 
 impl eframe::App for DungeonApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let mut settings_changed = false;
+
         egui::SidePanel::left("options_panel")
             .resizable(true)
             .min_width(180.0)
@@ -35,36 +55,77 @@ impl eframe::App for DungeonApp {
 
                 ui.label("Columns");
                 ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut self.cols, 2..=100).show_value(false));
-                    ui.add(
-                        egui::DragValue::new(&mut self.cols)
-                            .speed(1.0)
-                            .range(2..=500),
-                    );
+                    settings_changed |= ui
+                        .add(egui::Slider::new(&mut self.cols, 6..=100).show_value(false))
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.cols)
+                                .speed(1.0)
+                                .range(2..=500),
+                        )
+                        .changed();
                 });
 
                 ui.add_space(8.0);
                 ui.label("Rows");
                 ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut self.rows, 2..=100).show_value(false));
-                    ui.add(
-                        egui::DragValue::new(&mut self.rows)
-                            .speed(1.0)
-                            .range(2..=500),
-                    );
+                    settings_changed |= ui
+                        .add(egui::Slider::new(&mut self.rows, 6..=100).show_value(false))
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.rows)
+                                .speed(1.0)
+                                .range(2..=500),
+                        )
+                        .changed();
                 });
+
+                ui.add_space(12.0);
+                ui.heading("Dungeon");
+                ui.add_space(8.0);
+                ui.label("Room Count");
+                ui.horizontal(|ui| {
+                    settings_changed |= ui
+                        .add(egui::Slider::new(&mut self.room_count, 1..=40).show_value(false))
+                        .changed();
+                    settings_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut self.room_count)
+                                .speed(1.0)
+                                .range(1..=200),
+                        )
+                        .changed();
+                });
+
+                ui.add_space(10.0);
+                if ui.button("Generate New Layout").clicked() {
+                    self.seed = self.seed.wrapping_add(1);
+                    self.layout = generate_layout(self.cols, self.rows, self.room_count, self.seed);
+                }
             });
+
+        if settings_changed {
+            self.layout = generate_layout(self.cols, self.rows, self.room_count, self.seed);
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::hover());
             let canvas = response.rect.shrink(12.0);
-            draw_grid(&painter, canvas, self.cols, self.rows);
+            let geometry = draw_grid(&painter, canvas, self.cols, self.rows);
+            draw_layout(&painter, &geometry, &self.layout);
         });
     }
 }
 
-fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize) {
+struct GridGeometry {
+    rect: egui::Rect,
+    cell_size: f32,
+}
+
+fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize) -> GridGeometry {
     let cols = cols.max(1);
     let rows = rows.max(1);
 
@@ -104,4 +165,62 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
             stroke,
         );
     }
+
+    GridGeometry {
+        rect: grid_rect,
+        cell_size,
+    }
+}
+
+fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &DungeonLayout) {
+    let room_fill = Color32::from_rgb(70, 120, 160);
+    let room_stroke = Stroke::new(1.0, Color32::from_rgb(35, 65, 95));
+    let corridor_fill = Color32::from_rgb(210, 190, 120);
+
+    for corridor in &layout.corridors {
+        for (col, row) in corridor_cells(corridor.from, corridor.to) {
+            let cell_rect = cell_rect(geometry, col, row);
+            painter.rect_filled(cell_rect, 0.0, corridor_fill);
+        }
+    }
+
+    for room in &layout.rooms {
+        let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
+        let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
+        let right = left + room.width as f32 * geometry.cell_size;
+        let bottom = top + room.height as f32 * geometry.cell_size;
+        let room_rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+
+        painter.rect_filled(room_rect, 0.0, room_fill);
+        painter.rect_stroke(room_rect, 0.0, room_stroke, egui::StrokeKind::Middle);
+    }
+}
+
+fn corridor_cells(from: (usize, usize), to: (usize, usize)) -> Vec<(usize, usize)> {
+    let mut cells = Vec::new();
+    if from.0 == to.0 {
+        let x = from.0;
+        let start = from.1.min(to.1);
+        let end = from.1.max(to.1);
+        for y in start..=end {
+            cells.push((x, y));
+        }
+    } else if from.1 == to.1 {
+        let y = from.1;
+        let start = from.0.min(to.0);
+        let end = from.0.max(to.0);
+        for x in start..=end {
+            cells.push((x, y));
+        }
+    }
+    cells
+}
+
+fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
+    let left = geometry.rect.left() + col as f32 * geometry.cell_size;
+    let top = geometry.rect.top() + row as f32 * geometry.cell_size;
+    egui::Rect::from_min_size(
+        egui::pos2(left, top),
+        egui::vec2(geometry.cell_size, geometry.cell_size),
+    )
 }
