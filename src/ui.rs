@@ -1,3 +1,4 @@
+use crate::seed;
 use eframe::egui;
 use egui::RichText;
 
@@ -9,6 +10,7 @@ enum Tab {
 
 #[derive(Debug, Clone)]
 pub struct UiSettings {
+    pub seed: u64,
     pub cols: usize,
     pub rows: usize,
     pub room_count: usize,
@@ -23,6 +25,7 @@ pub struct UiSettings {
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
+            seed: 1,
             cols: 24,
             rows: 18,
             room_count: 8,
@@ -39,7 +42,6 @@ impl Default for UiSettings {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SidePanelResult {
     pub settings_changed: bool,
-    pub generate_clicked: bool,
 }
 
 pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePanelResult {
@@ -107,12 +109,21 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
     });
 
     ui.add_space(12.0);
-    ui.label(RichText::new("Generation").strong());
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Seed Settings").strong());
     ui.add_space(8.0);
 
-    if ui.button("Generate New Layout").clicked() {
-        result.generate_clicked = true;
-    }
+    ui.label("Master Seed");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::DragValue::new(&mut settings.seed).speed(1.0))
+            .changed();
+        if ui.button("Random").clicked() {
+            settings.seed = seed::random_seed();
+            result.settings_changed = true;
+        }
+    });
 }
 
 fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {

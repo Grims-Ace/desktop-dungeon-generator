@@ -1,3 +1,4 @@
+use crate::seed;
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug, Clone)]
@@ -37,7 +38,17 @@ pub fn generate_layout(
     corridor_randomness_percent: usize,
     dead_end_room_percent: usize,
 ) -> DungeonLayout {
-    let mut rng = SimpleRng::new(seed ^ ((cols as u64) << 32) ^ rows as u64);
+    let layout_salt = ((cols as u64) << 48)
+        ^ ((rows as u64) << 32)
+        ^ ((target_room_count as u64) << 16)
+        ^ (min_room_size as u64)
+        ^ ((max_room_size as u64) << 8)
+        ^ ((corridor_randomness_percent as u64) << 56)
+        ^ ((dead_end_room_percent as u64) << 40);
+    let base_seed = seed::derive_seed(seed, layout_salt);
+    let mut room_rng = SimpleRng::new(seed::derive_seed(base_seed, 1));
+    let mut graph_rng = SimpleRng::new(seed::derive_seed(base_seed, 2));
+    let mut path_rng = SimpleRng::new(seed::derive_seed(base_seed, 3));
     let mut rooms = Vec::new();
     let mut corridors = Vec::new();
 
@@ -69,7 +80,7 @@ pub fn generate_layout(
         }
 
         let (width, height) = if square_rooms_only {
-            let side = rng.range_inclusive(min_size, max_size.min(cols.min(rows)));
+            let side = room_rng.range_inclusive(min_size, max_size.min(cols.min(rows)));
             (side, side)
         } else {
             let width_max = max_size.min(cols);
@@ -78,8 +89,8 @@ pub fn generate_layout(
                 continue;
             }
             (
-                rng.range_inclusive(min_size, width_max),
-                rng.range_inclusive(min_size, height_max),
+                room_rng.range_inclusive(min_size, width_max),
+                room_rng.range_inclusive(min_size, height_max),
             )
         };
 
@@ -87,8 +98,8 @@ pub fn generate_layout(
             continue;
         }
 
-        let x = rng.range_inclusive(0, cols - width);
-        let y = rng.range_inclusive(0, rows - height);
+        let x = room_rng.range_inclusive(0, cols - width);
+        let y = room_rng.range_inclusive(0, rows - height);
         let candidate = Room {
             x,
             y,
@@ -112,7 +123,7 @@ pub fn generate_layout(
     let centers: Vec<(usize, usize)> = rooms.iter().map(Room::center_cell).collect();
     let target_dead_end_rooms = ((rooms.len() * dead_end_room_percent.min(50)) + 50) / 100;
     let room_edges =
-        build_room_connection_edges(&centers, randomness, target_dead_end_rooms, &mut rng);
+        build_room_connection_edges(&centers, randomness, target_dead_end_rooms, &mut graph_rng);
     let mut occupied_corridor_cells = HashSet::new();
 
     for (a_idx, b_idx) in room_edges {
@@ -122,7 +133,7 @@ pub fn generate_layout(
         let preferred = if randomness <= 0.001 {
             shortest_path(a, b, cols, rows).unwrap_or_else(|| vec![a, b])
         } else {
-            noisy_path(a, b, cols, rows, randomness, &mut rng)
+            noisy_path(a, b, cols, rows, randomness, &mut path_rng)
         };
 
         if !try_place_cell_path(

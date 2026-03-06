@@ -1,4 +1,5 @@
 mod layout;
+mod seed;
 mod ui;
 
 use std::collections::HashSet;
@@ -20,19 +21,17 @@ fn main() -> eframe::Result<()> {
 
 struct DungeonApp {
     settings: UiSettings,
-    seed: u64,
     layout: DungeonLayout,
 }
 
 impl Default for DungeonApp {
     fn default() -> Self {
         let settings = UiSettings::default();
-        let seed = 1;
         let layout = generate_layout(
             settings.cols,
             settings.rows,
             settings.room_count,
-            seed,
+            settings.seed,
             settings.min_room_size,
             settings.max_room_size,
             settings.square_rooms_only,
@@ -40,11 +39,7 @@ impl Default for DungeonApp {
             settings.dead_end_rooms_percent,
         );
 
-        Self {
-            settings,
-            seed,
-            layout,
-        }
+        Self { settings, layout }
     }
 }
 
@@ -54,11 +49,6 @@ impl eframe::App for DungeonApp {
 
         if self.settings.min_room_size > self.settings.max_room_size {
             self.settings.max_room_size = self.settings.min_room_size;
-        }
-
-        if panel_result.generate_clicked {
-            self.seed = self.seed.wrapping_add(1);
-            self.regenerate_layout();
         }
 
         if panel_result.settings_changed {
@@ -81,7 +71,7 @@ impl DungeonApp {
             self.settings.cols,
             self.settings.rows,
             self.settings.room_count,
-            self.seed,
+            self.settings.seed,
             self.settings.min_room_size,
             self.settings.max_room_size,
             self.settings.square_rooms_only,

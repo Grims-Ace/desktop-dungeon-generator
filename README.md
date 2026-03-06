@@ -1,6 +1,6 @@
 # Desktop Dungeon Generator
 
-A Rust + `egui` desktop app for generating simple tabletop dungeon layouts on a scalable grid.
+A Rust desktop app for generating simple tabletop dungeon layouts.
 
 ## Current Features
 
@@ -19,13 +19,16 @@ A Rust + `egui` desktop app for generating simple tabletop dungeon layouts on a 
   - `Corridor Randomness (%)` from `0` to `100`
   - `Dead-End Rooms (%)` from `0` to `50`
 - Generate control:
-  - `Generate New Layout` button increments seed and creates a new layout
+  - Master seed input (`u64`)
+  - `Random` seed button
+  - `Generate New Layout` button generates using the current seed
 
 ## Generation Behavior
 
 - Rooms are stored as rectangles (`x`, `y`, `width`, `height`) and placed without overlap.
 - Corridors are stored separately as vector line segments between grid cells.
 - Every generated room is connected into one navigable network when possible.
+- A master seed drives deterministic generation, and internal subsystems derive their own sub-seeds from it.
 
 ### Corridor Randomness
 
