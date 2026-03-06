@@ -382,9 +382,12 @@ fn draw_layout(
     layout: &DungeonLayout,
     colorblind_mode: bool,
 ) {
+    let wall_width_px = (geometry.cell_size / 5.0).max(1.0);
+    let door_width_px = (geometry.cell_size / 10.0).max(1.0);
+
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
-    let outline_stroke = Stroke::new(3.0, Color32::BLACK);
+    let outline_stroke = Stroke::new(wall_width_px, Color32::BLACK);
     let mut corridor_cells_set = HashSet::new();
     let mut corridor_edges_set = HashSet::new();
     let mut room_cells_set = HashSet::new();
@@ -579,7 +582,7 @@ fn draw_layout(
             geometry,
             door.from,
             door.to,
-            Stroke::new(3.0, color),
+            Stroke::new(door_width_px, color),
             style,
         );
     }
