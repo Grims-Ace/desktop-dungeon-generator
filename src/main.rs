@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
-use layout::{DungeonLayout, shortest_path_cells};
+use layout::{DoorSettings, DungeonLayout, shortest_path_cells};
 use ui::{UiSettings, draw_side_panel};
 
 fn main() -> eframe::Result<()> {
@@ -39,6 +39,7 @@ impl Default for DungeonApp {
             settings.square_rooms_only,
             settings.corridor_randomness,
             settings.dead_end_rooms_percent,
+            door_settings_from_ui(&settings),
         );
         Self {
             settings,
@@ -92,6 +93,7 @@ impl DungeonApp {
             self.settings.square_rooms_only,
             self.settings.corridor_randomness,
             self.settings.dead_end_rooms_percent,
+            door_settings_from_ui(&self.settings),
         );
     }
 
@@ -185,6 +187,7 @@ impl DungeonApp {
         self.layout.rooms[drag.room_idx].x = new_x;
         self.layout.rooms[drag.room_idx].y = new_y;
         self.reroute_corridors_for_room(drag.room_idx);
+        self.refresh_doors();
     }
 
     fn reroute_corridors_for_room(&mut self, room_idx: usize) {
@@ -253,6 +256,15 @@ impl DungeonApp {
         };
 
         self.layout.corridors[drag.corridor_index].path = new_path;
+        self.refresh_doors();
+    }
+
+    fn refresh_doors(&mut self) {
+        layout::apply_doors(
+            &mut self.layout,
+            self.settings.seed,
+            door_settings_from_ui(&self.settings),
+        );
     }
 }
 
@@ -405,6 +417,23 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
         painter.rect_filled(room_rect, 0.0, room_fill);
         painter.rect_stroke(room_rect, 0.0, outline_stroke, egui::StrokeKind::Middle);
     }
+
+    for door in &layout.doors {
+        let color = if door.archway {
+            Color32::from_rgb(70, 130, 220)
+        } else if door.locked {
+            Color32::from_rgb(80, 200, 120)
+        } else {
+            Color32::from_rgb(220, 70, 70)
+        };
+        draw_door_line(
+            painter,
+            geometry,
+            door.from,
+            door.to,
+            Stroke::new(3.0, color),
+        );
+    }
 }
 
 fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
@@ -494,4 +523,39 @@ fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
         }
     }
     *path = out;
+}
+
+fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
+    DoorSettings {
+        frequency_percent: settings.door_frequency_percent,
+        room_hallway_percent: settings.room_hallway_door_percent,
+        locked_percent: settings.locked_door_percent,
+        allow_middle_corridor_doors: settings.allow_middle_corridor_doors,
+    }
+}
+
+fn draw_door_line(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    a: (usize, usize),
+    b: (usize, usize),
+    stroke: Stroke,
+) {
+    if a.0.abs_diff(b.0) + a.1.abs_diff(b.1) != 1 {
+        return;
+    }
+
+    if a.0 != b.0 {
+        let x = geometry.rect.left() + (a.0.max(b.0) as f32) * geometry.cell_size;
+        let row = a.1;
+        let y0 = geometry.rect.top() + row as f32 * geometry.cell_size;
+        let y1 = y0 + geometry.cell_size;
+        painter.line_segment([egui::pos2(x, y0), egui::pos2(x, y1)], stroke);
+    } else {
+        let y = geometry.rect.top() + (a.1.max(b.1) as f32) * geometry.cell_size;
+        let col = a.0;
+        let x0 = geometry.rect.left() + col as f32 * geometry.cell_size;
+        let x1 = x0 + geometry.cell_size;
+        painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], stroke);
+    }
 }

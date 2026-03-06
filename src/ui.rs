@@ -27,6 +27,10 @@ pub struct UiSettings {
     pub square_rooms_only: bool,
     pub corridor_randomness: usize,
     pub dead_end_rooms_percent: usize,
+    pub door_frequency_percent: usize,
+    pub room_hallway_door_percent: usize,
+    pub locked_door_percent: usize,
+    pub allow_middle_corridor_doors: bool,
     active_tab: Tab,
 }
 
@@ -42,6 +46,10 @@ impl Default for UiSettings {
             square_rooms_only: false,
             corridor_randomness: 0,
             dead_end_rooms_percent: 0,
+            door_frequency_percent: 30,
+            room_hallway_door_percent: 70,
+            locked_door_percent: 25,
+            allow_middle_corridor_doors: false,
             active_tab: Tab::Generate,
         }
     }
@@ -227,4 +235,65 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
             )
             .changed();
     });
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Door Settings").strong());
+    ui.add_space(8.0);
+
+    ui.label("Door Frequency (%)");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.door_frequency_percent, 0..=100).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.door_frequency_percent)
+                    .speed(1.0)
+                    .range(0..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Room/Hallway Door Chance (%)");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(
+                egui::Slider::new(&mut settings.room_hallway_door_percent, 0..=100)
+                    .show_value(false),
+            )
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.room_hallway_door_percent)
+                    .speed(1.0)
+                    .range(0..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Locked Door Chance (%)");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.locked_door_percent, 0..=100).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.locked_door_percent)
+                    .speed(1.0)
+                    .range(0..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    result.settings_changed |= ui
+        .checkbox(
+            &mut settings.allow_middle_corridor_doors,
+            "Allow Middle Corridor Doors",
+        )
+        .changed();
 }

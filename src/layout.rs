@@ -25,10 +25,27 @@ pub struct Corridor {
     pub path: Vec<(usize, usize)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Door {
+    pub from: (usize, usize),
+    pub to: (usize, usize),
+    pub locked: bool,
+    pub archway: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DoorSettings {
+    pub frequency_percent: usize,
+    pub room_hallway_percent: usize,
+    pub locked_percent: usize,
+    pub allow_middle_corridor_doors: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,
+    pub doors: Vec<Door>,
 }
 
 pub fn generate_layout(
@@ -41,6 +58,7 @@ pub fn generate_layout(
     square_rooms_only: bool,
     corridor_randomness_percent: usize,
     dead_end_room_percent: usize,
+    door_settings: DoorSettings,
 ) -> DungeonLayout {
     let layout_salt = ((cols as u64) << 48)
         ^ ((rows as u64) << 32)
@@ -58,7 +76,11 @@ pub fn generate_layout(
     let mut corridors = Vec::new();
 
     if cols < 2 || rows < 2 || target_room_count == 0 {
-        return DungeonLayout { rooms, corridors };
+        return DungeonLayout {
+            rooms,
+            corridors,
+            doors: Vec::new(),
+        };
     }
 
     let mut min_size = min_room_size.max(2);
@@ -74,7 +96,11 @@ pub fn generate_layout(
     }
 
     if min_size == 0 || max_size < min_size {
-        return DungeonLayout { rooms, corridors };
+        return DungeonLayout {
+            rooms,
+            corridors,
+            doors: Vec::new(),
+        };
     }
 
     let max_attempts = target_room_count.saturating_mul(40).max(50);
@@ -121,7 +147,11 @@ pub fn generate_layout(
     }
 
     if rooms.len() < 2 {
-        return DungeonLayout { rooms, corridors };
+        return DungeonLayout {
+            rooms,
+            corridors,
+            doors: Vec::new(),
+        };
     }
 
     let randomness = (corridor_randomness_percent.min(100) as f32) / 100.0;
@@ -162,7 +192,64 @@ pub fn generate_layout(
         }
     }
 
-    DungeonLayout { rooms, corridors }
+    let mut layout = DungeonLayout {
+        rooms,
+        corridors,
+        doors: Vec::new(),
+    };
+    apply_doors(&mut layout, seed, door_settings);
+    layout
+}
+
+pub fn apply_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
+    layout.doors.clear();
+
+    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
+    let base = (settings.frequency_percent.min(100) as f32) / 100.0;
+    let room_hall = (settings.room_hallway_percent.min(100) as f32) / 100.0;
+    let locked = (settings.locked_percent.min(100) as f32) / 100.0;
+
+    let mut seen_edges = HashSet::new();
+    for corridor in &layout.corridors {
+        for pair in corridor.path.windows(2) {
+            if pair[0] == pair[1] {
+                continue;
+            }
+            let edge = normalized_cell_edge(pair[0], pair[1]);
+            if !seen_edges.insert(edge) {
+                continue;
+            }
+
+            let a_in_room = room_index_at_cell(&layout.rooms, edge.0).is_some();
+            let b_in_room = room_index_at_cell(&layout.rooms, edge.1).is_some();
+            let is_room_hallway = a_in_room ^ b_in_room;
+            let is_middle = !a_in_room && !b_in_room;
+
+            if is_room_hallway {
+                let door_chance = base * room_hall;
+                let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+
+                layout.doors.push(Door {
+                    from: edge.0,
+                    to: edge.1,
+                    locked: place_door && rng.next_f32() <= locked,
+                    archway: !place_door,
+                });
+                continue;
+            }
+
+            if is_middle && settings.allow_middle_corridor_doors {
+                if base > 0.0 && rng.next_f32() <= base {
+                    layout.doors.push(Door {
+                        from: edge.0,
+                        to: edge.1,
+                        locked: rng.next_f32() <= locked,
+                        archway: false,
+                    });
+                }
+            }
+        }
+    }
 }
 
 fn build_room_connection_edges(
@@ -468,6 +555,19 @@ fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
 
 fn manhattan_distance(a: (usize, usize), b: (usize, usize)) -> usize {
     a.0.abs_diff(b.0) + a.1.abs_diff(b.1)
+}
+
+fn room_index_at_cell(rooms: &[Room], cell: (usize, usize)) -> Option<usize> {
+    rooms.iter().position(|room| {
+        cell.0 >= room.x
+            && cell.0 < room.x + room.width
+            && cell.1 >= room.y
+            && cell.1 < room.y + room.height
+    })
+}
+
+fn normalized_cell_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if a <= b { (a, b) } else { (b, a) }
 }
 
 struct SimpleRng {

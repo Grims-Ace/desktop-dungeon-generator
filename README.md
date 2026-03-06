@@ -18,6 +18,11 @@ A Rust desktop app for generating simple tabletop dungeon layouts.
 - Corridor controls:
   - `Corridor Randomness (%)` from `0` to `100`
   - `Dead-End Rooms (%)` from `0` to `50`
+- Door controls:
+  - `Door Frequency (%)`
+  - `Room/Hallway Door Chance (%)`
+  - `Locked Door Chance (%)`
+  - `Allow Middle Corridor Doors` toggle
 - Generate control:
   - Master seed input (`u64`)
   - `Random` seed button
@@ -28,6 +33,10 @@ A Rust desktop app for generating simple tabletop dungeon layouts.
 - Corridors are stored separately as vector line segments between grid cells.
 - Every generated room is connected into one navigable network when possible.
 - A master seed drives deterministic generation, and internal subsystems derive their own sub-seeds from it.
+- Doors are generated from corridor adjacency:
+  - Open doors are rendered in red
+  - Locked doors are rendered in green
+  - Doors are rendered as line segments on grid boundaries
 
 ### Corridor Randomness
 
