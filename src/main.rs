@@ -75,14 +75,29 @@ impl eframe::App for DungeonApp {
             .default_width(200.0)
             .show_separator_line(true)
             .show(ctx, |ui| {
+                ui.heading("Accessibility");
+                ui.add_space(6.0);
+                ui.checkbox(&mut self.settings.colorblind_mode, "Colorblind Mode");
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(8.0);
                 ui.heading("Legend");
                 ui.add_space(8.0);
-                draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
-                draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
-                draw_legend_entry(ui, Color32::BLACK, "Walls");
-                draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Doors");
-                draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Locked Doors");
-                draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
+                if self.settings.colorblind_mode {
+                    draw_legend_entry_colorblind(ui, "Rooms", LegendStyle::Crosshatch);
+                    draw_legend_entry_colorblind(ui, "Corridors", LegendStyle::Dots);
+                    draw_legend_entry_colorblind(ui, "Walls", LegendStyle::SolidLine);
+                    draw_legend_entry_colorblind(ui, "Doors", LegendStyle::LongDash);
+                    draw_legend_entry_colorblind(ui, "Locked Doors", LegendStyle::ShortDash);
+                    draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
+                } else {
+                    draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
+                    draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
+                    draw_legend_entry(ui, Color32::BLACK, "Walls");
+                    draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Doors");
+                    draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Locked Doors");
+                    draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
+                }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -91,7 +106,12 @@ impl eframe::App for DungeonApp {
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             self.handle_drag(&response, &geometry);
-            draw_layout(&painter, &geometry, &self.layout);
+            draw_layout(
+                &painter,
+                &geometry,
+                &self.layout,
+                self.settings.colorblind_mode,
+            );
         });
     }
 }
@@ -356,12 +376,23 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
     }
 }
 
-fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &DungeonLayout) {
+fn draw_layout(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    layout: &DungeonLayout,
+    colorblind_mode: bool,
+) {
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
     let outline_stroke = Stroke::new(3.0, Color32::BLACK);
     let mut corridor_cells_set = HashSet::new();
     let mut corridor_edges_set = HashSet::new();
+    let mut room_cells_set = HashSet::new();
+    let mut door_edges_set = HashSet::new();
+
+    for door in &layout.doors {
+        door_edges_set.insert(normalized_edge(door.from, door.to));
+    }
 
     for corridor in &layout.corridors {
         for &cell in &corridor.path {
@@ -374,14 +405,28 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
 
     for &(col, row) in &corridor_cells_set {
         painter.rect_filled(cell_rect(geometry, col, row), 0.0, corridor_fill);
+        if colorblind_mode {
+            painter.circle_filled(
+                cell_center(geometry, col, row),
+                geometry.cell_size * 0.14,
+                Color32::BLACK,
+            );
+        }
     }
 
     for &(col, row) in &corridor_cells_set {
         let rect = cell_rect(geometry, col, row);
         let right = (col + 1, row);
         let bottom = (col, row + 1);
+        let left = col.checked_sub(1).map(|x| (x, row));
+        let top = row.checked_sub(1).map(|y| (col, y));
 
-        if col == 0 || !corridor_cells_set.contains(&(col - 1, row)) {
+        if col == 0
+            || (!corridor_cells_set.contains(&(col - 1, row))
+                && left
+                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
+        {
             painter.line_segment(
                 [
                     egui::pos2(rect.left(), rect.top()),
@@ -390,8 +435,9 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
                 outline_stroke,
             );
         }
-        if !corridor_cells_set.contains(&right)
-            || !corridor_edges_set.contains(&normalized_edge((col, row), right))
+        if (!corridor_cells_set.contains(&right)
+            || !corridor_edges_set.contains(&normalized_edge((col, row), right)))
+            && !door_edges_set.contains(&normalized_edge((col, row), right))
         {
             painter.line_segment(
                 [
@@ -401,7 +447,12 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
                 outline_stroke,
             );
         }
-        if row == 0 || !corridor_cells_set.contains(&(col, row - 1)) {
+        if row == 0
+            || (!corridor_cells_set.contains(&(col, row - 1))
+                && top
+                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
+        {
             painter.line_segment(
                 [
                     egui::pos2(rect.left(), rect.top()),
@@ -410,8 +461,9 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
                 outline_stroke,
             );
         }
-        if !corridor_cells_set.contains(&bottom)
-            || !corridor_edges_set.contains(&normalized_edge((col, row), bottom))
+        if (!corridor_cells_set.contains(&bottom)
+            || !corridor_edges_set.contains(&normalized_edge((col, row), bottom)))
+            && !door_edges_set.contains(&normalized_edge((col, row), bottom))
         {
             painter.line_segment(
                 [
@@ -424,6 +476,12 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
     }
 
     for room in &layout.rooms {
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                room_cells_set.insert((x, y));
+            }
+        }
+
         let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
         let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
         let right = left + room.width as f32 * geometry.cell_size;
@@ -431,16 +489,90 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
         let room_rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
         painter.rect_filled(room_rect, 0.0, room_fill);
-        painter.rect_stroke(room_rect, 0.0, outline_stroke, egui::StrokeKind::Middle);
+        if colorblind_mode {
+            draw_room_crosshatch(painter, geometry, room, Stroke::new(1.5, Color32::BLACK));
+        }
+    }
+
+    for &(col, row) in &room_cells_set {
+        let rect = cell_rect(geometry, col, row);
+        let right = (col + 1, row);
+        let bottom = (col, row + 1);
+        let left = col.checked_sub(1).map(|x| (x, row));
+        let top = row.checked_sub(1).map(|y| (col, y));
+
+        if col == 0
+            || (!room_cells_set.contains(&(col - 1, row))
+                && left
+                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.top()),
+                    egui::pos2(rect.left(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
+        }
+        if !room_cells_set.contains(&right)
+            && !door_edges_set.contains(&normalized_edge((col, row), right))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.right(), rect.top()),
+                    egui::pos2(rect.right(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
+        }
+        if row == 0
+            || (!room_cells_set.contains(&(col, row - 1))
+                && top
+                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.top()),
+                    egui::pos2(rect.right(), rect.top()),
+                ],
+                outline_stroke,
+            );
+        }
+        if !room_cells_set.contains(&bottom)
+            && !door_edges_set.contains(&normalized_edge((col, row), bottom))
+        {
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left(), rect.bottom()),
+                    egui::pos2(rect.right(), rect.bottom()),
+                ],
+                outline_stroke,
+            );
+        }
     }
 
     for door in &layout.doors {
-        let color = if door.archway {
+        let color = if colorblind_mode {
+            Color32::BLACK
+        } else if door.archway {
             Color32::from_rgb(70, 130, 220)
         } else if door.locked {
             Color32::from_rgb(80, 200, 120)
         } else {
             Color32::from_rgb(220, 70, 70)
+        };
+        let style = if colorblind_mode {
+            if door.archway {
+                DoorLineStyle::Dotted
+            } else if door.locked {
+                DoorLineStyle::ShortDash
+            } else {
+                DoorLineStyle::LongDash
+            }
+        } else {
+            DoorLineStyle::Solid
         };
         draw_door_line(
             painter,
@@ -448,6 +580,7 @@ fn draw_layout(painter: &egui::Painter, geometry: &GridGeometry, layout: &Dungeo
             door.from,
             door.to,
             Stroke::new(3.0, color),
+            style,
         );
     }
 }
@@ -556,6 +689,7 @@ fn draw_door_line(
     a: (usize, usize),
     b: (usize, usize),
     stroke: Stroke,
+    style: DoorLineStyle,
 ) {
     if a.0.abs_diff(b.0) + a.1.abs_diff(b.1) != 1 {
         return;
@@ -566,13 +700,108 @@ fn draw_door_line(
         let row = a.1;
         let y0 = geometry.rect.top() + row as f32 * geometry.cell_size;
         let y1 = y0 + geometry.cell_size;
-        painter.line_segment([egui::pos2(x, y0), egui::pos2(x, y1)], stroke);
+        draw_styled_line(painter, egui::pos2(x, y0), egui::pos2(x, y1), stroke, style);
     } else {
         let y = geometry.rect.top() + (a.1.max(b.1) as f32) * geometry.cell_size;
         let col = a.0;
         let x0 = geometry.rect.left() + col as f32 * geometry.cell_size;
         let x1 = x0 + geometry.cell_size;
-        painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], stroke);
+        draw_styled_line(painter, egui::pos2(x0, y), egui::pos2(x1, y), stroke, style);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DoorLineStyle {
+    Solid,
+    LongDash,
+    ShortDash,
+    Dotted,
+}
+
+fn draw_styled_line(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    stroke: Stroke,
+    style: DoorLineStyle,
+) {
+    match style {
+        DoorLineStyle::Solid => {
+            painter.line_segment([from, to], stroke);
+        }
+        DoorLineStyle::LongDash => draw_dashed_line(painter, from, to, stroke, 14.0, 7.0),
+        DoorLineStyle::ShortDash => draw_dashed_line(painter, from, to, stroke, 6.0, 4.0),
+        DoorLineStyle::Dotted => draw_dotted_line(painter, from, to, stroke),
+    }
+}
+
+fn draw_dashed_line(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    stroke: Stroke,
+    dash_len: f32,
+    gap_len: f32,
+) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let seg_start = dist;
+        let seg_end = (dist + dash_len).min(len);
+        let p0 = egui::pos2(from.x + ux * seg_start, from.y + uy * seg_start);
+        let p1 = egui::pos2(from.x + ux * seg_end, from.y + uy * seg_end);
+        painter.line_segment([p0, p1], stroke);
+        dist += dash_len + gap_len;
+    }
+}
+
+fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let step = 5.0_f32;
+    let radius = (stroke.width * 0.35).max(1.0);
+
+    let mut dist = 0.0_f32;
+    while dist <= len {
+        let p = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(p, radius, stroke.color);
+        dist += step;
+    }
+}
+
+fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
+    egui::pos2(
+        geometry.rect.left() + (col as f32 + 0.5) * geometry.cell_size,
+        geometry.rect.top() + (row as f32 + 0.5) * geometry.cell_size,
+    )
+}
+
+fn draw_room_crosshatch(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    room: &layout::Room,
+    stroke: Stroke,
+) {
+    for x in room.x..(room.x + room.width) {
+        for y in room.y..(room.y + room.height) {
+            let rect = cell_rect(geometry, x, y).shrink(2.0);
+            painter.line_segment([rect.left_top(), rect.right_bottom()], stroke);
+            painter.line_segment([rect.right_top(), rect.left_bottom()], stroke);
+        }
     }
 }
 
@@ -586,6 +815,91 @@ fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
             Stroke::new(1.0, Color32::WHITE),
             egui::StrokeKind::Middle,
         );
+        ui.add_space(6.0);
+        ui.label(label);
+    });
+    ui.add_space(4.0);
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LegendStyle {
+    Crosshatch,
+    Dots,
+    SolidLine,
+    LongDash,
+    ShortDash,
+    DottedLine,
+}
+
+fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendStyle) {
+    ui.horizontal(|ui| {
+        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, Color32::from_gray(220));
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0, Color32::BLACK),
+            egui::StrokeKind::Middle,
+        );
+
+        match style {
+            LegendStyle::Crosshatch => {
+                ui.painter().line_segment(
+                    [rect.left_top(), rect.right_bottom()],
+                    Stroke::new(1.2, Color32::BLACK),
+                );
+                ui.painter().line_segment(
+                    [rect.right_top(), rect.left_bottom()],
+                    Stroke::new(1.2, Color32::BLACK),
+                );
+            }
+            LegendStyle::Dots => {
+                ui.painter()
+                    .circle_filled(rect.center(), 2.0, Color32::BLACK);
+                ui.painter().circle_filled(
+                    egui::pos2(rect.center().x - 4.0, rect.center().y),
+                    1.4,
+                    Color32::BLACK,
+                );
+                ui.painter().circle_filled(
+                    egui::pos2(rect.center().x + 4.0, rect.center().y),
+                    1.4,
+                    Color32::BLACK,
+                );
+            }
+            LegendStyle::SolidLine => {
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(rect.left() + 1.0, rect.center().y),
+                        egui::pos2(rect.right() - 1.0, rect.center().y),
+                    ],
+                    Stroke::new(2.0, Color32::BLACK),
+                );
+            }
+            LegendStyle::LongDash => draw_dashed_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+                6.0,
+                3.0,
+            ),
+            LegendStyle::ShortDash => draw_dashed_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+                3.0,
+                2.0,
+            ),
+            LegendStyle::DottedLine => draw_dotted_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+        }
+
         ui.add_space(6.0);
         ui.label(label);
     });

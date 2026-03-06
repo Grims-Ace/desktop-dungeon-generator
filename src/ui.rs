@@ -31,6 +31,7 @@ pub struct UiSettings {
     pub room_hallway_door_percent: usize,
     pub locked_door_percent: usize,
     pub allow_middle_corridor_doors: bool,
+    pub colorblind_mode: bool,
     active_tab: Tab,
 }
 
@@ -50,6 +51,7 @@ impl Default for UiSettings {
             room_hallway_door_percent: 70,
             locked_door_percent: 25,
             allow_middle_corridor_doors: false,
+            colorblind_mode: false,
             active_tab: Tab::Generate,
         }
     }

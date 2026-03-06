@@ -23,6 +23,15 @@ A Rust desktop app for generating simple tabletop dungeon layouts.
   - `Room/Hallway Door Chance (%)`
   - `Locked Door Chance (%)`
   - `Allow Middle Corridor Doors` toggle
+- Accessibility:
+  - `Colorblind Mode` toggle (right panel)
+  - Pattern/style encoding:
+    - Rooms: crosshatch
+    - Corridors: dotted fill
+    - Walls: solid lines
+    - Doors: long dashes
+    - Locked doors: short dashes
+    - Archways: dotted lines
 - Generate control:
   - Master seed input (`u64`)
   - `Random` seed button
