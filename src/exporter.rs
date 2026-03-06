@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::{DynamicImage, ImageFormat, RgbaImage, imageops::FilterType};
 use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
@@ -105,9 +105,7 @@ pub fn export_with_dialog(
         }
         ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
             let pixmap = render_pixmap(layout, settings)?;
-            let rgba = RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.data().to_vec())
-                .ok_or_else(|| "Failed to build image buffer".to_string())?;
-            let img = DynamicImage::ImageRgba8(rgba);
+            let img = raster_image_from_pixmap(&pixmap, settings)?;
             let format = match settings.export_format {
                 ExportFormat::Png => ImageFormat::Png,
                 ExportFormat::Jpeg => ImageFormat::Jpeg,
@@ -214,6 +212,44 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     }
 
     Ok(pixmap)
+}
+
+fn raster_image_from_pixmap(
+    pixmap: &Pixmap,
+    settings: &UiSettings,
+) -> Result<DynamicImage, String> {
+    let rgba = RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.data().to_vec())
+        .ok_or_else(|| "Failed to build image buffer".to_string())?;
+    let mut img = DynamicImage::ImageRgba8(rgba);
+
+    let target = raster_target_size(settings);
+    if img.width() != target.0 || img.height() != target.1 {
+        img = img.resize_exact(target.0, target.1, FilterType::Lanczos3);
+    }
+
+    Ok(img)
+}
+
+fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
+    let mut width = settings.export_width.clamp(1, 10_000);
+    let mut height = settings.export_height.clamp(1, 10_000);
+
+    if !settings.allow_export_aspect_change {
+        let cols = settings.cols.max(1) as f32;
+        let rows = settings.rows.max(1) as f32;
+        let ratio = cols / rows;
+        height = ((width as f32) / ratio).round() as u32;
+        height = height.clamp(1, 10_000);
+    }
+
+    if width == 0 {
+        width = 1;
+    }
+    if height == 0 {
+        height = 1;
+    }
+
+    (width, height)
 }
 
 fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {

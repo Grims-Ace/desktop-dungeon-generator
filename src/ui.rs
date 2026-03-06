@@ -47,6 +47,10 @@ impl ExportFormat {
             ExportFormat::Svg => ".svg",
         }
     }
+
+    pub fn is_raster(self) -> bool {
+        !matches!(self, ExportFormat::Svg)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +71,9 @@ pub struct UiSettings {
     pub allow_middle_corridor_doors: bool,
     pub colorblind_mode: bool,
     pub export_format: ExportFormat,
+    pub export_width: u32,
+    pub export_height: u32,
+    pub allow_export_aspect_change: bool,
     active_tab: Tab,
 }
 
@@ -88,6 +95,9 @@ impl Default for UiSettings {
             allow_middle_corridor_doors: false,
             colorblind_mode: false,
             export_format: ExportFormat::Png,
+            export_width: 1920,
+            export_height: 1080,
+            allow_export_aspect_change: false,
             active_tab: Tab::Generate,
         }
     }
@@ -203,6 +213,63 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
                 ui.selectable_value(&mut settings.export_format, ExportFormat::Svg, ".svg");
             });
     });
+
+    if settings.export_format.is_raster() {
+        ui.add_space(8.0);
+        ui.checkbox(
+            &mut settings.allow_export_aspect_change,
+            "Allow aspect ratio change",
+        );
+
+        let mut width_changed = false;
+        let mut height_changed = false;
+
+        ui.add_space(6.0);
+        ui.label("Resolution Width");
+        ui.horizontal(|ui| {
+            width_changed |= ui
+                .add(egui::Slider::new(&mut settings.export_width, 1..=10_000).show_value(false))
+                .changed();
+            width_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.export_width)
+                        .speed(1.0)
+                        .range(1..=10_000),
+                )
+                .changed();
+        });
+
+        ui.add_space(6.0);
+        ui.label("Resolution Height");
+        ui.horizontal(|ui| {
+            height_changed |= ui
+                .add(
+                    egui::Slider::new(&mut settings.export_height, 1..=10_000).show_value(false),
+                )
+                .changed();
+            height_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.export_height)
+                        .speed(1.0)
+                        .range(1..=10_000),
+                )
+                .changed();
+        });
+
+        if !settings.allow_export_aspect_change {
+            let cols = settings.cols.max(1) as f32;
+            let rows = settings.rows.max(1) as f32;
+            let ratio = cols / rows;
+
+            if width_changed {
+                let h = ((settings.export_width as f32) / ratio).round() as u32;
+                settings.export_height = h.clamp(1, 10_000);
+            } else if height_changed {
+                let w = ((settings.export_height as f32) * ratio).round() as u32;
+                settings.export_width = w.clamp(1, 10_000);
+            }
+        }
+    }
 
     ui.add_space(6.0);
     if ui.button("Export Image").clicked() {
