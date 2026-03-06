@@ -1,10 +1,12 @@
 mod layout;
+mod ui;
 
 use std::collections::HashSet;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{DungeonLayout, generate_layout};
+use ui::{UiSettings, draw_side_panel};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
@@ -17,50 +19,29 @@ fn main() -> eframe::Result<()> {
 }
 
 struct DungeonApp {
-    cols: usize,
-    rows: usize,
-    room_count: usize,
-    min_room_size: usize,
-    max_room_size: usize,
-    square_rooms_only: bool,
-    corridor_randomness: usize,
-    dead_end_rooms_percent: usize,
+    settings: UiSettings,
     seed: u64,
     layout: DungeonLayout,
 }
 
 impl Default for DungeonApp {
     fn default() -> Self {
-        let cols = 24;
-        let rows = 18;
-        let room_count = 8;
-        let min_room_size = 2;
-        let max_room_size = 6;
-        let square_rooms_only = false;
-        let corridor_randomness = 0;
-        let dead_end_rooms_percent = 0;
+        let settings = UiSettings::default();
         let seed = 1;
         let layout = generate_layout(
-            cols,
-            rows,
-            room_count,
+            settings.cols,
+            settings.rows,
+            settings.room_count,
             seed,
-            min_room_size,
-            max_room_size,
-            square_rooms_only,
-            corridor_randomness,
-            dead_end_rooms_percent,
+            settings.min_room_size,
+            settings.max_room_size,
+            settings.square_rooms_only,
+            settings.corridor_randomness,
+            settings.dead_end_rooms_percent,
         );
 
         Self {
-            cols,
-            rows,
-            room_count,
-            min_room_size,
-            max_room_size,
-            square_rooms_only,
-            corridor_randomness,
-            dead_end_rooms_percent,
+            settings,
             seed,
             layout,
         }
@@ -69,176 +50,44 @@ impl Default for DungeonApp {
 
 impl eframe::App for DungeonApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let mut settings_changed = false;
+        let panel_result = draw_side_panel(ctx, &mut self.settings);
 
-        egui::SidePanel::left("options_panel")
-            .resizable(true)
-            .min_width(180.0)
-            .default_width(260.0)
-            .show_separator_line(true)
-            .show(ctx, |ui| {
-                ui.heading("Grid Options");
-                ui.add_space(8.0);
-
-                ui.label("Columns");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(egui::Slider::new(&mut self.cols, 6..=100).show_value(false))
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.cols)
-                                .speed(1.0)
-                                .range(2..=500),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(8.0);
-                ui.label("Rows");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(egui::Slider::new(&mut self.rows, 6..=100).show_value(false))
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.rows)
-                                .speed(1.0)
-                                .range(2..=500),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(12.0);
-                ui.heading("Dungeon");
-                ui.add_space(8.0);
-                ui.label("Room Count");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(egui::Slider::new(&mut self.room_count, 1..=40).show_value(false))
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.room_count)
-                                .speed(1.0)
-                                .range(1..=200),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(8.0);
-                ui.label("Min Room Size");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(egui::Slider::new(&mut self.min_room_size, 2..=30).show_value(false))
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.min_room_size)
-                                .speed(1.0)
-                                .range(2..=200),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(8.0);
-                ui.label("Max Room Size");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(egui::Slider::new(&mut self.max_room_size, 2..=30).show_value(false))
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.max_room_size)
-                                .speed(1.0)
-                                .range(2..=200),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(8.0);
-                settings_changed |= ui
-                    .checkbox(&mut self.square_rooms_only, "Square Rooms Only")
-                    .changed();
-
-                ui.add_space(8.0);
-                ui.label("Corridor Randomness (%)");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(
-                            egui::Slider::new(&mut self.corridor_randomness, 0..=100)
-                                .show_value(false),
-                        )
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.corridor_randomness)
-                                .speed(1.0)
-                                .range(0..=100),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(8.0);
-                ui.label("Dead-End Rooms (%)");
-                ui.horizontal(|ui| {
-                    settings_changed |= ui
-                        .add(
-                            egui::Slider::new(&mut self.dead_end_rooms_percent, 0..=50)
-                                .show_value(false),
-                        )
-                        .changed();
-                    settings_changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut self.dead_end_rooms_percent)
-                                .speed(1.0)
-                                .range(0..=50),
-                        )
-                        .changed();
-                });
-
-                ui.add_space(10.0);
-                if ui.button("Generate New Layout").clicked() {
-                    self.seed = self.seed.wrapping_add(1);
-                    self.layout = generate_layout(
-                        self.cols,
-                        self.rows,
-                        self.room_count,
-                        self.seed,
-                        self.min_room_size,
-                        self.max_room_size,
-                        self.square_rooms_only,
-                        self.corridor_randomness,
-                        self.dead_end_rooms_percent,
-                    );
-                }
-            });
-
-        if self.min_room_size > self.max_room_size {
-            self.max_room_size = self.min_room_size;
+        if self.settings.min_room_size > self.settings.max_room_size {
+            self.settings.max_room_size = self.settings.min_room_size;
         }
 
-        if settings_changed {
-            self.layout = generate_layout(
-                self.cols,
-                self.rows,
-                self.room_count,
-                self.seed,
-                self.min_room_size,
-                self.max_room_size,
-                self.square_rooms_only,
-                self.corridor_randomness,
-                self.dead_end_rooms_percent,
-            );
+        if panel_result.generate_clicked {
+            self.seed = self.seed.wrapping_add(1);
+            self.regenerate_layout();
+        }
+
+        if panel_result.settings_changed {
+            self.regenerate_layout();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::hover());
             let canvas = response.rect.shrink(12.0);
-            let geometry = draw_grid(&painter, canvas, self.cols, self.rows);
+            let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             draw_layout(&painter, &geometry, &self.layout);
         });
+    }
+}
+
+impl DungeonApp {
+    fn regenerate_layout(&mut self) {
+        self.layout = generate_layout(
+            self.settings.cols,
+            self.settings.rows,
+            self.settings.room_count,
+            self.seed,
+            self.settings.min_room_size,
+            self.settings.max_room_size,
+            self.settings.square_rooms_only,
+            self.settings.corridor_randomness,
+            self.settings.dead_end_rooms_percent,
+        );
     }
 }
 
