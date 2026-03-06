@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 #[derive(Debug, Clone)]
 pub struct Room {
     pub x: usize,
@@ -24,10 +26,16 @@ pub struct DungeonLayout {
     pub corridors: Vec<Corridor>,
 }
 
-pub fn generate_layout(cols: usize, rows: usize, target_room_count: usize, seed: u64) -> DungeonLayout {
+pub fn generate_layout(
+    cols: usize,
+    rows: usize,
+    target_room_count: usize,
+    seed: u64,
+) -> DungeonLayout {
     let mut rng = SimpleRng::new(seed ^ ((cols as u64) << 32) ^ rows as u64);
     let mut rooms = Vec::new();
     let mut corridors = Vec::new();
+    let mut occupied_corridor_cells = HashSet::new();
 
     let min_room_size = 2;
     if cols < min_room_size || rows < min_room_size || target_room_count == 0 {
@@ -63,16 +71,72 @@ pub fn generate_layout(cols: usize, rows: usize, target_room_count: usize, seed:
         }
     }
 
-    for idx in 1..rooms.len() {
-        let a = rooms[idx - 1].center_cell();
-        let b = rooms[idx].center_cell();
+    if !rooms.is_empty() {
+        let mut connected = vec![false; rooms.len()];
+        connected[0] = true;
 
-        if rng.next_bool() {
-            push_corridor_if_nonzero(&mut corridors, (a.0, a.1), (b.0, a.1));
-            push_corridor_if_nonzero(&mut corridors, (b.0, a.1), (b.0, b.1));
-        } else {
-            push_corridor_if_nonzero(&mut corridors, (a.0, a.1), (a.0, b.1));
-            push_corridor_if_nonzero(&mut corridors, (a.0, b.1), (b.0, b.1));
+        loop {
+            let mut progress = false;
+            let connected_indices: Vec<usize> = connected
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, is_connected)| if *is_connected { Some(idx) } else { None })
+                .collect();
+
+            for room_idx in 0..rooms.len() {
+                if connected[room_idx] {
+                    continue;
+                }
+
+                let mut anchors = connected_indices.clone();
+                anchors.sort_by_key(|anchor_idx| {
+                    manhattan_distance(
+                        rooms[*anchor_idx].center_cell(),
+                        rooms[room_idx].center_cell(),
+                    )
+                });
+
+                let mut did_connect = false;
+
+                for &anchor_idx in &anchors {
+                    if try_connect_rooms(
+                        rooms[anchor_idx].center_cell(),
+                        rooms[room_idx].center_cell(),
+                        true,
+                        &mut rng,
+                        &mut occupied_corridor_cells,
+                        &mut corridors,
+                    ) {
+                        did_connect = true;
+                        break;
+                    }
+                }
+
+                if !did_connect {
+                    for &anchor_idx in &anchors {
+                        if try_connect_rooms(
+                            rooms[anchor_idx].center_cell(),
+                            rooms[room_idx].center_cell(),
+                            false,
+                            &mut rng,
+                            &mut occupied_corridor_cells,
+                            &mut corridors,
+                        ) {
+                            did_connect = true;
+                            break;
+                        }
+                    }
+                }
+
+                if did_connect {
+                    connected[room_idx] = true;
+                    progress = true;
+                }
+            }
+
+            if connected.iter().all(|is_connected| *is_connected) || !progress {
+                break;
+            }
         }
     }
 
@@ -93,14 +157,106 @@ fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     a_left < b_right && a_right > b_left && a_top < b_bottom && a_bottom > b_top
 }
 
-fn push_corridor_if_nonzero(
-    corridors: &mut Vec<Corridor>,
+fn make_l_path(
     from: (usize, usize),
     to: (usize, usize),
-) {
-    if from != to {
-        corridors.push(Corridor { from, to });
+    horizontal_first: bool,
+) -> Vec<(usize, usize)> {
+    let mut path = Vec::new();
+    if horizontal_first {
+        append_segment_cells(&mut path, from, (to.0, from.1));
+        append_segment_cells(&mut path, (to.0, from.1), to);
+    } else {
+        append_segment_cells(&mut path, from, (from.0, to.1));
+        append_segment_cells(&mut path, (from.0, to.1), to);
     }
+    path
+}
+
+fn append_segment_cells(path: &mut Vec<(usize, usize)>, from: (usize, usize), to: (usize, usize)) {
+    if from.0 == to.0 {
+        let x = from.0;
+        let start = from.1.min(to.1);
+        let end = from.1.max(to.1);
+        for y in start..=end {
+            if path.last().copied() != Some((x, y)) {
+                path.push((x, y));
+            }
+        }
+    } else if from.1 == to.1 {
+        let y = from.1;
+        let start = from.0.min(to.0);
+        let end = from.0.max(to.0);
+        for x in start..=end {
+            if path.last().copied() != Some((x, y)) {
+                path.push((x, y));
+            }
+        }
+    }
+}
+
+fn try_connect_rooms(
+    from: (usize, usize),
+    to: (usize, usize),
+    enforce_gap: bool,
+    rng: &mut SimpleRng,
+    occupied: &mut HashSet<(usize, usize)>,
+    corridors: &mut Vec<Corridor>,
+) -> bool {
+    let horizontal_first = rng.next_bool();
+    let first_try = make_l_path(from, to, horizontal_first);
+    let second_try = make_l_path(from, to, !horizontal_first);
+
+    try_place_path(&first_try, occupied, corridors, enforce_gap)
+        || try_place_path(&second_try, occupied, corridors, enforce_gap)
+}
+
+fn try_place_path(
+    path: &[(usize, usize)],
+    occupied: &mut HashSet<(usize, usize)>,
+    corridors: &mut Vec<Corridor>,
+    enforce_gap: bool,
+) -> bool {
+    if path.len() < 2 || (enforce_gap && !has_required_corridor_gap(path, occupied)) {
+        return false;
+    }
+
+    for cell in path {
+        occupied.insert(*cell);
+    }
+
+    for segment in path.windows(2) {
+        corridors.push(Corridor {
+            from: segment[0],
+            to: segment[1],
+        });
+    }
+
+    true
+}
+
+fn has_required_corridor_gap(path: &[(usize, usize)], occupied: &HashSet<(usize, usize)>) -> bool {
+    for &(x, y) in path {
+        let x = x as isize;
+        let y = y as isize;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let nx = x + dx;
+                let ny = y + dy;
+                if nx < 0 || ny < 0 {
+                    continue;
+                }
+                if occupied.contains(&(nx as usize, ny as usize)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn manhattan_distance(a: (usize, usize), b: (usize, usize)) -> usize {
+    a.0.abs_diff(b.0) + a.1.abs_diff(b.1)
 }
 
 struct SimpleRng {
@@ -109,7 +265,11 @@ struct SimpleRng {
 
 impl SimpleRng {
     fn new(seed: u64) -> Self {
-        let state = if seed == 0 { 0xA5A5_A5A5_1234_5678 } else { seed };
+        let state = if seed == 0 {
+            0xA5A5_A5A5_1234_5678
+        } else {
+            seed
+        };
         Self { state }
     }
 
