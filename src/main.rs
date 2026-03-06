@@ -69,6 +69,22 @@ impl eframe::App for DungeonApp {
             self.regenerate_layout();
         }
 
+        egui::SidePanel::right("legend_panel")
+            .resizable(false)
+            .min_width(180.0)
+            .default_width(200.0)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                ui.heading("Legend");
+                ui.add_space(8.0);
+                draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
+                draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
+                draw_legend_entry(ui, Color32::BLACK, "Walls");
+                draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Doors");
+                draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Locked Doors");
+                draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
+            });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
@@ -558,4 +574,20 @@ fn draw_door_line(
         let x1 = x0 + geometry.cell_size;
         painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], stroke);
     }
+}
+
+fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
+    ui.horizontal(|ui| {
+        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, color);
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0, Color32::WHITE),
+            egui::StrokeKind::Middle,
+        );
+        ui.add_space(6.0);
+        ui.label(label);
+    });
+    ui.add_space(4.0);
 }
