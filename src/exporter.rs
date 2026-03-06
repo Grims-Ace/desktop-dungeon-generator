@@ -1,0 +1,770 @@
+use std::collections::HashSet;
+use std::fmt::Write as _;
+use std::path::PathBuf;
+
+use image::{DynamicImage, ImageFormat, RgbaImage};
+use rfd::FileDialog;
+use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
+
+use crate::layout::{Door, DungeonLayout, Room};
+use crate::ui::{ExportFormat, UiSettings};
+
+const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
+const GRID: (u8, u8, u8, u8) = (130, 130, 130, 255);
+const ROOM: (u8, u8, u8, u8) = (70, 120, 160, 255);
+const CORRIDOR: (u8, u8, u8, u8) = (210, 190, 120, 255);
+const BLACK: (u8, u8, u8, u8) = (0, 0, 0, 255);
+const OPEN_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
+const LOCKED_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
+const ARCHWAY: (u8, u8, u8, u8) = (70, 130, 220, 255);
+
+#[derive(Debug, Clone, Copy)]
+enum DoorStyle {
+    Solid,
+    LongDash,
+    ShortDash,
+    Dotted,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ExportGeometry {
+    cols: usize,
+    rows: usize,
+    cell: f32,
+    pad: f32,
+    width: u32,
+    height: u32,
+}
+
+impl ExportGeometry {
+    fn new(cols: usize, rows: usize) -> Self {
+        let cell = 64.0;
+        let pad = 40.0;
+        let width = (pad * 2.0 + cols as f32 * cell).round() as u32;
+        let height = (pad * 2.0 + rows as f32 * cell).round() as u32;
+        Self {
+            cols,
+            rows,
+            cell,
+            pad,
+            width,
+            height,
+        }
+    }
+
+    fn left(&self) -> f32 {
+        self.pad
+    }
+
+    fn top(&self) -> f32 {
+        self.pad
+    }
+
+    fn cell_rect(&self, col: usize, row: usize) -> Option<Rect> {
+        Rect::from_xywh(
+            self.left() + col as f32 * self.cell,
+            self.top() + row as f32 * self.cell,
+            self.cell,
+            self.cell,
+        )
+    }
+
+    fn cell_center(&self, col: usize, row: usize) -> (f32, f32) {
+        (
+            self.left() + (col as f32 + 0.5) * self.cell,
+            self.top() + (row as f32 + 0.5) * self.cell,
+        )
+    }
+}
+
+pub fn export_with_dialog(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+) -> Result<PathBuf, String> {
+    let ext = settings.export_format.extension();
+    let default_name = format!("dungeon_export.{ext}");
+
+    let mut dialog = FileDialog::new();
+    dialog = dialog
+        .set_title("Export image")
+        .set_file_name(&default_name)
+        .add_filter(settings.export_format.label(), &[ext]);
+
+    let mut path = dialog
+        .save_file()
+        .ok_or_else(|| "Export canceled".to_string())?;
+
+    if path.extension().is_none() {
+        path.set_extension(ext);
+    }
+
+    match settings.export_format {
+        ExportFormat::Svg => {
+            let svg = build_svg(layout, settings);
+            std::fs::write(&path, svg).map_err(|e| format!("Failed writing SVG: {e}"))?;
+        }
+        ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
+            let pixmap = render_pixmap(layout, settings)?;
+            let rgba = RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.data().to_vec())
+                .ok_or_else(|| "Failed to build image buffer".to_string())?;
+            let img = DynamicImage::ImageRgba8(rgba);
+            let format = match settings.export_format {
+                ExportFormat::Png => ImageFormat::Png,
+                ExportFormat::Jpeg => ImageFormat::Jpeg,
+                ExportFormat::Webp => ImageFormat::WebP,
+                ExportFormat::Svg => unreachable!(),
+            };
+            img.save_with_format(&path, format)
+                .map_err(|e| format!("Failed writing image: {e}"))?;
+        }
+    }
+
+    Ok(path)
+}
+
+fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
+    let g = ExportGeometry::new(settings.cols, settings.rows);
+    let mut pixmap =
+        Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
+    fill_bg(&mut pixmap, BG);
+
+    let wall_w = (g.cell / 5.0).max(1.0);
+    let door_w = (g.cell / 10.0).max(1.0);
+
+    draw_grid(&mut pixmap, &g);
+
+    let mut corridor_cells = HashSet::new();
+    let mut corridor_edges = HashSet::new();
+    let mut room_cells = HashSet::new();
+    let mut door_edges = HashSet::new();
+
+    for door in &layout.doors {
+        door_edges.insert(norm_edge(door.from, door.to));
+    }
+
+    for corridor in &layout.corridors {
+        for &cell in &corridor.path {
+            corridor_cells.insert(cell);
+        }
+        for pair in corridor.path.windows(2) {
+            corridor_edges.insert(norm_edge(pair[0], pair[1]));
+        }
+    }
+
+    for room in &layout.rooms {
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                room_cells.insert((x, y));
+            }
+        }
+    }
+
+    for &(x, y) in &corridor_cells {
+        fill_rect_cell(&mut pixmap, &g, x, y, CORRIDOR);
+        if settings.colorblind_mode {
+            let (cx, cy) = g.cell_center(x, y);
+            draw_dot(&mut pixmap, cx, cy, g.cell * 0.14, BLACK);
+        }
+    }
+
+    for room in &layout.rooms {
+        fill_rect_room(&mut pixmap, &g, room, ROOM);
+        if settings.colorblind_mode {
+            draw_room_crosshatch(&mut pixmap, &g, room, 1.5, BLACK);
+        }
+    }
+
+    draw_cell_walls(
+        &mut pixmap,
+        &g,
+        &corridor_cells,
+        Some(&corridor_edges),
+        &door_edges,
+        wall_w,
+        BLACK,
+    );
+    draw_cell_walls(
+        &mut pixmap,
+        &g,
+        &room_cells,
+        None,
+        &door_edges,
+        wall_w,
+        BLACK,
+    );
+
+    for door in &layout.doors {
+        let (color, style) = if settings.colorblind_mode {
+            let s = if door.archway {
+                DoorStyle::Dotted
+            } else if door.locked {
+                DoorStyle::ShortDash
+            } else {
+                DoorStyle::LongDash
+            };
+            (BLACK, s)
+        } else if door.archway {
+            (ARCHWAY, DoorStyle::Solid)
+        } else if door.locked {
+            (LOCKED_DOOR, DoorStyle::Solid)
+        } else {
+            (OPEN_DOOR, DoorStyle::Solid)
+        };
+        draw_door(&mut pixmap, &g, door, door_w, color, style);
+    }
+
+    Ok(pixmap)
+}
+
+fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
+    let g = ExportGeometry::new(settings.cols, settings.rows);
+    let wall_w = (g.cell / 5.0).max(1.0);
+    let door_w = (g.cell / 10.0).max(1.0);
+
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "<svg xmlns='http://www.w3.org/2000/svg' width='{}' height='{}' viewBox='0 0 {} {}'>",
+        g.width, g.height, g.width, g.height
+    );
+    let _ = writeln!(
+        s,
+        "<rect width='100%' height='100%' fill='rgb({},{},{})'/>",
+        BG.0, BG.1, BG.2
+    );
+
+    for c in 0..=g.cols {
+        let x = g.left() + c as f32 * g.cell;
+        let _ = writeln!(
+            s,
+            "<line x1='{x}' y1='{}' x2='{x}' y2='{}' stroke='rgb({},{},{})' stroke-width='1'/>",
+            g.top(),
+            g.top() + g.rows as f32 * g.cell,
+            GRID.0,
+            GRID.1,
+            GRID.2
+        );
+    }
+    for r in 0..=g.rows {
+        let y = g.top() + r as f32 * g.cell;
+        let _ = writeln!(
+            s,
+            "<line x1='{}' y1='{y}' x2='{}' y2='{y}' stroke='rgb({},{},{})' stroke-width='1'/>",
+            g.left(),
+            g.left() + g.cols as f32 * g.cell,
+            GRID.0,
+            GRID.1,
+            GRID.2
+        );
+    }
+
+    let mut corridor_cells = HashSet::new();
+    let mut corridor_edges = HashSet::new();
+    let mut room_cells = HashSet::new();
+    let mut door_edges = HashSet::new();
+
+    for door in &layout.doors {
+        door_edges.insert(norm_edge(door.from, door.to));
+    }
+    for corridor in &layout.corridors {
+        for &cell in &corridor.path {
+            corridor_cells.insert(cell);
+        }
+        for pair in corridor.path.windows(2) {
+            corridor_edges.insert(norm_edge(pair[0], pair[1]));
+        }
+    }
+    for room in &layout.rooms {
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                room_cells.insert((x, y));
+            }
+        }
+    }
+
+    for &(x, y) in &corridor_cells {
+        let px = g.left() + x as f32 * g.cell;
+        let py = g.top() + y as f32 * g.cell;
+        let _ = writeln!(
+            s,
+            "<rect x='{px}' y='{py}' width='{}' height='{}' fill='rgb({},{},{})'/>",
+            g.cell, g.cell, CORRIDOR.0, CORRIDOR.1, CORRIDOR.2
+        );
+        if settings.colorblind_mode {
+            let (cx, cy) = g.cell_center(x, y);
+            let _ = writeln!(
+                s,
+                "<circle cx='{cx}' cy='{cy}' r='{}' fill='black'/>",
+                g.cell * 0.14
+            );
+        }
+    }
+
+    for room in &layout.rooms {
+        let px = g.left() + room.x as f32 * g.cell;
+        let py = g.top() + room.y as f32 * g.cell;
+        let _ = writeln!(
+            s,
+            "<rect x='{px}' y='{py}' width='{}' height='{}' fill='rgb({},{},{})'/>",
+            room.width as f32 * g.cell,
+            room.height as f32 * g.cell,
+            ROOM.0,
+            ROOM.1,
+            ROOM.2
+        );
+        if settings.colorblind_mode {
+            for x in room.x..(room.x + room.width) {
+                for y in room.y..(room.y + room.height) {
+                    let rx = g.left() + x as f32 * g.cell + 2.0;
+                    let ry = g.top() + y as f32 * g.cell + 2.0;
+                    let rr = g.cell - 4.0;
+                    let _ = writeln!(
+                        s,
+                        "<line x1='{rx}' y1='{ry}' x2='{}' y2='{}' stroke='black' stroke-width='1.5'/>",
+                        rx + rr,
+                        ry + rr
+                    );
+                    let _ = writeln!(
+                        s,
+                        "<line x1='{}' y1='{ry}' x2='{rx}' y2='{}' stroke='black' stroke-width='1.5'/>",
+                        rx + rr,
+                        ry + rr
+                    );
+                }
+            }
+        }
+    }
+
+    append_svg_walls(
+        &mut s,
+        &g,
+        &corridor_cells,
+        Some(&corridor_edges),
+        &door_edges,
+        wall_w,
+    );
+    append_svg_walls(&mut s, &g, &room_cells, None, &door_edges, wall_w);
+
+    for door in &layout.doors {
+        let (color, dash) = if settings.colorblind_mode {
+            if door.archway {
+                ("black", Some("2,4"))
+            } else if door.locked {
+                ("black", Some("6,4"))
+            } else {
+                ("black", Some("14,7"))
+            }
+        } else if door.archway {
+            ("rgb(70,130,220)", None)
+        } else if door.locked {
+            ("rgb(80,200,120)", None)
+        } else {
+            ("rgb(220,70,70)", None)
+        };
+
+        if let Some((x1, y1, x2, y2)) = door_line_points(&g, door.from, door.to) {
+            if let Some(pattern) = dash {
+                let _ = writeln!(
+                    s,
+                    "<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='{color}' stroke-width='{door_w}' stroke-dasharray='{pattern}'/>"
+                );
+            } else {
+                let _ = writeln!(
+                    s,
+                    "<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='{color}' stroke-width='{door_w}'/>"
+                );
+            }
+        }
+    }
+
+    s.push_str("</svg>\n");
+    s
+}
+
+fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    let Some(rect) = Rect::from_xywh(0.0, 0.0, pixmap.width() as f32, pixmap.height() as f32)
+    else {
+        return;
+    };
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
+    for c in 0..=g.cols {
+        let x = g.left() + c as f32 * g.cell;
+        draw_line(
+            pixmap,
+            x,
+            g.top(),
+            x,
+            g.top() + g.rows as f32 * g.cell,
+            1.0,
+            GRID,
+            DoorStyle::Solid,
+        );
+    }
+    for r in 0..=g.rows {
+        let y = g.top() + r as f32 * g.cell;
+        draw_line(
+            pixmap,
+            g.left(),
+            y,
+            g.left() + g.cols as f32 * g.cell,
+            y,
+            1.0,
+            GRID,
+            DoorStyle::Solid,
+        );
+    }
+}
+
+fn fill_rect_cell(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    col: usize,
+    row: usize,
+    color: (u8, u8, u8, u8),
+) {
+    let Some(rect) = g.cell_rect(col, row) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn fill_rect_room(pixmap: &mut Pixmap, g: &ExportGeometry, room: &Room, color: (u8, u8, u8, u8)) {
+    let Some(rect) = Rect::from_xywh(
+        g.left() + room.x as f32 * g.cell,
+        g.top() + room.y as f32 * g.cell,
+        room.width as f32 * g.cell,
+        room.height as f32 * g.cell,
+    ) else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn draw_dot(pixmap: &mut Pixmap, cx: f32, cy: f32, radius: f32, color: (u8, u8, u8, u8)) {
+    let mut pb = PathBuilder::new();
+    pb.push_circle(cx, cy, radius);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+}
+
+fn draw_room_crosshatch(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    room: &Room,
+    width: f32,
+    color: (u8, u8, u8, u8),
+) {
+    for x in room.x..(room.x + room.width) {
+        for y in room.y..(room.y + room.height) {
+            if let Some(rect) = g.cell_rect(x, y) {
+                let pad = 2.0;
+                draw_line(
+                    pixmap,
+                    rect.left() + pad,
+                    rect.top() + pad,
+                    rect.right() - pad,
+                    rect.bottom() - pad,
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+                draw_line(
+                    pixmap,
+                    rect.right() - pad,
+                    rect.top() + pad,
+                    rect.left() + pad,
+                    rect.bottom() - pad,
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+            }
+        }
+    }
+}
+
+fn draw_cell_walls(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    cells: &HashSet<(usize, usize)>,
+    connected_edges: Option<&HashSet<((usize, usize), (usize, usize))>>,
+    door_edges: &HashSet<((usize, usize), (usize, usize))>,
+    width: f32,
+    color: (u8, u8, u8, u8),
+) {
+    for &(col, row) in cells {
+        if let Some(rect) = g.cell_rect(col, row) {
+            let right = (col + 1, row);
+            let bottom = (col, row + 1);
+
+            let should_left = col == 0
+                || (!cells.contains(&(col - 1, row))
+                    && !door_edges.contains(&norm_edge((col, row), (col - 1, row))));
+
+            let right_connected = connected_edges
+                .map(|set| set.contains(&norm_edge((col, row), right)))
+                .unwrap_or(false);
+            let should_right = (!cells.contains(&right) || !right_connected)
+                && !door_edges.contains(&norm_edge((col, row), right));
+
+            let should_top = row == 0
+                || (!cells.contains(&(col, row - 1))
+                    && !door_edges.contains(&norm_edge((col, row), (col, row - 1))));
+
+            let bottom_connected = connected_edges
+                .map(|set| set.contains(&norm_edge((col, row), bottom)))
+                .unwrap_or(false);
+            let should_bottom = (!cells.contains(&bottom) || !bottom_connected)
+                && !door_edges.contains(&norm_edge((col, row), bottom));
+
+            if should_left {
+                draw_line(
+                    pixmap,
+                    rect.left(),
+                    rect.top(),
+                    rect.left(),
+                    rect.bottom(),
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+            }
+            if should_right {
+                draw_line(
+                    pixmap,
+                    rect.right(),
+                    rect.top(),
+                    rect.right(),
+                    rect.bottom(),
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+            }
+            if should_top {
+                draw_line(
+                    pixmap,
+                    rect.left(),
+                    rect.top(),
+                    rect.right(),
+                    rect.top(),
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+            }
+            if should_bottom {
+                draw_line(
+                    pixmap,
+                    rect.left(),
+                    rect.bottom(),
+                    rect.right(),
+                    rect.bottom(),
+                    width,
+                    color,
+                    DoorStyle::Solid,
+                );
+            }
+        }
+    }
+}
+
+fn append_svg_walls(
+    out: &mut String,
+    g: &ExportGeometry,
+    cells: &HashSet<(usize, usize)>,
+    connected_edges: Option<&HashSet<((usize, usize), (usize, usize))>>,
+    door_edges: &HashSet<((usize, usize), (usize, usize))>,
+    width: f32,
+) {
+    for &(col, row) in cells {
+        let left = g.left() + col as f32 * g.cell;
+        let top = g.top() + row as f32 * g.cell;
+        let right = left + g.cell;
+        let bottom = top + g.cell;
+
+        let right_cell = (col + 1, row);
+        let bottom_cell = (col, row + 1);
+
+        let left_edge = col == 0
+            || (!cells.contains(&(col - 1, row))
+                && !door_edges.contains(&norm_edge((col, row), (col - 1, row))));
+
+        let right_connected = connected_edges
+            .map(|set| set.contains(&norm_edge((col, row), right_cell)))
+            .unwrap_or(false);
+        let right_edge = (!cells.contains(&right_cell) || !right_connected)
+            && !door_edges.contains(&norm_edge((col, row), right_cell));
+
+        let top_edge = row == 0
+            || (!cells.contains(&(col, row - 1))
+                && !door_edges.contains(&norm_edge((col, row), (col, row - 1))));
+
+        let bottom_connected = connected_edges
+            .map(|set| set.contains(&norm_edge((col, row), bottom_cell)))
+            .unwrap_or(false);
+        let bottom_edge = (!cells.contains(&bottom_cell) || !bottom_connected)
+            && !door_edges.contains(&norm_edge((col, row), bottom_cell));
+
+        if left_edge {
+            let _ = writeln!(
+                out,
+                "<line x1='{left}' y1='{top}' x2='{left}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+            );
+        }
+        if right_edge {
+            let _ = writeln!(
+                out,
+                "<line x1='{right}' y1='{top}' x2='{right}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+            );
+        }
+        if top_edge {
+            let _ = writeln!(
+                out,
+                "<line x1='{left}' y1='{top}' x2='{right}' y2='{top}' stroke='black' stroke-width='{width}'/>"
+            );
+        }
+        if bottom_edge {
+            let _ = writeln!(
+                out,
+                "<line x1='{left}' y1='{bottom}' x2='{right}' y2='{bottom}' stroke='black' stroke-width='{width}'/>"
+            );
+        }
+    }
+}
+
+fn draw_door(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    door: &Door,
+    width: f32,
+    color: (u8, u8, u8, u8),
+    style: DoorStyle,
+) {
+    let Some((x1, y1, x2, y2)) = door_line_points(g, door.from, door.to) else {
+        return;
+    };
+    draw_line(pixmap, x1, y1, x2, y2, width, color, style);
+}
+
+fn door_line_points(
+    g: &ExportGeometry,
+    a: (usize, usize),
+    b: (usize, usize),
+) -> Option<(f32, f32, f32, f32)> {
+    if a.0.abs_diff(b.0) + a.1.abs_diff(b.1) != 1 {
+        return None;
+    }
+
+    if a.0 != b.0 {
+        let x = g.left() + (a.0.max(b.0) as f32) * g.cell;
+        let row = a.1;
+        let y0 = g.top() + row as f32 * g.cell;
+        let y1 = y0 + g.cell;
+        Some((x, y0, x, y1))
+    } else {
+        let y = g.top() + (a.1.max(b.1) as f32) * g.cell;
+        let col = a.0;
+        let x0 = g.left() + col as f32 * g.cell;
+        let x1 = x0 + g.cell;
+        Some((x0, y, x1, y))
+    }
+}
+
+fn draw_line(
+    pixmap: &mut Pixmap,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    width: f32,
+    color: (u8, u8, u8, u8),
+    style: DoorStyle,
+) {
+    match style {
+        DoorStyle::Solid => stroke_path(pixmap, x1, y1, x2, y2, width, color, None),
+        DoorStyle::LongDash => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((14.0, 7.0))),
+        DoorStyle::ShortDash => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((6.0, 4.0))),
+        DoorStyle::Dotted => dotted_line(pixmap, x1, y1, x2, y2, width, color),
+    }
+}
+
+fn stroke_path(
+    pixmap: &mut Pixmap,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    width: f32,
+    color: (u8, u8, u8, u8),
+    dash: Option<(f32, f32)>,
+) {
+    let mut pb = PathBuilder::new();
+    pb.move_to(x1, y1);
+    pb.line_to(x2, y2);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+
+    let mut stroke = Stroke::default();
+    stroke.width = width;
+    if let Some((dash_len, gap_len)) = dash {
+        stroke.dash = StrokeDash::new(vec![dash_len, gap_len], 0.0);
+    }
+
+    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+fn dotted_line(
+    pixmap: &mut Pixmap,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    width: f32,
+    color: (u8, u8, u8, u8),
+) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+
+    let mut d = 0.0_f32;
+    let step = 6.0;
+    let radius = (width * 0.35).max(1.0);
+    while d <= len {
+        draw_dot(pixmap, x1 + ux * d, y1 + uy * d, radius, color);
+        d += step;
+    }
+}
+
+fn norm_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if a <= b { (a, b) } else { (b, a) }
+}

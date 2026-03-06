@@ -15,6 +15,40 @@ impl Default for Tab {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExportFormat {
+    Png,
+    Jpeg,
+    Webp,
+    Svg,
+}
+
+impl Default for ExportFormat {
+    fn default() -> Self {
+        Self::Png
+    }
+}
+
+impl ExportFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            ExportFormat::Png => "png",
+            ExportFormat::Jpeg => "jpeg",
+            ExportFormat::Webp => "webp",
+            ExportFormat::Svg => "svg",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ExportFormat::Png => ".png",
+            ExportFormat::Jpeg => ".jpeg",
+            ExportFormat::Webp => ".webp",
+            ExportFormat::Svg => ".svg",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiSettings {
@@ -32,6 +66,7 @@ pub struct UiSettings {
     pub locked_door_percent: usize,
     pub allow_middle_corridor_doors: bool,
     pub colorblind_mode: bool,
+    pub export_format: ExportFormat,
     active_tab: Tab,
 }
 
@@ -52,6 +87,7 @@ impl Default for UiSettings {
             locked_door_percent: 25,
             allow_middle_corridor_doors: false,
             colorblind_mode: false,
+            export_format: ExportFormat::Png,
             active_tab: Tab::Generate,
         }
     }
@@ -61,6 +97,7 @@ impl Default for UiSettings {
 pub struct SidePanelResult {
     pub settings_changed: bool,
     pub reset_clicked: bool,
+    pub export_clicked: bool,
 }
 
 pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePanelResult {
@@ -147,6 +184,29 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
     ui.add_space(8.0);
     if ui.button("Reset").clicked() {
         result.reset_clicked = true;
+    }
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Export").strong());
+    ui.add_space(8.0);
+
+    ui.horizontal(|ui| {
+        ui.label("Format");
+        egui::ComboBox::from_id_salt("export_format")
+            .selected_text(settings.export_format.label())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut settings.export_format, ExportFormat::Png, ".png");
+                ui.selectable_value(&mut settings.export_format, ExportFormat::Jpeg, ".jpeg");
+                ui.selectable_value(&mut settings.export_format, ExportFormat::Webp, ".webp");
+                ui.selectable_value(&mut settings.export_format, ExportFormat::Svg, ".svg");
+            });
+    });
+
+    ui.add_space(6.0);
+    if ui.button("Export Image").clicked() {
+        result.export_clicked = true;
     }
 }
 

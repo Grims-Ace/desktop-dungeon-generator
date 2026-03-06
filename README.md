@@ -35,6 +35,10 @@ A Rust desktop app for generating simple tabletop dungeon layouts.
 - Generate control:
   - Master seed input (`u64`)
   - `Random` seed button
+  - `Reset` button
+  - `Export Image` button
+  - Export format selector: `.png`, `.jpeg`, `.webp`, `.svg`
+  - Export uses an OS folder picker to choose save location
 
 ## Generation Behavior
 

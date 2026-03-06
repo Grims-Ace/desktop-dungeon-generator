@@ -1,3 +1,4 @@
+mod exporter;
 mod layout;
 mod seed;
 mod settings;
@@ -67,6 +68,11 @@ impl eframe::App for DungeonApp {
 
         if panel_result.reset_clicked || panel_result.settings_changed {
             self.regenerate_layout();
+        }
+        if panel_result.export_clicked {
+            if let Err(err) = exporter::export_with_dialog(&self.layout, &self.settings) {
+                eprintln!("{err}");
+            }
         }
 
         egui::SidePanel::right("legend_panel")
