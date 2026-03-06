@@ -1,14 +1,22 @@
 use crate::seed;
 use eframe::egui;
 use egui::RichText;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum Tab {
     Generate,
     Layout,
 }
 
-#[derive(Debug, Clone)]
+impl Default for Tab {
+    fn default() -> Self {
+        Self::Generate
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiSettings {
     pub seed: u64,
     pub cols: usize,

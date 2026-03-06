@@ -1,4 +1,5 @@
 mod layout;
+mod persistence;
 mod seed;
 mod ui;
 
@@ -26,7 +27,7 @@ struct DungeonApp {
 
 impl Default for DungeonApp {
     fn default() -> Self {
-        let settings = UiSettings::default();
+        let settings = persistence::load_settings().unwrap_or_default();
         let layout = generate_layout(
             settings.cols,
             settings.rows,
@@ -40,6 +41,14 @@ impl Default for DungeonApp {
         );
 
         Self { settings, layout }
+    }
+}
+
+impl Drop for DungeonApp {
+    fn drop(&mut self) {
+        if let Err(err) = persistence::save_settings(&self.settings) {
+            eprintln!("Failed to save settings: {err}");
+        }
     }
 }
 

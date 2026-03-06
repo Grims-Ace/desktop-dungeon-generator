@@ -21,7 +21,6 @@ A Rust desktop app for generating simple tabletop dungeon layouts.
 - Generate control:
   - Master seed input (`u64`)
   - `Random` seed button
-  - `Generate New Layout` button generates using the current seed
 
 ## Generation Behavior
 
@@ -56,3 +55,6 @@ cargo run
 
 - Rendering is vector-based in-app (`egui` painter), so zooming/scaling the preview remains crisp.
 - Room and corridor vectors are stored separately to support future export workflows (for example, SVG export).
+- Settings are persisted on exit and restored on startup from:
+  - Windows: `%LOCALAPPDATA%/desktop_dungeon_generator/settings.json`
+  - Linux: `~/.local/share/desktop_dungeon_generator/settings.json` (or distro-equivalent local data dir)
