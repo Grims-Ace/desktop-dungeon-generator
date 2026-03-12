@@ -140,8 +140,8 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
                     draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
                     draw_legend_entry(ui, Color32::BLACK, "Walls");
-                    draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Doors");
-                    draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Locked Doors");
+                    draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Doors");
+                    draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
                 }
             });
@@ -618,9 +618,9 @@ fn draw_layout(
         } else if door.archway {
             Color32::from_rgb(70, 130, 220)
         } else if door.locked {
-            Color32::from_rgb(80, 200, 120)
-        } else {
             Color32::from_rgb(220, 70, 70)
+        } else {
+            Color32::from_rgb(80, 200, 120)
         };
         let style = if colorblind_mode {
             if door.archway {

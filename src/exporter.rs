@@ -14,8 +14,8 @@ const GRID: (u8, u8, u8, u8) = (130, 130, 130, 255);
 const ROOM: (u8, u8, u8, u8) = (70, 120, 160, 255);
 const CORRIDOR: (u8, u8, u8, u8) = (210, 190, 120, 255);
 const BLACK: (u8, u8, u8, u8) = (0, 0, 0, 255);
-const OPEN_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
-const LOCKED_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
+const OPEN_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
+const LOCKED_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
 const ARCHWAY: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
 
