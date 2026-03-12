@@ -171,10 +171,12 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
     fill_bg(&mut pixmap, BG);
 
-    let wall_w = (g.cell / 5.0).max(1.0);
-    let door_w = (g.cell / 10.0).max(1.0);
+    let wall_w = snap_even_width((g.cell / 5.0).max(1.0));
+    let door_w = (g.cell / 10.0).max(1.0).round();
 
-    draw_grid(&mut pixmap, &g);
+    if settings.export_show_grid {
+        draw_grid(&mut pixmap, &g);
+    }
 
     for &(x, y) in &scene.corridor_cells {
         fill_rect_cell(&mut pixmap, &g, x, y, CORRIDOR);
@@ -247,7 +249,7 @@ fn export_composite_masks(
 
     let mut floors = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate floors mask canvas".to_string())?;
-    fill_bg(&mut floors, BG);
+    fill_bg(&mut floors, BLACK);
     for &(x, y) in &scene.corridor_cells {
         fill_rect_cell(&mut floors, &g, x, y, WHITE);
     }
@@ -257,7 +259,7 @@ fn export_composite_masks(
 
     let mut walls = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate walls mask canvas".to_string())?;
-    fill_bg(&mut walls, BG);
+    fill_bg(&mut walls, BLACK);
     draw_cell_walls(
         &mut walls,
         &g,
@@ -279,20 +281,21 @@ fn export_composite_masks(
 
     let mut doors = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate doors mask canvas".to_string())?;
-    fill_bg(&mut doors, BG);
+    fill_bg(&mut doors, BLACK);
     for door in &layout.doors {
         draw_door(&mut doors, &g, door, door_w, WHITE, DoorStyle::Solid);
     }
 
-    let mut grid = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
-    fill_bg(&mut grid, BG);
-    draw_grid_color(&mut grid, &g, WHITE);
-
     save_mask_image(folder, "floors_mask", &floors, settings)?;
     save_mask_image(folder, "walls_mask", &walls, settings)?;
     save_mask_image(folder, "doors_mask", &doors, settings)?;
-    save_mask_image(folder, "grid_mask", &grid, settings)?;
+    if settings.export_show_grid {
+        let mut grid = Pixmap::new(g.width, g.height)
+            .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
+        fill_bg(&mut grid, BLACK);
+        draw_grid_color(&mut grid, &g, WHITE);
+        save_mask_image(folder, "grid_mask", &grid, settings)?;
+    }
 
     Ok(())
 }
@@ -305,7 +308,7 @@ fn save_mask_image(
 ) -> Result<(), String> {
     let ext = settings.mask_format.extension();
     let path = folder.join(format!("{stem}.{ext}"));
-    let img = raster_image_from_pixmap(pixmap, settings)?;
+    let img = raster_mask_image_from_pixmap(pixmap, settings)?;
     img.save_with_format(&path, mask_image_format(settings.mask_format))
         .map_err(|e| format!("Failed writing {}: {e}", path.display()))?;
     Ok(())
@@ -333,6 +336,35 @@ fn raster_image_from_pixmap(
     }
 
     Ok(img)
+}
+
+fn raster_mask_image_from_pixmap(
+    pixmap: &Pixmap,
+    settings: &UiSettings,
+) -> Result<DynamicImage, String> {
+    let rgba = RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.data().to_vec())
+        .ok_or_else(|| "Failed to build image buffer".to_string())?;
+    let mut img = DynamicImage::ImageRgba8(rgba);
+
+    let target = raster_mask_target_size(settings, pixmap.width(), pixmap.height());
+    if img.width() != target.0 || img.height() != target.1 {
+        img = img.resize_exact(target.0, target.1, FilterType::Nearest);
+    }
+
+    let mut out = img.to_rgba8();
+    for pixel in out.pixels_mut() {
+        let on = pixel[0] > 127 || pixel[1] > 127 || pixel[2] > 127;
+        let v = if on { 255 } else { 0 };
+        *pixel = image::Rgba([v, v, v, 255]);
+    }
+
+    Ok(DynamicImage::ImageRgba8(out))
+}
+
+fn raster_mask_target_size(settings: &UiSettings, src_w: u32, src_h: u32) -> (u32, u32) {
+    let (target_w, _target_h) = raster_target_size(settings);
+    let scale = ((target_w as f32) / (src_w as f32)).round().max(1.0) as u32;
+    (src_w.saturating_mul(scale), src_h.saturating_mul(scale))
 }
 
 fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
@@ -374,29 +406,31 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         BG.0, BG.1, BG.2
     );
 
-    for c in 0..=g.cols {
-        let x = g.left() + c as f32 * g.cell;
-        let _ = writeln!(
-            s,
-            "<line x1='{x}' y1='{}' x2='{x}' y2='{}' stroke='rgb({},{},{})' stroke-width='1'/>",
-            g.top(),
-            g.top() + g.rows as f32 * g.cell,
-            GRID.0,
-            GRID.1,
-            GRID.2
-        );
-    }
-    for r in 0..=g.rows {
-        let y = g.top() + r as f32 * g.cell;
-        let _ = writeln!(
-            s,
-            "<line x1='{}' y1='{y}' x2='{}' y2='{y}' stroke='rgb({},{},{})' stroke-width='1'/>",
-            g.left(),
-            g.left() + g.cols as f32 * g.cell,
-            GRID.0,
-            GRID.1,
-            GRID.2
-        );
+    if settings.export_show_grid {
+        for c in 0..=g.cols {
+            let x = g.left() + c as f32 * g.cell;
+            let _ = writeln!(
+                s,
+                "<line x1='{x}' y1='{}' x2='{x}' y2='{}' stroke='rgb({},{},{})' stroke-width='1'/>",
+                g.top(),
+                g.top() + g.rows as f32 * g.cell,
+                GRID.0,
+                GRID.1,
+                GRID.2
+            );
+        }
+        for r in 0..=g.rows {
+            let y = g.top() + r as f32 * g.cell;
+            let _ = writeln!(
+                s,
+                "<line x1='{}' y1='{y}' x2='{}' y2='{y}' stroke='rgb({},{},{})' stroke-width='1'/>",
+                g.left(),
+                g.left() + g.cols as f32 * g.cell,
+                GRID.0,
+                GRID.1,
+                GRID.2
+            );
+        }
     }
 
     let corridor_cells = corridor_cells(layout, settings.cols, settings.rows);
@@ -540,31 +574,27 @@ fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
 }
 
 fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, u8, u8)) {
+    let left = g.left();
+    let top = g.top();
+    let width = g.cols as f32 * g.cell;
+    let height = g.rows as f32 * g.cell;
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+
     for c in 0..=g.cols {
-        let x = g.left() + c as f32 * g.cell;
-        draw_line(
-            pixmap,
-            x,
-            g.top(),
-            x,
-            g.top() + g.rows as f32 * g.cell,
-            1.0,
-            color,
-            DoorStyle::Solid,
-        );
+        let x = (left + c as f32 * g.cell).round();
+        let Some(rect) = Rect::from_xywh(x, top, 1.0, height) else {
+            continue;
+        };
+        pixmap.fill_rect(rect, &paint, Transform::identity(), None);
     }
     for r in 0..=g.rows {
-        let y = g.top() + r as f32 * g.cell;
-        draw_line(
-            pixmap,
-            g.left(),
-            y,
-            g.left() + g.cols as f32 * g.cell,
-            y,
-            1.0,
-            color,
-            DoorStyle::Solid,
-        );
+        let y = (top + r as f32 * g.cell).round();
+        let Some(rect) = Rect::from_xywh(left, y, width, 1.0) else {
+            continue;
+        };
+        pixmap.fill_rect(rect, &paint, Transform::identity(), None);
     }
 }
 
@@ -742,7 +772,12 @@ fn draw_wall_segment(
     width: f32,
     color: (u8, u8, u8, u8),
 ) {
+    let width = width.round().max(1.0);
     let half = width * 0.5;
+    let x1 = x1.round();
+    let y1 = y1.round();
+    let x2 = x2.round();
+    let y2 = y2.round();
     let rect = if (x1 - x2).abs() <= f32::EPSILON {
         let x = x1.min(x2);
         let y0 = y1.min(y2);
@@ -762,6 +797,14 @@ fn draw_wall_segment(
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.0, color.1, color.2, color.3);
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn snap_even_width(value: f32) -> f32 {
+    let mut w = value.round().max(1.0);
+    if (w as u32) % 2 == 1 {
+        w += 1.0;
+    }
+    w
 }
 
 fn append_svg_walls(

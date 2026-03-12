@@ -111,6 +111,7 @@ pub struct UiSettings {
     pub export_width: u32,
     pub export_height: u32,
     pub allow_export_aspect_change: bool,
+    pub export_show_grid: bool,
     active_tab: Tab,
 }
 
@@ -138,6 +139,7 @@ impl Default for UiSettings {
             export_width: 1920,
             export_height: 1080,
             allow_export_aspect_change: false,
+            export_show_grid: true,
             active_tab: Tab::Generate,
         }
     }
@@ -272,6 +274,11 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
                 });
         });
     }
+
+    ui.add_space(6.0);
+    result.settings_changed |= ui
+        .checkbox(&mut settings.export_show_grid, "Include Grid In Export")
+        .changed();
 
     if settings.export_format.supports_resolution() {
         ui.add_space(8.0);
