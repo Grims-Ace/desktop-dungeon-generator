@@ -30,6 +30,8 @@ struct DungeonApp {
     export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     pending_delete: bool,
     add_corridor_drag: Option<AddCorridorDrag>,
+    resize_state: Option<RoomResizeState>,
+    hover_room_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -56,6 +58,8 @@ impl Default for DungeonApp {
             export_rx: None,
             pending_delete: false,
             add_corridor_drag: None,
+            resize_state: None,
+            hover_room_idx: None,
         }
     }
 }
@@ -158,6 +162,7 @@ impl eframe::App for DungeonApp {
                 ui.add_space(6.0);
                 ui.label("Delete / Backspace: Remove hovered room or corridor");
                 ui.label("Right click: Cancel add tool");
+                ui.label("Right click + drag: Resize hovered room");
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -165,7 +170,11 @@ impl eframe::App for DungeonApp {
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
-            self.handle_drag(&response, &geometry);
+            self.update_hover_room(ctx, &geometry);
+            let resizing = self.handle_resize(ctx, &response, &geometry);
+            if !resizing {
+                self.handle_drag(ctx, &response, &geometry);
+            }
             self.handle_add_tool(&response, &geometry);
             if self.pending_delete {
                 if let Some(pointer_pos) = ctx.pointer_interact_pos() {
@@ -180,6 +189,7 @@ impl eframe::App for DungeonApp {
                 self.settings.colorblind_mode,
             );
             self.draw_add_overlay(&painter, &geometry);
+            self.draw_resize_overlay(&painter, &geometry);
         });
     }
 }
@@ -203,7 +213,15 @@ impl DungeonApp {
         );
     }
 
-    fn handle_drag(&mut self, response: &egui::Response, geometry: &GridGeometry) {
+    fn handle_drag(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        geometry: &GridGeometry,
+    ) {
+        if !ctx.input(|i| i.pointer.primary_down()) && !response.drag_started() {
+            return;
+        }
         if self.settings.add_tool != AddTool::None {
             return;
         }
@@ -379,7 +397,7 @@ impl DungeonApp {
     }
 
     fn handle_add_tool(&mut self, response: &egui::Response, geometry: &GridGeometry) {
-        if response.secondary_clicked() {
+        if self.settings.add_tool != AddTool::None && response.secondary_clicked() {
             self.settings.add_tool = AddTool::None;
             self.add_corridor_drag = None;
             return;
@@ -527,6 +545,211 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    fn update_hover_room(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
+        let Some(pointer_pos) = ctx.pointer_hover_pos() else {
+            self.hover_room_idx = None;
+            return;
+        };
+        if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+            self.hover_room_idx = Some(room_idx);
+        } else {
+            self.hover_room_idx = None;
+        }
+    }
+
+    fn handle_resize(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        geometry: &GridGeometry,
+    ) -> bool {
+        if self.settings.add_tool != AddTool::None {
+            return false;
+        }
+
+        if response.secondary_clicked() && self.resize_state.is_none() {
+            if let Some(pointer_pos) = response.interact_pointer_pos() {
+                if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+                    if let Some(state) = self.start_resize(room_idx, pointer_pos, geometry) {
+                        self.resize_state = Some(state);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if let Some(state) = self.resize_state.clone() {
+            if let Some(pointer_pos) = response.interact_pointer_pos() {
+                if let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    self.resize_room(&state, cell);
+                }
+            }
+
+            if ctx.input(|i| i.pointer.button_released(egui::PointerButton::Secondary)) {
+                self.resize_state = None;
+            }
+            return true;
+        }
+
+        false
+    }
+
+    fn start_resize(
+        &self,
+        room_idx: usize,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<RoomResizeState> {
+        let room = self.layout.rooms.get(room_idx)?;
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let px = grid_x.floor().max(0.0) as isize;
+        let py = grid_y.floor().max(0.0) as isize;
+
+        let corners = [
+            (ResizeCorner::TopLeft, (room.x as isize, room.y as isize)),
+            (
+                ResizeCorner::TopRight,
+                ((room.x + room.width - 1) as isize, room.y as isize),
+            ),
+            (
+                ResizeCorner::BottomLeft,
+                (room.x as isize, (room.y + room.height - 1) as isize),
+            ),
+            (
+                ResizeCorner::BottomRight,
+                (
+                    (room.x + room.width - 1) as isize,
+                    (room.y + room.height - 1) as isize,
+                ),
+            ),
+        ];
+
+        let mut best = corners[0];
+        let mut best_dist = isize::MAX;
+        for corner in corners {
+            let dx = corner.1.0 - px;
+            let dy = corner.1.1 - py;
+            let dist = dx * dx + dy * dy;
+            if dist < best_dist {
+                best = corner;
+                best_dist = dist;
+            }
+        }
+
+        let anchor_cell = match best.0 {
+            ResizeCorner::TopLeft => (room.x + room.width - 1, room.y + room.height - 1),
+            ResizeCorner::TopRight => (room.x, room.y + room.height - 1),
+            ResizeCorner::BottomLeft => (room.x + room.width - 1, room.y),
+            ResizeCorner::BottomRight => (room.x, room.y),
+        };
+
+        Some(RoomResizeState {
+            room_idx,
+            anchor_cell,
+        })
+    }
+
+    fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
+        let cols = self.settings.cols.max(1);
+        let rows = self.settings.rows.max(1);
+        let min_size = self.settings.min_room_size.max(1);
+
+        let ax = state.anchor_cell.0 as isize;
+        let ay = state.anchor_cell.1 as isize;
+        let tx = target_cell.0.min(cols - 1) as isize;
+        let ty = target_cell.1.min(rows - 1) as isize;
+
+        let x0 = ax.min(tx);
+        let x1 = ax.max(tx);
+        let y0 = ay.min(ty);
+        let y1 = ay.max(ty);
+
+        let new_room = layout::Room {
+            x: x0 as usize,
+            y: y0 as usize,
+            width: (x1 - x0 + 1) as usize,
+            height: (y1 - y0 + 1) as usize,
+        };
+
+        if new_room.width < min_size || new_room.height < min_size {
+            return;
+        }
+
+        if new_room.x + new_room.width > cols || new_room.y + new_room.height > rows {
+            return;
+        }
+
+        if self
+            .layout
+            .rooms
+            .iter()
+            .enumerate()
+            .any(|(idx, room)| idx != state.room_idx && rooms_overlap(&new_room, room))
+        {
+            return;
+        }
+
+        if let Some(room) = self.layout.rooms.get_mut(state.room_idx) {
+            room.x = new_room.x;
+            room.y = new_room.y;
+            room.width = new_room.width;
+            room.height = new_room.height;
+            self.reroute_corridors_for_room(state.room_idx);
+            self.refresh_doors();
+        }
+    }
+
+    fn draw_resize_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        let room_idx = self
+            .resize_state
+            .as_ref()
+            .map(|s| s.room_idx)
+            .or(self.hover_room_idx);
+        let Some(room_idx) = room_idx else {
+            return;
+        };
+        let Some(room) = self.layout.rooms.get(room_idx) else {
+            return;
+        };
+        let color = Color32::from_gray(170);
+        let stroke = Stroke::new(1.5, color);
+
+        let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
+        let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
+        let right = left + room.width as f32 * geometry.cell_size;
+        let bottom = top + room.height as f32 * geometry.cell_size;
+
+        let tl = egui::pos2(left, top);
+        let tr = egui::pos2(right, top);
+        let br = egui::pos2(right, bottom);
+        let bl = egui::pos2(left, bottom);
+
+        draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
+        draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
+        draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
+        draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
+
+        let font = egui::FontId::proportional(12.0);
+        let center_top = egui::pos2((left + right) * 0.5, top - 10.0);
+        let center_left = egui::pos2(left - 12.0, (top + bottom) * 0.5);
+        painter.text(
+            center_top,
+            egui::Align2::CENTER_CENTER,
+            "<->",
+            font.clone(),
+            color,
+        );
+        painter.text(center_left, egui::Align2::CENTER_CENTER, "^v", font, color);
+
+        if self.resize_state.is_some() {
+            draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
+            draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
+            draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
+            draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+        }
+    }
+
     fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
             self.delete_room(room_idx);
@@ -581,6 +804,20 @@ struct CorridorDragState {
 struct AddCorridorDrag {
     start_cell: (usize, usize),
     current_cell: (usize, usize),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ResizeCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone)]
+struct RoomResizeState {
+    room_idx: usize,
+    anchor_cell: (usize, usize),
 }
 
 #[derive(Debug, Clone)]
@@ -953,6 +1190,64 @@ fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
     let b_right = b.x + b.width;
     let b_bottom = b.y + b.height;
     a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+}
+
+fn draw_resize_handle(
+    painter: &egui::Painter,
+    corner: egui::Pos2,
+    which: ResizeCorner,
+    color: Color32,
+) {
+    let size = 10.0;
+    let half = size * 0.5;
+    let rect = egui::Rect::from_center_size(corner, egui::vec2(size, size));
+    painter.rect_filled(rect, 2.0, Color32::from_gray(30));
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, color), egui::StrokeKind::Middle);
+
+    let center = corner;
+    let stroke = Stroke::new(1.0, color);
+    match which {
+        ResizeCorner::TopLeft => {
+            painter.line_segment(
+                [center, egui::pos2(center.x - half + 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y - half + 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::TopRight => {
+            painter.line_segment(
+                [center, egui::pos2(center.x + half - 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y - half + 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::BottomLeft => {
+            painter.line_segment(
+                [center, egui::pos2(center.x - half + 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y + half - 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::BottomRight => {
+            painter.line_segment(
+                [center, egui::pos2(center.x + half - 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y + half - 2.0)],
+                stroke,
+            );
+        }
+    }
 }
 
 fn door_edges_for(
