@@ -97,6 +97,8 @@ pub struct UiSettings {
     pub min_room_size: usize,
     pub max_room_size: usize,
     pub square_rooms_only: bool,
+    pub min_corridor_width: usize,
+    pub max_corridor_width: usize,
     pub corridor_randomness: usize,
     pub dead_end_rooms_percent: usize,
     pub door_frequency_percent: usize,
@@ -122,6 +124,8 @@ impl Default for UiSettings {
             min_room_size: 2,
             max_room_size: 6,
             square_rooms_only: false,
+            min_corridor_width: 1,
+            max_corridor_width: 2,
             corridor_randomness: 0,
             dead_end_rooms_percent: 0,
             door_frequency_percent: 30,
@@ -399,6 +403,36 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
                 egui::DragValue::new(&mut settings.corridor_randomness)
                     .speed(1.0)
                     .range(0..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Min Corridor Width");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_corridor_width, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.min_corridor_width)
+                    .speed(1.0)
+                    .range(1..=50),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Max Corridor Width");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_corridor_width, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.max_corridor_width)
+                    .speed(1.0)
+                    .range(1..=50),
             )
             .changed();
     });

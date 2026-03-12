@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
-use layout::{DoorSettings, DungeonLayout, shortest_path_cells};
+use layout::{DoorSettings, DungeonLayout, corridor_cells, shortest_path_cells};
 use ui::{UiSettings, draw_side_panel};
 
 fn main() -> eframe::Result<()> {
@@ -38,6 +38,8 @@ impl Default for DungeonApp {
             settings.min_room_size,
             settings.max_room_size,
             settings.square_rooms_only,
+            settings.min_corridor_width,
+            settings.max_corridor_width,
             settings.corridor_randomness,
             settings.dead_end_rooms_percent,
             door_settings_from_ui(&settings),
@@ -64,6 +66,12 @@ impl eframe::App for DungeonApp {
 
         if self.settings.min_room_size > self.settings.max_room_size {
             self.settings.max_room_size = self.settings.min_room_size;
+        }
+        if self.settings.min_corridor_width == 0 {
+            self.settings.min_corridor_width = 1;
+        }
+        if self.settings.min_corridor_width > self.settings.max_corridor_width {
+            self.settings.max_corridor_width = self.settings.min_corridor_width;
         }
 
         if panel_result.reset_clicked || panel_result.settings_changed {
@@ -133,6 +141,8 @@ impl DungeonApp {
             self.settings.min_room_size,
             self.settings.max_room_size,
             self.settings.square_rooms_only,
+            self.settings.min_corridor_width,
+            self.settings.max_corridor_width,
             self.settings.corridor_randomness,
             self.settings.dead_end_rooms_percent,
             door_settings_from_ui(&self.settings),
@@ -306,6 +316,8 @@ impl DungeonApp {
             &mut self.layout,
             self.settings.seed,
             door_settings_from_ui(&self.settings),
+            self.settings.cols,
+            self.settings.rows,
         );
     }
 }
@@ -333,6 +345,8 @@ enum DragState {
 struct GridGeometry {
     rect: egui::Rect,
     cell_size: f32,
+    cols: usize,
+    rows: usize,
 }
 
 fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize) -> GridGeometry {
@@ -379,6 +393,8 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
     GridGeometry {
         rect: grid_rect,
         cell_size,
+        cols,
+        rows,
     }
 }
 
@@ -394,21 +410,15 @@ fn draw_layout(
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
     let wall_color = Color32::BLACK;
-    let mut corridor_cells_set = HashSet::new();
-    let mut corridor_edges_set = HashSet::new();
+    let corridor_cells_set = corridor_cells(layout, geometry.cols, geometry.rows);
+    let corridor_edges_set = corridor_edges_from_cells(&corridor_cells_set);
     let mut room_cells_set = HashSet::new();
+    let room_edges_set = room_edges_from_rooms(&layout.rooms);
     let mut door_edges_set = HashSet::new();
 
     for door in &layout.doors {
-        door_edges_set.insert(normalized_edge(door.from, door.to));
-    }
-
-    for corridor in &layout.corridors {
-        for &cell in &corridor.path {
-            corridor_cells_set.insert(cell);
-        }
-        for pair in corridor.path.windows(2) {
-            corridor_edges_set.insert(normalized_edge(pair[0], pair[1]));
+        for edge in door_edges_for(door, geometry.cols, geometry.rows) {
+            door_edges_set.insert(edge);
         }
     }
 
@@ -510,12 +520,15 @@ fn draw_layout(
         let left = col.checked_sub(1).map(|x| (x, row));
         let top = row.checked_sub(1).map(|y| (col, y));
 
-        if col == 0
+        let left_edge = col == 0
             || (!room_cells_set.contains(&(col - 1, row))
+                || left
+                    .map(|n| !room_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
                 && left
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true))
-        {
+                    .unwrap_or(true);
+        if left_edge {
             draw_wall_segment(
                 painter,
                 egui::pos2(rect.left(), rect.top()),
@@ -524,7 +537,8 @@ fn draw_layout(
                 wall_color,
             );
         }
-        if !room_cells_set.contains(&right)
+        if (!room_cells_set.contains(&right)
+            || !room_edges_set.contains(&normalized_edge((col, row), right)))
             && !door_edges_set.contains(&normalized_edge((col, row), right))
         {
             draw_wall_segment(
@@ -535,12 +549,15 @@ fn draw_layout(
                 wall_color,
             );
         }
-        if row == 0
+        let top_edge = row == 0
             || (!room_cells_set.contains(&(col, row - 1))
+                || top
+                    .map(|n| !room_edges_set.contains(&normalized_edge((col, row), n)))
+                    .unwrap_or(true))
                 && top
                     .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true))
-        {
+                    .unwrap_or(true);
+        if top_edge {
             draw_wall_segment(
                 painter,
                 egui::pos2(rect.left(), rect.top()),
@@ -549,7 +566,8 @@ fn draw_layout(
                 wall_color,
             );
         }
-        if !room_cells_set.contains(&bottom)
+        if (!room_cells_set.contains(&bottom)
+            || !room_edges_set.contains(&normalized_edge((col, row), bottom)))
             && !door_edges_set.contains(&normalized_edge((col, row), bottom))
         {
             draw_wall_segment(
@@ -588,6 +606,7 @@ fn draw_layout(
             geometry,
             door.from,
             door.to,
+            door.width,
             Stroke::new(door_width_px, color),
             style,
         );
@@ -634,6 +653,83 @@ fn draw_wall_segment(
 
 fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
+}
+
+fn corridor_edges_from_cells(
+    corridor_cells: &HashSet<(usize, usize)>,
+) -> HashSet<((usize, usize), (usize, usize))> {
+    let mut edges = HashSet::new();
+    for &(col, row) in corridor_cells {
+        let right = (col + 1, row);
+        let bottom = (col, row + 1);
+        if corridor_cells.contains(&right) {
+            edges.insert(normalized_edge((col, row), right));
+        }
+        if corridor_cells.contains(&bottom) {
+            edges.insert(normalized_edge((col, row), bottom));
+        }
+    }
+    edges
+}
+
+fn room_edges_from_rooms(rooms: &[layout::Room]) -> HashSet<((usize, usize), (usize, usize))> {
+    let mut edges = HashSet::new();
+    for room in rooms {
+        let x_end = room.x + room.width;
+        let y_end = room.y + room.height;
+        for x in room.x..x_end {
+            for y in room.y..y_end {
+                if x + 1 < x_end {
+                    edges.insert(normalized_edge((x, y), (x + 1, y)));
+                }
+                if y + 1 < y_end {
+                    edges.insert(normalized_edge((x, y), (x, y + 1)));
+                }
+            }
+        }
+    }
+    edges
+}
+
+fn door_edges_for(
+    door: &layout::Door,
+    cols: usize,
+    rows: usize,
+) -> Vec<((usize, usize), (usize, usize))> {
+    let mut edges = Vec::new();
+    if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
+        return edges;
+    }
+
+    let width = door.width.max(1) as isize;
+    let min_offset = -((width - 1) / 2);
+    let max_offset = width / 2;
+
+    if door.from.0 != door.to.0 {
+        let y = door.from.1 as isize;
+        for dy in min_offset..=max_offset {
+            let ny = y + dy;
+            if ny < 0 || ny >= rows as isize {
+                continue;
+            }
+            let a = (door.from.0, ny as usize);
+            let b = (door.to.0, ny as usize);
+            edges.push(normalized_edge(a, b));
+        }
+    } else {
+        let x = door.from.0 as isize;
+        for dx in min_offset..=max_offset {
+            let nx = x + dx;
+            if nx < 0 || nx >= cols as isize {
+                continue;
+            }
+            let a = (nx as usize, door.from.1);
+            let b = (nx as usize, door.to.1);
+            edges.push(normalized_edge(a, b));
+        }
+    }
+
+    edges
 }
 
 fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(f32, f32)> {
@@ -726,6 +822,7 @@ fn draw_door_line(
     geometry: &GridGeometry,
     a: (usize, usize),
     b: (usize, usize),
+    width_cells: usize,
     stroke: Stroke,
     style: DoorLineStyle,
 ) {
@@ -733,17 +830,25 @@ fn draw_door_line(
         return;
     }
 
+    let width_cells = width_cells.max(1);
+    let min_offset = -((width_cells as isize - 1) / 2);
+    let max_offset = width_cells as isize / 2;
+
     if a.0 != b.0 {
         let x = geometry.rect.left() + (a.0.max(b.0) as f32) * geometry.cell_size;
-        let row = a.1;
-        let y0 = geometry.rect.top() + row as f32 * geometry.cell_size;
-        let y1 = y0 + geometry.cell_size;
+        let row = a.1 as isize;
+        let y0_cell = (row + min_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+        let y1_cell = (row + max_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+        let y0 = geometry.rect.top() + y0_cell as f32 * geometry.cell_size;
+        let y1 = geometry.rect.top() + (y1_cell as f32 + 1.0) * geometry.cell_size;
         draw_styled_line(painter, egui::pos2(x, y0), egui::pos2(x, y1), stroke, style);
     } else {
         let y = geometry.rect.top() + (a.1.max(b.1) as f32) * geometry.cell_size;
-        let col = a.0;
-        let x0 = geometry.rect.left() + col as f32 * geometry.cell_size;
-        let x1 = x0 + geometry.cell_size;
+        let col = a.0 as isize;
+        let x0_cell = (col + min_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+        let x1_cell = (col + max_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+        let x0 = geometry.rect.left() + x0_cell as f32 * geometry.cell_size;
+        let x1 = geometry.rect.left() + (x1_cell as f32 + 1.0) * geometry.cell_size;
         draw_styled_line(painter, egui::pos2(x0, y), egui::pos2(x1, y), stroke, style);
     }
 }

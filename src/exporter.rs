@@ -6,7 +6,7 @@ use image::{DynamicImage, ImageFormat, RgbaImage, imageops::FilterType};
 use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
-use crate::layout::{Door, DungeonLayout, Room};
+use crate::layout::{Door, DungeonLayout, Room, corridor_cells};
 use crate::ui::{ExportFormat, MaskFormat, UiSettings};
 
 const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
@@ -83,24 +83,21 @@ struct SceneData {
     corridor_cells: HashSet<(usize, usize)>,
     corridor_edges: HashSet<((usize, usize), (usize, usize))>,
     room_cells: HashSet<(usize, usize)>,
+    room_edges: HashSet<((usize, usize), (usize, usize))>,
     door_edges: HashSet<((usize, usize), (usize, usize))>,
 }
 
-fn collect_scene_data(layout: &DungeonLayout) -> SceneData {
+fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneData {
     let mut scene = SceneData::default();
 
     for door in &layout.doors {
-        scene.door_edges.insert(norm_edge(door.from, door.to));
+        for edge in door_edges_for(door, settings.cols, settings.rows) {
+            scene.door_edges.insert(edge);
+        }
     }
 
-    for corridor in &layout.corridors {
-        for &cell in &corridor.path {
-            scene.corridor_cells.insert(cell);
-        }
-        for pair in corridor.path.windows(2) {
-            scene.corridor_edges.insert(norm_edge(pair[0], pair[1]));
-        }
-    }
+    scene.corridor_cells = corridor_cells(layout, settings.cols, settings.rows);
+    scene.corridor_edges = corridor_edges_from_cells(&scene.corridor_cells);
 
     for room in &layout.rooms {
         for x in room.x..(room.x + room.width) {
@@ -109,6 +106,7 @@ fn collect_scene_data(layout: &DungeonLayout) -> SceneData {
             }
         }
     }
+    scene.room_edges = room_edges_from_rooms(&layout.rooms);
 
     scene
 }
@@ -168,7 +166,7 @@ pub fn export_with_dialog(
 
 fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
     let g = ExportGeometry::new(settings.cols, settings.rows);
-    let scene = collect_scene_data(layout);
+    let scene = collect_scene_data(layout, settings);
     let mut pixmap =
         Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
     fill_bg(&mut pixmap, BG);
@@ -206,7 +204,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         &mut pixmap,
         &g,
         &scene.room_cells,
-        None,
+        Some(&scene.room_edges),
         &scene.door_edges,
         wall_w,
         BLACK,
@@ -243,7 +241,7 @@ fn export_composite_masks(
     std::fs::create_dir_all(folder).map_err(|e| format!("Failed creating folder: {e}"))?;
 
     let g = ExportGeometry::new(settings.cols, settings.rows);
-    let scene = collect_scene_data(layout);
+    let scene = collect_scene_data(layout, settings);
     let wall_w = (g.cell / 5.0).max(1.0);
     let door_w = (g.cell / 10.0).max(1.0);
 
@@ -401,22 +399,18 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         );
     }
 
-    let mut corridor_cells = HashSet::new();
-    let mut corridor_edges = HashSet::new();
+    let corridor_cells = corridor_cells(layout, settings.cols, settings.rows);
+    let corridor_edges = corridor_edges_from_cells(&corridor_cells);
     let mut room_cells = HashSet::new();
+    let room_edges = room_edges_from_rooms(&layout.rooms);
     let mut door_edges = HashSet::new();
 
     for door in &layout.doors {
-        door_edges.insert(norm_edge(door.from, door.to));
-    }
-    for corridor in &layout.corridors {
-        for &cell in &corridor.path {
-            corridor_cells.insert(cell);
-        }
-        for pair in corridor.path.windows(2) {
-            corridor_edges.insert(norm_edge(pair[0], pair[1]));
+        for edge in door_edges_for(door, settings.cols, settings.rows) {
+            door_edges.insert(edge);
         }
     }
+    // corridor_cells/corridor_edges already populated with corridor widths
     for room in &layout.rooms {
         for x in room.x..(room.x + room.width) {
             for y in room.y..(room.y + room.height) {
@@ -486,7 +480,14 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         &door_edges,
         wall_w,
     );
-    append_svg_walls(&mut s, &g, &room_cells, None, &door_edges, wall_w);
+    append_svg_walls(
+        &mut s,
+        &g,
+        &room_cells,
+        Some(&room_edges),
+        &door_edges,
+        wall_w,
+    );
 
     for door in &layout.doors {
         let (color, dash) = if settings.colorblind_mode {
@@ -505,7 +506,7 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
             ("rgb(220,70,70)", None)
         };
 
-        if let Some((x1, y1, x2, y2)) = door_line_points(&g, door.from, door.to) {
+        if let Some((x1, y1, x2, y2)) = door_line_points(&g, door.from, door.to, door.width) {
             if let Some(pattern) = dash {
                 let _ = writeln!(
                     s,
@@ -847,7 +848,7 @@ fn draw_door(
     color: (u8, u8, u8, u8),
     style: DoorStyle,
 ) {
-    let Some((x1, y1, x2, y2)) = door_line_points(g, door.from, door.to) else {
+    let Some((x1, y1, x2, y2)) = door_line_points(g, door.from, door.to, door.width) else {
         return;
     };
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
@@ -857,22 +858,31 @@ fn door_line_points(
     g: &ExportGeometry,
     a: (usize, usize),
     b: (usize, usize),
+    width_cells: usize,
 ) -> Option<(f32, f32, f32, f32)> {
     if a.0.abs_diff(b.0) + a.1.abs_diff(b.1) != 1 {
         return None;
     }
 
+    let width_cells = width_cells.max(1) as isize;
+    let min_offset = -((width_cells - 1) / 2);
+    let max_offset = width_cells / 2;
+
     if a.0 != b.0 {
         let x = g.left() + (a.0.max(b.0) as f32) * g.cell;
-        let row = a.1;
-        let y0 = g.top() + row as f32 * g.cell;
-        let y1 = y0 + g.cell;
+        let row = a.1 as isize;
+        let y0_cell = (row + min_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+        let y1_cell = (row + max_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+        let y0 = g.top() + y0_cell as f32 * g.cell;
+        let y1 = g.top() + (y1_cell as f32 + 1.0) * g.cell;
         Some((x, y0, x, y1))
     } else {
         let y = g.top() + (a.1.max(b.1) as f32) * g.cell;
-        let col = a.0;
-        let x0 = g.left() + col as f32 * g.cell;
-        let x1 = x0 + g.cell;
+        let col = a.0 as isize;
+        let x0_cell = (col + min_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+        let x1_cell = (col + max_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+        let x0 = g.left() + x0_cell as f32 * g.cell;
+        let x1 = g.left() + (x1_cell as f32 + 1.0) * g.cell;
         Some((x0, y, x1, y))
     }
 }
@@ -953,4 +963,77 @@ fn dotted_line(
 
 fn norm_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
+}
+
+fn corridor_edges_from_cells(
+    corridor_cells: &HashSet<(usize, usize)>,
+) -> HashSet<((usize, usize), (usize, usize))> {
+    let mut edges = HashSet::new();
+    for &(col, row) in corridor_cells {
+        let right = (col + 1, row);
+        let bottom = (col, row + 1);
+        if corridor_cells.contains(&right) {
+            edges.insert(norm_edge((col, row), right));
+        }
+        if corridor_cells.contains(&bottom) {
+            edges.insert(norm_edge((col, row), bottom));
+        }
+    }
+    edges
+}
+
+fn room_edges_from_rooms(rooms: &[Room]) -> HashSet<((usize, usize), (usize, usize))> {
+    let mut edges = HashSet::new();
+    for room in rooms {
+        let x_end = room.x + room.width;
+        let y_end = room.y + room.height;
+        for x in room.x..x_end {
+            for y in room.y..y_end {
+                if x + 1 < x_end {
+                    edges.insert(norm_edge((x, y), (x + 1, y)));
+                }
+                if y + 1 < y_end {
+                    edges.insert(norm_edge((x, y), (x, y + 1)));
+                }
+            }
+        }
+    }
+    edges
+}
+
+fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize), (usize, usize))> {
+    let mut edges = Vec::new();
+    if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
+        return edges;
+    }
+
+    let width = door.width.max(1) as isize;
+    let min_offset = -((width - 1) / 2);
+    let max_offset = width / 2;
+
+    if door.from.0 != door.to.0 {
+        let y = door.from.1 as isize;
+        for dy in min_offset..=max_offset {
+            let ny = y + dy;
+            if ny < 0 || ny >= rows as isize {
+                continue;
+            }
+            let a = (door.from.0, ny as usize);
+            let b = (door.to.0, ny as usize);
+            edges.push(norm_edge(a, b));
+        }
+    } else {
+        let x = door.from.0 as isize;
+        for dx in min_offset..=max_offset {
+            let nx = x + dx;
+            if nx < 0 || nx >= cols as isize {
+                continue;
+            }
+            let a = (nx as usize, door.from.1);
+            let b = (nx as usize, door.to.1);
+            edges.push(norm_edge(a, b));
+        }
+    }
+
+    edges
 }
