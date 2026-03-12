@@ -32,6 +32,7 @@ struct DungeonApp {
     add_corridor_drag: Option<AddCorridorDrag>,
     resize_state: Option<RoomResizeState>,
     hover_room_idx: Option<usize>,
+    hover_corridor_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -60,6 +61,7 @@ impl Default for DungeonApp {
             add_corridor_drag: None,
             resize_state: None,
             hover_room_idx: None,
+            hover_corridor_idx: None,
         }
     }
 }
@@ -170,7 +172,7 @@ impl eframe::App for DungeonApp {
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
-            self.update_hover_room(ctx, &geometry);
+            self.update_hover_targets(ctx, &geometry);
             let resizing = self.handle_resize(ctx, &response, &geometry);
             if !resizing {
                 self.handle_drag(ctx, &response, &geometry);
@@ -190,6 +192,7 @@ impl eframe::App for DungeonApp {
             );
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
+            self.draw_corridor_hover_overlay(&painter, &geometry);
         });
     }
 }
@@ -545,15 +548,22 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
-    fn update_hover_room(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
+    fn update_hover_targets(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
             self.hover_room_idx = None;
+            self.hover_corridor_idx = None;
             return;
         };
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
             self.hover_room_idx = Some(room_idx);
+            self.hover_corridor_idx = None;
         } else {
             self.hover_room_idx = None;
+            if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
+                self.hover_corridor_idx = Some(corridor_drag.corridor_index);
+            } else {
+                self.hover_corridor_idx = None;
+            }
         }
     }
 
@@ -747,6 +757,23 @@ impl DungeonApp {
             draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
             draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
             draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+        }
+    }
+
+    fn draw_corridor_hover_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        let Some(idx) = self.hover_corridor_idx else {
+            return;
+        };
+        let Some(corridor) = self.layout.corridors.get(idx) else {
+            return;
+        };
+
+        let color = Color32::from_gray(170);
+        let stroke = Stroke::new(2.0, color);
+        for pair in corridor.path.windows(2) {
+            let a = cell_center(geometry, pair[0].0, pair[0].1);
+            let b = cell_center(geometry, pair[1].0, pair[1].1);
+            draw_dashed_line(painter, a, b, stroke, 6.0, 6.0);
         }
     }
 
