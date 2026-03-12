@@ -19,6 +19,11 @@ const LOCKED_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
 const ARCHWAY: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
 
+pub enum ExportTarget {
+    File(PathBuf),
+    Folder(PathBuf),
+}
+
 #[derive(Debug, Clone, Copy)]
 enum DoorStyle {
     Solid,
@@ -111,17 +116,13 @@ fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneDat
     scene
 }
 
-pub fn export_with_dialog(
-    layout: &DungeonLayout,
-    settings: &UiSettings,
-) -> Result<PathBuf, String> {
+pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, String> {
     if settings.export_format == ExportFormat::Folder {
         let folder = FileDialog::new()
             .set_title("Export composite masks folder")
             .pick_folder()
             .ok_or_else(|| "Export canceled".to_string())?;
-        export_composite_masks(layout, settings, &folder)?;
-        return Ok(folder);
+        return Ok(ExportTarget::Folder(folder));
     }
 
     let ext = settings.export_format.extension();
@@ -141,27 +142,42 @@ pub fn export_with_dialog(
         path.set_extension(ext);
     }
 
-    match settings.export_format {
-        ExportFormat::Svg => {
-            let svg = build_svg(layout, settings);
-            std::fs::write(&path, svg).map_err(|e| format!("Failed writing SVG: {e}"))?;
-        }
-        ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
-            let pixmap = render_pixmap(layout, settings)?;
-            let img = raster_image_from_pixmap(&pixmap, settings)?;
-            let format = match settings.export_format {
-                ExportFormat::Png => ImageFormat::Png,
-                ExportFormat::Jpeg => ImageFormat::Jpeg,
-                ExportFormat::Webp => ImageFormat::WebP,
-                ExportFormat::Svg | ExportFormat::Folder => unreachable!(),
-            };
-            img.save_with_format(&path, format)
-                .map_err(|e| format!("Failed writing image: {e}"))?;
-        }
-        ExportFormat::Folder => unreachable!(),
-    }
+    Ok(ExportTarget::File(path))
+}
 
-    Ok(path)
+pub fn export_to_target(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+    target: ExportTarget,
+) -> Result<PathBuf, String> {
+    match target {
+        ExportTarget::Folder(folder) => {
+            export_composite_masks(layout, settings, &folder)?;
+            Ok(folder)
+        }
+        ExportTarget::File(path) => {
+            match settings.export_format {
+                ExportFormat::Svg => {
+                    let svg = build_svg(layout, settings);
+                    std::fs::write(&path, svg).map_err(|e| format!("Failed writing SVG: {e}"))?;
+                }
+                ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
+                    let pixmap = render_pixmap(layout, settings)?;
+                    let img = raster_image_from_pixmap(&pixmap, settings)?;
+                    let format = match settings.export_format {
+                        ExportFormat::Png => ImageFormat::Png,
+                        ExportFormat::Jpeg => ImageFormat::Jpeg,
+                        ExportFormat::Webp => ImageFormat::WebP,
+                        ExportFormat::Svg | ExportFormat::Folder => unreachable!(),
+                    };
+                    img.save_with_format(&path, format)
+                        .map_err(|e| format!("Failed writing image: {e}"))?;
+                }
+                ExportFormat::Folder => unreachable!(),
+            }
+            Ok(path)
+        }
+    }
 }
 
 fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {

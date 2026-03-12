@@ -5,6 +5,8 @@ mod settings;
 mod ui;
 
 use std::collections::HashSet;
+use std::sync::mpsc;
+use std::thread;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
@@ -25,6 +27,7 @@ struct DungeonApp {
     settings: UiSettings,
     layout: DungeonLayout,
     drag_state: Option<DragState>,
+    export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
 }
 
 impl Default for DungeonApp {
@@ -48,6 +51,7 @@ impl Default for DungeonApp {
             settings,
             layout,
             drag_state: None,
+            export_rx: None,
         }
     }
 }
@@ -62,7 +66,7 @@ impl Drop for DungeonApp {
 
 impl eframe::App for DungeonApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let panel_result = draw_side_panel(ctx, &mut self.settings);
+        let panel_result = draw_side_panel(ctx, &mut self.settings, self.export_rx.is_some());
 
         if self.settings.min_room_size > self.settings.max_room_size {
             self.settings.max_room_size = self.settings.min_room_size;
@@ -77,9 +81,37 @@ impl eframe::App for DungeonApp {
         if panel_result.reset_clicked || panel_result.settings_changed {
             self.regenerate_layout();
         }
-        if panel_result.export_clicked {
-            if let Err(err) = exporter::export_with_dialog(&self.layout, &self.settings) {
-                eprintln!("{err}");
+        if panel_result.export_clicked && self.export_rx.is_none() {
+            let target = match exporter::select_export_target(&self.settings) {
+                Ok(target) => target,
+                Err(err) => {
+                    eprintln!("{err}");
+                    return;
+                }
+            };
+            let layout = self.layout.clone();
+            let settings = self.settings.clone();
+            let (tx, rx) = mpsc::channel();
+            thread::spawn(move || {
+                let result = exporter::export_to_target(&layout, &settings, target);
+                let _ = tx.send(result);
+            });
+            self.export_rx = Some(rx);
+        }
+
+        if let Some(rx) = &self.export_rx {
+            match rx.try_recv() {
+                Ok(Ok(_)) => {
+                    self.export_rx = None;
+                }
+                Ok(Err(err)) => {
+                    eprintln!("{err}");
+                    self.export_rx = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.export_rx = None;
+                }
             }
         }
 

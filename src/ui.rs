@@ -152,7 +152,11 @@ pub struct SidePanelResult {
     pub export_clicked: bool,
 }
 
-pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePanelResult {
+pub fn draw_side_panel(
+    ctx: &egui::Context,
+    settings: &mut UiSettings,
+    export_in_progress: bool,
+) -> SidePanelResult {
     let mut result = SidePanelResult::default();
 
     egui::SidePanel::left("options_panel")
@@ -175,7 +179,7 @@ pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePa
             ui.separator();
 
             match settings.active_tab {
-                Tab::Generate => draw_generate_tab(ui, settings, &mut result),
+                Tab::Generate => draw_generate_tab(ui, settings, &mut result, export_in_progress),
                 Tab::Layout => draw_layout_tab(ui, settings, &mut result),
             }
         });
@@ -183,7 +187,12 @@ pub fn draw_side_panel(ctx: &egui::Context, settings: &mut UiSettings) -> SidePa
     result
 }
 
-fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
+fn draw_generate_tab(
+    ui: &mut egui::Ui,
+    settings: &mut UiSettings,
+    result: &mut SidePanelResult,
+    export_in_progress: bool,
+) {
     ui.label(RichText::new("Grid Settings").strong());
     ui.add_space(8.0);
 
@@ -338,6 +347,11 @@ fn draw_generate_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut 
     ui.add_space(6.0);
     if ui.button("Export Image").clicked() {
         result.export_clicked = true;
+    }
+
+    if export_in_progress {
+        ui.add_space(6.0);
+        ui.add(egui::ProgressBar::new(0.0).animate(true));
     }
 }
 
