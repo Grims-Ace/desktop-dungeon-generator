@@ -33,6 +33,7 @@ struct DungeonApp {
     resize_state: Option<RoomResizeState>,
     hover_room_idx: Option<usize>,
     hover_corridor_idx: Option<usize>,
+    hover_door_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -62,6 +63,7 @@ impl Default for DungeonApp {
             resize_state: None,
             hover_room_idx: None,
             hover_corridor_idx: None,
+            hover_door_idx: None,
         }
     }
 }
@@ -193,6 +195,7 @@ impl eframe::App for DungeonApp {
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
             self.draw_corridor_hover_overlay(&painter, &geometry);
+            self.draw_door_hover_overlay(&painter, &geometry);
         });
     }
 }
@@ -445,6 +448,16 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
+            AddTool::Door | AddTool::LockedDoor => {
+                self.add_corridor_drag = None;
+                if response.clicked()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                {
+                    let locked = self.settings.add_tool == AddTool::LockedDoor;
+                    self.add_door_at_pointer(pointer_pos, geometry, locked);
+                    self.settings.add_tool = AddTool::None;
+                }
+            }
             AddTool::None => {
                 self.add_corridor_drag = None;
             }
@@ -552,17 +565,35 @@ impl DungeonApp {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
+            self.hover_door_idx = None;
             return;
         };
+        if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
+            let target = normalized_edge(edge.0, edge.1);
+            self.hover_door_idx = self.layout.doors.iter().position(|d| {
+                door_edges_for(d, self.settings.cols, self.settings.rows)
+                    .iter()
+                    .any(|e| normalized_edge(e.0, e.1) == target)
+            });
+            if self.hover_door_idx.is_some() {
+                self.hover_room_idx = None;
+                self.hover_corridor_idx = None;
+                return;
+            }
+        }
+
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
             self.hover_room_idx = Some(room_idx);
             self.hover_corridor_idx = None;
+            self.hover_door_idx = None;
         } else {
             self.hover_room_idx = None;
             if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
                 self.hover_corridor_idx = Some(corridor_drag.corridor_index);
+                self.hover_door_idx = None;
             } else {
                 self.hover_corridor_idx = None;
+                self.hover_door_idx = None;
             }
         }
     }
@@ -777,7 +808,71 @@ impl DungeonApp {
         }
     }
 
+    fn draw_door_hover_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        let Some(idx) = self.hover_door_idx else {
+            return;
+        };
+        let Some(door) = self.layout.doors.get(idx) else {
+            return;
+        };
+        let color = Color32::from_gray(200);
+        let stroke = Stroke::new(2.0, color);
+        draw_door_line(
+            painter,
+            geometry,
+            door.from,
+            door.to,
+            door_render_width(door),
+            stroke,
+            DoorLineStyle::LongDash,
+        );
+    }
+
     fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
+        if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
+            let target = normalized_edge(edge.0, edge.1);
+            if let Some(idx) = self.layout.doors.iter().position(|d| {
+                door_edges_for(d, self.settings.cols, self.settings.rows)
+                    .iter()
+                    .any(|e| normalized_edge(e.0, e.1) == target)
+            }) {
+                let edges = door_edges_for(
+                    &self.layout.doors[idx],
+                    self.settings.cols,
+                    self.settings.rows,
+                );
+                let mut spawned = Vec::new();
+                for edge in edges {
+                    if normalized_edge(edge.0, edge.1) == target {
+                        continue;
+                    }
+                    if self
+                        .layout
+                        .doors
+                        .iter()
+                        .any(|d| normalized_edge(d.from, d.to) == normalized_edge(edge.0, edge.1))
+                    {
+                        continue;
+                    }
+                    spawned.push(layout::Door {
+                        from: edge.0,
+                        to: edge.1,
+                        width: 1,
+                        span_width: false,
+                        locked: false,
+                        archway: true,
+                    });
+                }
+                let door = &mut self.layout.doors[idx];
+                door.locked = false;
+                door.archway = true;
+                door.width = 1;
+                door.span_width = false;
+                self.layout.doors.extend(spawned);
+                return;
+            }
+        }
+
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
             self.delete_room(room_idx);
             return;
@@ -810,6 +905,132 @@ impl DungeonApp {
         }
         self.drag_state = None;
         self.refresh_doors();
+    }
+
+    fn add_door_at_pointer(
+        &mut self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+        locked: bool,
+    ) {
+        let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) else {
+            return;
+        };
+        let target = normalized_edge(edge.0, edge.1);
+        if let Some(idx) = self.layout.doors.iter().position(|d| {
+            door_edges_for(d, self.settings.cols, self.settings.rows)
+                .iter()
+                .any(|e| normalized_edge(e.0, e.1) == target)
+        }) {
+            let edges = door_edges_for(
+                &self.layout.doors[idx],
+                self.settings.cols,
+                self.settings.rows,
+            );
+            let mut spawned = Vec::new();
+            for edge in edges {
+                if normalized_edge(edge.0, edge.1) == target {
+                    continue;
+                }
+                if self
+                    .layout
+                    .doors
+                    .iter()
+                    .any(|d| normalized_edge(d.from, d.to) == normalized_edge(edge.0, edge.1))
+                {
+                    continue;
+                }
+                spawned.push(layout::Door {
+                    from: edge.0,
+                    to: edge.1,
+                    width: 1,
+                    span_width: false,
+                    locked: false,
+                    archway: true,
+                });
+            }
+            let door = &mut self.layout.doors[idx];
+            door.locked = locked;
+            door.archway = false;
+            door.width = 1;
+            door.span_width = false;
+            self.layout.doors.extend(spawned);
+            return;
+        }
+
+        let corridor_cells = corridor_cells(&self.layout, self.settings.cols, self.settings.rows);
+        let a_in_room = room_index_at_cell(&self.layout.rooms, edge.0).is_some();
+        let b_in_room = room_index_at_cell(&self.layout.rooms, edge.1).is_some();
+        let a_in_corridor = corridor_cells.contains(&edge.0);
+        let b_in_corridor = corridor_cells.contains(&edge.1);
+
+        if !(a_in_room ^ b_in_room) {
+            return;
+        }
+        if !(a_in_corridor ^ b_in_corridor) {
+            return;
+        }
+
+        self.layout.doors.push(layout::Door {
+            from: edge.0,
+            to: edge.1,
+            width: 1,
+            span_width: false,
+            locked,
+            archway: false,
+        });
+    }
+
+    fn door_edge_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<((usize, usize), (usize, usize))> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let cell_x = grid_x.floor() as isize;
+        let cell_y = grid_y.floor() as isize;
+        if cell_x < 0
+            || cell_y < 0
+            || cell_x >= self.settings.cols as isize
+            || cell_y >= self.settings.rows as isize
+        {
+            return None;
+        }
+
+        let fx = grid_x - grid_x.floor();
+        let fy = grid_y - grid_y.floor();
+        let left = fx;
+        let right = 1.0 - fx;
+        let top = fy;
+        let bottom = 1.0 - fy;
+
+        let mut candidates = [
+            (left, (cell_x - 1, cell_y), (cell_x, cell_y)),
+            (right, (cell_x + 1, cell_y), (cell_x, cell_y)),
+            (top, (cell_x, cell_y - 1), (cell_x, cell_y)),
+            (bottom, (cell_x, cell_y + 1), (cell_x, cell_y)),
+        ];
+        candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        let (dist, a, b) = candidates[0];
+        if dist > 0.2 {
+            return None;
+        }
+
+        let (ax, ay) = a;
+        let (bx, by) = b;
+        if ax < 0
+            || ay < 0
+            || bx < 0
+            || by < 0
+            || ax >= self.settings.cols as isize
+            || bx >= self.settings.cols as isize
+            || ay >= self.settings.rows as isize
+            || by >= self.settings.rows as isize
+        {
+            return None;
+        }
+
+        Some(((ax as usize, ay as usize), (bx as usize, by as usize)))
     }
 }
 
@@ -1117,7 +1338,7 @@ fn draw_layout(
             geometry,
             door.from,
             door.to,
-            door.width,
+            door_render_width(door),
             Stroke::new(door_width_px, color),
             style,
         );
@@ -1287,7 +1508,7 @@ fn door_edges_for(
         return edges;
     }
 
-    let width = door.width.max(1) as isize;
+    let width = door_render_width(door).max(1) as isize;
     let min_offset = -((width - 1) / 2);
     let max_offset = width / 2;
 
@@ -1316,6 +1537,14 @@ fn door_edges_for(
     }
 
     edges
+}
+
+fn door_render_width(door: &layout::Door) -> usize {
+    if door.span_width {
+        door.width.max(1)
+    } else {
+        1
+    }
 }
 
 fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(f32, f32)> {

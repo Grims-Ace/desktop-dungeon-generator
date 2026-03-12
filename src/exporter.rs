@@ -587,7 +587,9 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
             ("rgb(220,70,70)", None)
         };
 
-        if let Some((x1, y1, x2, y2)) = door_line_points(&g, door.from, door.to, door.width) {
+        if let Some((x1, y1, x2, y2)) =
+            door_line_points(&g, door.from, door.to, door_render_width(door))
+        {
             if let Some(pattern) = dash {
                 let _ = writeln!(
                     s,
@@ -938,7 +940,8 @@ fn draw_door(
     color: (u8, u8, u8, u8),
     style: DoorStyle,
 ) {
-    let Some((x1, y1, x2, y2)) = door_line_points(g, door.from, door.to, door.width) else {
+    let Some((x1, y1, x2, y2)) = door_line_points(g, door.from, door.to, door_render_width(door))
+    else {
         return;
     };
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
@@ -1097,7 +1100,7 @@ fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize),
         return edges;
     }
 
-    let width = door.width.max(1) as isize;
+    let width = door_render_width(door).max(1) as isize;
     let min_offset = -((width - 1) / 2);
     let max_offset = width / 2;
 
@@ -1126,4 +1129,12 @@ fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize),
     }
 
     edges
+}
+
+fn door_render_width(door: &Door) -> usize {
+    if door.span_width {
+        door.width.max(1)
+    } else {
+        1
+    }
 }

@@ -31,6 +31,7 @@ pub struct Door {
     pub from: (usize, usize),
     pub to: (usize, usize),
     pub width: usize,
+    pub span_width: bool,
     pub locked: bool,
     pub archway: bool,
 }
@@ -245,6 +246,7 @@ pub fn apply_doors(
                     from: edge.0,
                     to: edge.1,
                     width: corridor.width.max(1),
+                    span_width: true,
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
                 });
@@ -258,6 +260,7 @@ pub fn apply_doors(
                     from: edge.0,
                     to: edge.1,
                     width: corridor.width.max(1),
+                    span_width: true,
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
                 });
@@ -276,6 +279,7 @@ pub fn apply_doors(
                         from: edge.0,
                         to: edge.1,
                         width: 1,
+                        span_width: false,
                         locked: rng.next_f32() <= locked,
                         archway: false,
                     });
@@ -288,6 +292,7 @@ pub fn apply_doors(
                         from: edge.0,
                         to: edge.1,
                         width: 1,
+                        span_width: false,
                         locked: rng.next_f32() <= locked,
                         archway: false,
                     });
