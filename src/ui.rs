@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 enum Tab {
     Generate,
     Layout,
+    Add,
 }
 
 impl Default for Tab {
@@ -112,6 +113,7 @@ pub struct UiSettings {
     pub export_height: u32,
     pub allow_export_aspect_change: bool,
     pub export_show_grid: bool,
+    pub add_tool: AddTool,
     active_tab: Tab,
 }
 
@@ -140,9 +142,17 @@ impl Default for UiSettings {
             export_height: 1080,
             allow_export_aspect_change: false,
             export_show_grid: true,
+            add_tool: AddTool::None,
             active_tab: Tab::Generate,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AddTool {
+    None,
+    Room,
+    Corridor,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -168,6 +178,7 @@ pub fn draw_side_panel(
             ui.horizontal(|ui| {
                 let is_generate = settings.active_tab == Tab::Generate;
                 let is_layout = settings.active_tab == Tab::Layout;
+                let is_add = settings.active_tab == Tab::Add;
 
                 if ui.selectable_label(is_generate, "Generate").clicked() {
                     settings.active_tab = Tab::Generate;
@@ -175,12 +186,16 @@ pub fn draw_side_panel(
                 if ui.selectable_label(is_layout, "Layout").clicked() {
                     settings.active_tab = Tab::Layout;
                 }
+                if ui.selectable_label(is_add, "Add").clicked() {
+                    settings.active_tab = Tab::Add;
+                }
             });
             ui.separator();
 
             match settings.active_tab {
                 Tab::Generate => draw_generate_tab(ui, settings, &mut result, export_in_progress),
                 Tab::Layout => draw_layout_tab(ui, settings, &mut result),
+                Tab::Add => draw_add_tab(ui, settings),
             }
         });
 
@@ -533,4 +548,21 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
             "Allow Middle Corridor Doors",
         )
         .changed();
+}
+
+fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
+    ui.label(RichText::new("Add Tools").strong());
+    ui.add_space(8.0);
+
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::Room, "Add Room");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Corridor, "Add Corridor");
+    });
+
+    ui.add_space(6.0);
+    match settings.add_tool {
+        AddTool::Room => ui.label("Click to place a room at the grid cell."),
+        AddTool::Corridor => ui.label("Click-drag to place a corridor between two cells."),
+        AddTool::None => ui.label("Select a tool to add rooms or corridors."),
+    };
 }

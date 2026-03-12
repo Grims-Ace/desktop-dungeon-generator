@@ -11,7 +11,7 @@ use std::thread;
 use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{DoorSettings, DungeonLayout, corridor_cells, shortest_path_cells};
-use ui::{UiSettings, draw_side_panel};
+use ui::{AddTool, UiSettings, draw_side_panel};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
@@ -28,6 +28,8 @@ struct DungeonApp {
     layout: DungeonLayout,
     drag_state: Option<DragState>,
     export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
+    pending_delete: bool,
+    add_corridor_drag: Option<AddCorridorDrag>,
 }
 
 impl Default for DungeonApp {
@@ -52,6 +54,8 @@ impl Default for DungeonApp {
             layout,
             drag_state: None,
             export_rx: None,
+            pending_delete: false,
+            add_corridor_drag: None,
         }
     }
 }
@@ -80,6 +84,9 @@ impl eframe::App for DungeonApp {
 
         if panel_result.reset_clicked || panel_result.settings_changed {
             self.regenerate_layout();
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+            self.pending_delete = true;
         }
         if panel_result.export_clicked && self.export_rx.is_none() {
             let target = match exporter::select_export_target(&self.settings) {
@@ -144,6 +151,13 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
                 }
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(8.0);
+                ui.heading("Keybinds");
+                ui.add_space(6.0);
+                ui.label("Delete / Backspace: Remove hovered room or corridor");
+                ui.label("Right click: Cancel add tool");
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -152,12 +166,20 @@ impl eframe::App for DungeonApp {
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             self.handle_drag(&response, &geometry);
+            self.handle_add_tool(&response, &geometry);
+            if self.pending_delete {
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    self.delete_at_pointer(pointer_pos, &geometry);
+                }
+                self.pending_delete = false;
+            }
             draw_layout(
                 &painter,
                 &geometry,
                 &self.layout,
                 self.settings.colorblind_mode,
             );
+            self.draw_add_overlay(&painter, &geometry);
         });
     }
 }
@@ -182,6 +204,9 @@ impl DungeonApp {
     }
 
     fn handle_drag(&mut self, response: &egui::Response, geometry: &GridGeometry) {
+        if self.settings.add_tool != AddTool::None {
+            return;
+        }
         if response.drag_started()
             && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some((room_idx, offset_x, offset_y)) =
@@ -352,6 +377,190 @@ impl DungeonApp {
             self.settings.rows,
         );
     }
+
+    fn handle_add_tool(&mut self, response: &egui::Response, geometry: &GridGeometry) {
+        if response.secondary_clicked() {
+            self.settings.add_tool = AddTool::None;
+            self.add_corridor_drag = None;
+            return;
+        }
+
+        match self.settings.add_tool {
+            AddTool::Room => {
+                self.add_corridor_drag = None;
+                if response.clicked()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    self.add_room_at_cell(cell);
+                    self.settings.add_tool = AddTool::None;
+                }
+            }
+            AddTool::Corridor => {
+                if response.drag_started()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    self.add_corridor_drag = Some(AddCorridorDrag {
+                        start_cell: cell,
+                        current_cell: cell,
+                    });
+                }
+
+                if response.dragged()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                    && let Some(drag) = &mut self.add_corridor_drag
+                {
+                    drag.current_cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                }
+
+                if response.drag_stopped() {
+                    if let Some(drag) = self.add_corridor_drag.take() {
+                        self.add_corridor_between(drag.start_cell, drag.current_cell);
+                    }
+                    self.settings.add_tool = AddTool::None;
+                }
+            }
+            AddTool::None => {
+                self.add_corridor_drag = None;
+            }
+        }
+    }
+
+    fn draw_add_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        if self.settings.add_tool != AddTool::Corridor {
+            return;
+        }
+        let Some(drag) = &self.add_corridor_drag else {
+            return;
+        };
+
+        let start = cell_center(geometry, drag.start_cell.0, drag.start_cell.1);
+        let end = cell_center(geometry, drag.current_cell.0, drag.current_cell.1);
+        let stroke = Stroke::new(2.0, Color32::WHITE);
+        painter.circle_filled(start, 3.0, Color32::WHITE);
+        draw_dashed_line(painter, start, end, stroke, 8.0, 6.0);
+    }
+
+    fn add_room_at_cell(&mut self, cell: (usize, usize)) {
+        let width = self.settings.min_room_size.max(1);
+        let height = self.settings.min_room_size.max(1);
+        if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
+            return;
+        }
+        let max_w = self.settings.cols.saturating_sub(cell.0);
+        let max_h = self.settings.rows.saturating_sub(cell.1);
+        let width = width.min(max_w);
+        let height = height.min(max_h);
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        let new_room = layout::Room {
+            x: cell.0,
+            y: cell.1,
+            width,
+            height,
+        };
+
+        if self
+            .layout
+            .rooms
+            .iter()
+            .any(|room| rooms_overlap(&new_room, room))
+        {
+            return;
+        }
+
+        self.layout.rooms.push(new_room);
+        self.refresh_doors();
+    }
+
+    fn add_corridor_between(&mut self, start: (usize, usize), end: (usize, usize)) {
+        if start == end {
+            return;
+        }
+
+        let start_room = room_index_at_cell(&self.layout.rooms, start);
+        let end_room = room_index_at_cell(&self.layout.rooms, end);
+        let (Some(start_room), Some(end_room)) = (start_room, end_room) else {
+            return;
+        };
+
+        let mut blocked = HashSet::new();
+        for room in &self.layout.rooms {
+            for x in room.x..(room.x + room.width) {
+                for y in room.y..(room.y + room.height) {
+                    blocked.insert((x, y));
+                }
+            }
+        }
+        blocked.remove(&start);
+        blocked.remove(&end);
+
+        let Some(path) =
+            shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &blocked)
+        else {
+            return;
+        };
+
+        let next_id = self
+            .layout
+            .corridors
+            .iter()
+            .map(|c| c.id)
+            .max()
+            .unwrap_or(0)
+            .wrapping_add(1);
+        let width = self.settings.min_corridor_width.max(1);
+
+        self.layout.corridors.push(layout::Corridor {
+            id: next_id,
+            start_room_id: start_room,
+            end_room_id: end_room,
+            path,
+            width,
+        });
+        self.refresh_doors();
+    }
+
+    fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
+        if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+            self.delete_room(room_idx);
+            return;
+        }
+
+        if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
+            if corridor_drag.corridor_index < self.layout.corridors.len() {
+                self.layout.corridors.remove(corridor_drag.corridor_index);
+                self.drag_state = None;
+                self.refresh_doors();
+            }
+        }
+    }
+
+    fn delete_room(&mut self, room_idx: usize) {
+        if room_idx >= self.layout.rooms.len() {
+            return;
+        }
+        self.layout.rooms.remove(room_idx);
+        self.layout
+            .corridors
+            .retain(|c| c.start_room_id != room_idx && c.end_room_id != room_idx);
+        for corridor in &mut self.layout.corridors {
+            if corridor.start_room_id > room_idx {
+                corridor.start_room_id -= 1;
+            }
+            if corridor.end_room_id > room_idx {
+                corridor.end_room_id -= 1;
+            }
+        }
+        self.drag_state = None;
+        self.refresh_doors();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -366,6 +575,12 @@ struct CorridorDragState {
     corridor_index: usize,
     original_path: Vec<(usize, usize)>,
     original_cell: (usize, usize),
+}
+
+#[derive(Debug, Clone)]
+struct AddCorridorDrag {
+    start_cell: (usize, usize),
+    current_cell: (usize, usize),
 }
 
 #[derive(Debug, Clone)]
@@ -721,6 +936,23 @@ fn room_edges_from_rooms(rooms: &[layout::Room]) -> HashSet<((usize, usize), (us
         }
     }
     edges
+}
+
+fn room_index_at_cell(rooms: &[layout::Room], cell: (usize, usize)) -> Option<usize> {
+    rooms.iter().position(|room| {
+        cell.0 >= room.x
+            && cell.0 < room.x + room.width
+            && cell.1 >= room.y
+            && cell.1 < room.y + room.height
+    })
+}
+
+fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
+    let a_right = a.x + a.width;
+    let a_bottom = a.y + a.height;
+    let b_right = b.x + b.width;
+    let b_bottom = b.y + b.height;
+    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
 }
 
 fn door_edges_for(
