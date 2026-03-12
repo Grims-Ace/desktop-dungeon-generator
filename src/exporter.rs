@@ -297,14 +297,36 @@ fn export_composite_masks(
 
     let mut doors = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate doors mask canvas".to_string())?;
+    let mut archways = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate archways mask canvas".to_string())?;
+    let mut locked_doors = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate locked doors mask canvas".to_string())?;
     fill_bg(&mut doors, BLACK);
+    fill_bg(&mut archways, BLACK);
+    fill_bg(&mut locked_doors, BLACK);
     for door in &layout.doors {
-        draw_door(&mut doors, &g, door, door_w, WHITE, DoorStyle::Solid);
+        if door.archway {
+            draw_door(&mut archways, &g, door, door_w, WHITE, DoorStyle::Solid);
+        } else if door.locked {
+            draw_door(&mut locked_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
+        } else {
+            draw_door(&mut doors, &g, door, door_w, WHITE, DoorStyle::Solid);
+        }
     }
+
+    let composite = render_pixmap(layout, settings)?;
+    let composite_img = raster_image_from_pixmap(&composite, settings)?;
+    let composite_ext = settings.export_format.extension();
+    let composite_path = folder.join(format!("composite.{composite_ext}"));
+    composite_img
+        .save_with_format(&composite_path, export_image_format(settings.export_format))
+        .map_err(|e| format!("Failed writing {}: {e}", composite_path.display()))?;
 
     save_mask_image(folder, "floors_mask", &floors, settings)?;
     save_mask_image(folder, "walls_mask", &walls, settings)?;
     save_mask_image(folder, "doors_mask", &doors, settings)?;
+    save_mask_image(folder, "archways_mask", &archways, settings)?;
+    save_mask_image(folder, "locked_doors_mask", &locked_doors, settings)?;
     if settings.export_show_grid {
         let mut grid = Pixmap::new(g.width, g.height)
             .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
@@ -335,6 +357,15 @@ fn mask_image_format(format: MaskFormat) -> ImageFormat {
         MaskFormat::Png => ImageFormat::Png,
         MaskFormat::Jpeg => ImageFormat::Jpeg,
         MaskFormat::Webp => ImageFormat::WebP,
+    }
+}
+
+fn export_image_format(format: ExportFormat) -> ImageFormat {
+    match format {
+        ExportFormat::Png => ImageFormat::Png,
+        ExportFormat::Jpeg => ImageFormat::Jpeg,
+        ExportFormat::Webp => ImageFormat::WebP,
+        ExportFormat::Svg | ExportFormat::Folder => ImageFormat::Png,
     }
 }
 
