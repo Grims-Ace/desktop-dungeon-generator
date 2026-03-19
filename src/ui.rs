@@ -11,6 +11,7 @@ enum Tab {
 }
 
 impl Default for Tab {
+    // Start with the Generate tab selected.
     fn default() -> Self {
         Self::Generate
     }
@@ -26,12 +27,14 @@ pub enum ExportFormat {
 }
 
 impl Default for ExportFormat {
+    // Default export format is PNG.
     fn default() -> Self {
         Self::Png
     }
 }
 
 impl ExportFormat {
+    // Return the file extension for this export format.
     pub fn extension(self) -> &'static str {
         match self {
             ExportFormat::Png => "png",
@@ -42,6 +45,7 @@ impl ExportFormat {
         }
     }
 
+    // Return the UI label for this export format.
     pub fn label(self) -> &'static str {
         match self {
             ExportFormat::Png => ".png",
@@ -52,6 +56,7 @@ impl ExportFormat {
         }
     }
 
+    // Report whether this export format supports a raster resolution.
     pub fn supports_resolution(self) -> bool {
         !matches!(self, ExportFormat::Svg)
     }
@@ -65,12 +70,14 @@ pub enum MaskFormat {
 }
 
 impl Default for MaskFormat {
+    // Default mask format is PNG.
     fn default() -> Self {
         Self::Png
     }
 }
 
 impl MaskFormat {
+    // Return the file extension for this mask format.
     pub fn extension(self) -> &'static str {
         match self {
             MaskFormat::Png => "png",
@@ -79,6 +86,7 @@ impl MaskFormat {
         }
     }
 
+    // Return the UI label for this mask format.
     pub fn label(self) -> &'static str {
         match self {
             MaskFormat::Png => ".png",
@@ -118,6 +126,7 @@ pub struct UiSettings {
 }
 
 impl Default for UiSettings {
+    // Provide initial UI settings for a fresh session.
     fn default() -> Self {
         Self {
             seed: 1,
@@ -169,6 +178,7 @@ pub fn draw_side_panel(
     settings: &mut UiSettings,
     export_in_progress: bool,
 ) -> SidePanelResult {
+    // Render the left side panel and return user interaction results.
     let mut result = SidePanelResult::default();
 
     egui::SidePanel::left("options_panel")
@@ -204,6 +214,7 @@ pub fn draw_side_panel(
     result
 }
 
+// Render the Generate tab controls.
 fn draw_generate_tab(
     ui: &mut egui::Ui,
     settings: &mut UiSettings,
@@ -372,6 +383,7 @@ fn draw_generate_tab(
     }
 }
 
+// Render the Layout tab controls.
 fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
     ui.label(RichText::new("Room Settings").strong());
     ui.add_space(8.0);
@@ -552,6 +564,7 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
         .changed();
 }
 
+// Render the Add tab controls.
 fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     ui.label(RichText::new("Add Tools").strong());
     ui.add_space(8.0);

@@ -11,6 +11,7 @@ pub struct Room {
 }
 
 impl Room {
+    // Return the center cell of the room.
     pub fn center_cell(&self) -> (usize, usize) {
         (self.x + (self.width / 2), self.y + (self.height / 2))
     }
@@ -51,6 +52,7 @@ pub struct DungeonLayout {
     pub doors: Vec<Door>,
 }
 
+// Build a layout based on settings and a derived deterministic seed.
 pub fn generate_layout(
     cols: usize,
     rows: usize,
@@ -214,6 +216,7 @@ pub fn generate_layout(
     layout
 }
 
+// Populate layout doors based on corridor edges and door settings.
 pub fn apply_doors(
     layout: &mut DungeonLayout,
     seed: u64,
@@ -302,6 +305,7 @@ pub fn apply_doors(
     }
 }
 
+// Find the edge where a corridor path exits a room.
 fn room_exit_edge(
     path: &[(usize, usize)],
     room: &Room,
@@ -331,6 +335,7 @@ fn room_exit_edge(
     None
 }
 
+// Compute corridor cells while excluding room cells.
 pub fn corridor_cells(layout: &DungeonLayout, cols: usize, rows: usize) -> HashSet<(usize, usize)> {
     let mut cells = HashSet::new();
     if cols == 0 || rows == 0 {
@@ -411,6 +416,7 @@ pub fn corridor_cells(layout: &DungeonLayout, cols: usize, rows: usize) -> HashS
     cells
 }
 
+// Create a connected graph of room-to-room edges with optional dead ends.
 fn build_room_connection_edges(
     centers: &[(usize, usize)],
     randomness: f32,
@@ -470,6 +476,7 @@ fn build_room_connection_edges(
     edges
 }
 
+// Order core rooms to create a reasonable loop backbone.
 fn ordered_core_rooms(
     core_rooms: &[usize],
     centers: &[(usize, usize)],
@@ -504,6 +511,7 @@ fn ordered_core_rooms(
     ordered
 }
 
+// Insert a room edge only if it has not been added yet.
 fn push_unique_room_edge(
     a: usize,
     b: usize,
@@ -519,6 +527,7 @@ fn push_unique_room_edge(
     }
 }
 
+// Shuffle indices in place using the provided RNG.
 fn shuffle_indices(indices: &mut [usize], rng: &mut SimpleRng) {
     if indices.len() <= 1 {
         return;
@@ -529,6 +538,7 @@ fn shuffle_indices(indices: &mut [usize], rng: &mut SimpleRng) {
     }
 }
 
+// Compute the shortest grid path between two cells using BFS.
 pub fn shortest_path_cells(
     start: (usize, usize),
     end: (usize, usize),
@@ -604,6 +614,7 @@ pub fn shortest_path_cells(
     Some(path)
 }
 
+// Generate a noisy path biased toward the target cell.
 fn noisy_path(
     start: (usize, usize),
     end: (usize, usize),
@@ -698,6 +709,7 @@ fn noisy_path(
     path
 }
 
+// Test whether two rooms overlap with extra padding.
 fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     let a_left = a.x.saturating_sub(padding);
     let a_top = a.y.saturating_sub(padding);
@@ -712,10 +724,12 @@ fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     a_left < b_right && a_right > b_left && a_top < b_bottom && a_bottom > b_top
 }
 
+// Compute Manhattan distance between two grid cells.
 fn manhattan_distance(a: (usize, usize), b: (usize, usize)) -> usize {
     a.0.abs_diff(b.0) + a.1.abs_diff(b.1)
 }
 
+// Normalize a cell edge ordering.
 fn normalized_cell_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
 }
@@ -725,6 +739,7 @@ struct SimpleRng {
 }
 
 impl SimpleRng {
+    // Create a small deterministic RNG with a fallback seed.
     fn new(seed: u64) -> Self {
         let state = if seed == 0 {
             0xA5A5_A5A5_1234_5678
@@ -734,6 +749,7 @@ impl SimpleRng {
         Self { state }
     }
 
+    // Return the next random u32.
     fn next_u32(&mut self) -> u32 {
         self.state ^= self.state >> 12;
         self.state ^= self.state << 25;
@@ -741,10 +757,12 @@ impl SimpleRng {
         (self.state.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 32) as u32
     }
 
+    // Return the next random f32 in [0,1].
     fn next_f32(&mut self) -> f32 {
         self.next_u32() as f32 / u32::MAX as f32
     }
 
+    // Generate a random usize between min and max inclusive.
     fn range_inclusive(&mut self, min: usize, max: usize) -> usize {
         if min >= max {
             return min;

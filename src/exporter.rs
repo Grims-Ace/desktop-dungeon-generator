@@ -43,6 +43,7 @@ struct ExportGeometry {
 }
 
 impl ExportGeometry {
+    // Build export geometry with a fixed cell size and padding.
     fn new(cols: usize, rows: usize) -> Self {
         let cell = 64.0;
         let pad = 40.0;
@@ -58,14 +59,17 @@ impl ExportGeometry {
         }
     }
 
+    // Return the left padding offset.
     fn left(&self) -> f32 {
         self.pad
     }
 
+    // Return the top padding offset.
     fn top(&self) -> f32 {
         self.pad
     }
 
+    // Compute the rectangle for a cell in export space.
     fn cell_rect(&self, col: usize, row: usize) -> Option<Rect> {
         Rect::from_xywh(
             self.left() + col as f32 * self.cell,
@@ -75,6 +79,7 @@ impl ExportGeometry {
         )
     }
 
+    // Compute the center point of a cell in export space.
     fn cell_center(&self, col: usize, row: usize) -> (f32, f32) {
         (
             self.left() + (col as f32 + 0.5) * self.cell,
@@ -92,6 +97,7 @@ struct SceneData {
     door_edges: HashSet<((usize, usize), (usize, usize))>,
 }
 
+// Collect precomputed cell and edge sets needed for rendering.
 fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneData {
     let mut scene = SceneData::default();
 
@@ -116,6 +122,7 @@ fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneDat
     scene
 }
 
+// Open a dialog to select an export destination.
 pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, String> {
     if settings.export_format == ExportFormat::Folder {
         let folder = FileDialog::new()
@@ -145,6 +152,7 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
     Ok(ExportTarget::File(path))
 }
 
+// Export the current layout to the chosen file or folder target.
 pub fn export_to_target(
     layout: &DungeonLayout,
     settings: &UiSettings,
@@ -180,6 +188,7 @@ pub fn export_to_target(
     }
 }
 
+// Render the dungeon layout to a pixmap.
 fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let scene = collect_scene_data(layout, settings);
@@ -251,6 +260,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     Ok(pixmap)
 }
 
+// Export composite image plus mask layers into a folder.
 fn export_composite_masks(
     layout: &DungeonLayout,
     settings: &UiSettings,
@@ -338,6 +348,7 @@ fn export_composite_masks(
     Ok(())
 }
 
+// Write a single mask image to disk.
 fn save_mask_image(
     folder: &std::path::Path,
     stem: &str,
@@ -352,6 +363,7 @@ fn save_mask_image(
     Ok(())
 }
 
+// Map a mask format to an image encoding.
 fn mask_image_format(format: MaskFormat) -> ImageFormat {
     match format {
         MaskFormat::Png => ImageFormat::Png,
@@ -360,6 +372,7 @@ fn mask_image_format(format: MaskFormat) -> ImageFormat {
     }
 }
 
+// Map an export format to an image encoding.
 fn export_image_format(format: ExportFormat) -> ImageFormat {
     match format {
         ExportFormat::Png => ImageFormat::Png,
@@ -369,6 +382,7 @@ fn export_image_format(format: ExportFormat) -> ImageFormat {
     }
 }
 
+// Convert a pixmap into a raster image at the target size.
 fn raster_image_from_pixmap(
     pixmap: &Pixmap,
     settings: &UiSettings,
@@ -385,6 +399,7 @@ fn raster_image_from_pixmap(
     Ok(img)
 }
 
+// Convert a pixmap into a thresholded mask image.
 fn raster_mask_image_from_pixmap(
     pixmap: &Pixmap,
     settings: &UiSettings,
@@ -408,12 +423,14 @@ fn raster_mask_image_from_pixmap(
     Ok(DynamicImage::ImageRgba8(out))
 }
 
+// Compute the mask target size based on export width scaling.
 fn raster_mask_target_size(settings: &UiSettings, src_w: u32, src_h: u32) -> (u32, u32) {
     let (target_w, _target_h) = raster_target_size(settings);
     let scale = ((target_w as f32) / (src_w as f32)).round().max(1.0) as u32;
     (src_w.saturating_mul(scale), src_h.saturating_mul(scale))
 }
 
+// Compute the output raster size while honoring aspect settings.
 fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
     let mut width = settings.export_width.clamp(1, 10_000);
     let mut height = settings.export_height.clamp(1, 10_000);
@@ -426,16 +443,10 @@ fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
         height = height.clamp(1, 10_000);
     }
 
-    if width == 0 {
-        width = 1;
-    }
-    if height == 0 {
-        height = 1;
-    }
-
     (width, height)
 }
 
+// Build an SVG document for the current layout.
 fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let wall_w = (g.cell / 5.0).max(1.0);
@@ -608,6 +619,7 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     s
 }
 
+// Fill the entire pixmap with a solid color.
 fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.0, color.1, color.2, color.3);
@@ -618,10 +630,12 @@ fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Draw the default grid lines.
 fn draw_grid(pixmap: &mut Pixmap, g: &ExportGeometry) {
     draw_grid_color(pixmap, g, GRID);
 }
 
+// Draw grid lines using a specific color.
 fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, u8, u8)) {
     let left = g.left();
     let top = g.top();
@@ -647,6 +661,7 @@ fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, u8, 
     }
 }
 
+// Fill a single cell rectangle with a color.
 fn fill_rect_cell(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -662,6 +677,7 @@ fn fill_rect_cell(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Fill an entire room rectangle with a color.
 fn fill_rect_room(pixmap: &mut Pixmap, g: &ExportGeometry, room: &Room, color: (u8, u8, u8, u8)) {
     let Some(rect) = Rect::from_xywh(
         g.left() + room.x as f32 * g.cell,
@@ -677,6 +693,7 @@ fn fill_rect_room(pixmap: &mut Pixmap, g: &ExportGeometry, room: &Room, color: (
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Draw a filled circle for dot patterns.
 fn draw_dot(pixmap: &mut Pixmap, cx: f32, cy: f32, radius: f32, color: (u8, u8, u8, u8)) {
     let mut pb = PathBuilder::new();
     pb.push_circle(cx, cy, radius);
@@ -694,6 +711,7 @@ fn draw_dot(pixmap: &mut Pixmap, cx: f32, cy: f32, radius: f32, color: (u8, u8, 
     );
 }
 
+// Draw a crosshatch overlay for a room.
 fn draw_room_crosshatch(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -730,6 +748,7 @@ fn draw_room_crosshatch(
     }
 }
 
+// Draw wall segments around occupied cells.
 fn draw_cell_walls(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -812,6 +831,7 @@ fn draw_cell_walls(
     }
 }
 
+// Draw a single wall segment as a filled rectangle.
 fn draw_wall_segment(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -848,6 +868,7 @@ fn draw_wall_segment(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Round a width to the nearest even pixel size.
 fn snap_even_width(value: f32) -> f32 {
     let mut w = value.round().max(1.0);
     if (w as u32) % 2 == 1 {
@@ -856,6 +877,7 @@ fn snap_even_width(value: f32) -> f32 {
     w
 }
 
+// Append SVG wall rectangles for the given cells.
 fn append_svg_walls(
     out: &mut String,
     g: &ExportGeometry,
@@ -932,6 +954,7 @@ fn append_svg_walls(
     }
 }
 
+// Draw a door line onto the pixmap.
 fn draw_door(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -947,6 +970,7 @@ fn draw_door(
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
 }
 
+// Compute the door line endpoints in export space.
 fn door_line_points(
     g: &ExportGeometry,
     a: (usize, usize),
@@ -980,6 +1004,7 @@ fn door_line_points(
     }
 }
 
+// Draw a styled line in the pixmap.
 fn draw_line(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -998,6 +1023,7 @@ fn draw_line(
     }
 }
 
+// Stroke a path with optional dash patterns.
 fn stroke_path(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -1027,6 +1053,7 @@ fn stroke_path(
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
+// Draw a dotted line using repeated circles.
 fn dotted_line(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -1054,10 +1081,12 @@ fn dotted_line(
     }
 }
 
+// Normalize an edge tuple to a stable ordering.
 fn norm_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
 }
 
+// Build a set of corridor-adjacent edges from corridor cells.
 fn corridor_edges_from_cells(
     corridor_cells: &HashSet<(usize, usize)>,
 ) -> HashSet<((usize, usize), (usize, usize))> {
@@ -1075,6 +1104,7 @@ fn corridor_edges_from_cells(
     edges
 }
 
+// Build a set of internal room edges from room rectangles.
 fn room_edges_from_rooms(rooms: &[Room]) -> HashSet<((usize, usize), (usize, usize))> {
     let mut edges = HashSet::new();
     for room in rooms {
@@ -1094,6 +1124,7 @@ fn room_edges_from_rooms(rooms: &[Room]) -> HashSet<((usize, usize), (usize, usi
     edges
 }
 
+// Expand a door into all grid edges it spans based on width.
 fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize), (usize, usize))> {
     let mut edges = Vec::new();
     if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
@@ -1131,6 +1162,7 @@ fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize),
     edges
 }
 
+// Determine the rendered door width in cells.
 fn door_render_width(door: &Door) -> usize {
     if door.span_width {
         door.width.max(1)

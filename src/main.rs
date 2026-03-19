@@ -13,6 +13,7 @@ use egui::{Color32, Stroke};
 use layout::{DoorSettings, DungeonLayout, corridor_cells, shortest_path_cells};
 use ui::{AddTool, UiSettings, draw_side_panel};
 
+// Boot the native app and start the egui event loop.
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
 
@@ -37,6 +38,7 @@ struct DungeonApp {
 }
 
 impl Default for DungeonApp {
+    // Build the app with persisted settings and a generated layout.
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
         let layout = layout::generate_layout(
@@ -69,6 +71,7 @@ impl Default for DungeonApp {
 }
 
 impl Drop for DungeonApp {
+    // Persist settings when the app is being dropped.
     fn drop(&mut self) {
         if let Err(err) = settings::save_settings(&self.settings) {
             eprintln!("Failed to save settings: {err}");
@@ -77,6 +80,7 @@ impl Drop for DungeonApp {
 }
 
 impl eframe::App for DungeonApp {
+    // Render UI, handle input, and update app state each frame.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let panel_result = draw_side_panel(ctx, &mut self.settings, self.export_rx.is_some());
 
@@ -201,6 +205,7 @@ impl eframe::App for DungeonApp {
 }
 
 impl DungeonApp {
+    // Regenerate the dungeon layout from current settings and reset drag state.
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.layout = layout::generate_layout(
@@ -219,6 +224,7 @@ impl DungeonApp {
         );
     }
 
+    // Handle dragging rooms or corridors with the primary mouse button.
     fn handle_drag(
         &mut self,
         ctx: &egui::Context,
@@ -265,6 +271,7 @@ impl DungeonApp {
         }
     }
 
+    // Resolve the top-most room under the pointer and return its index and offset.
     fn room_at_pointer(
         &self,
         pointer_pos: egui::Pos2,
@@ -286,6 +293,7 @@ impl DungeonApp {
         None
     }
 
+    // Move a room to follow the pointer and reroute its corridors.
     fn drag_room_to_pointer(
         &mut self,
         drag: RoomDragState,
@@ -323,6 +331,7 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    // Recalculate corridor paths connected to a moved room.
     fn reroute_corridors_for_room(&mut self, room_idx: usize) {
         let empty = HashSet::new();
         for corridor in &mut self.layout.corridors {
@@ -338,6 +347,7 @@ impl DungeonApp {
         }
     }
 
+    // Capture corridor drag state when the pointer is over a corridor cell.
     fn corridor_drag_at_pointer(
         &self,
         pointer_pos: egui::Pos2,
@@ -358,6 +368,7 @@ impl DungeonApp {
         })
     }
 
+    // Reroute a corridor path through the current pointer cell.
     fn drag_corridor_to_pointer(
         &mut self,
         drag: CorridorDragState,
@@ -392,6 +403,7 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    // Rebuild doors based on the current layout and settings.
     fn refresh_doors(&mut self) {
         layout::apply_doors(
             &mut self.layout,
@@ -402,6 +414,7 @@ impl DungeonApp {
         );
     }
 
+    // Handle add-tool interactions for rooms, corridors, and doors.
     fn handle_add_tool(&mut self, response: &egui::Response, geometry: &GridGeometry) {
         if self.settings.add_tool != AddTool::None && response.secondary_clicked() {
             self.settings.add_tool = AddTool::None;
@@ -464,6 +477,7 @@ impl DungeonApp {
         }
     }
 
+    // Draw the overlay showing the corridor add drag preview.
     fn draw_add_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
         if self.settings.add_tool != AddTool::Corridor {
             return;
@@ -479,6 +493,7 @@ impl DungeonApp {
         draw_dashed_line(painter, start, end, stroke, 8.0, 6.0);
     }
 
+    // Add a room anchored to the given grid cell if space allows.
     fn add_room_at_cell(&mut self, cell: (usize, usize)) {
         let width = self.settings.min_room_size.max(1);
         let height = self.settings.min_room_size.max(1);
@@ -513,6 +528,7 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    // Add a corridor between two room cells using a shortest path.
     fn add_corridor_between(&mut self, start: (usize, usize), end: (usize, usize)) {
         if start == end {
             return;
@@ -561,6 +577,7 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    // Update which room/corridor/door is currently hovered.
     fn update_hover_targets(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
             self.hover_room_idx = None;
@@ -598,6 +615,7 @@ impl DungeonApp {
         }
     }
 
+    // Handle right-click resizing of rooms and return whether resizing is active.
     fn handle_resize(
         &mut self,
         ctx: &egui::Context,
@@ -636,6 +654,7 @@ impl DungeonApp {
         false
     }
 
+    // Choose the nearest room corner and initialize resize state.
     fn start_resize(
         &self,
         room_idx: usize,
@@ -691,6 +710,7 @@ impl DungeonApp {
         })
     }
 
+    // Resize a room toward a target cell while honoring constraints.
     fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
         let cols = self.settings.cols.max(1);
         let rows = self.settings.rows.max(1);
@@ -741,6 +761,7 @@ impl DungeonApp {
         }
     }
 
+    // Draw dashed overlays for room resizing interactions.
     fn draw_resize_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
         let room_idx = self
             .resize_state
@@ -791,6 +812,7 @@ impl DungeonApp {
         }
     }
 
+    // Draw a dashed overlay along the hovered corridor path.
     fn draw_corridor_hover_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
         let Some(idx) = self.hover_corridor_idx else {
             return;
@@ -808,6 +830,7 @@ impl DungeonApp {
         }
     }
 
+    // Draw a dashed overlay along the hovered door.
     fn draw_door_hover_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
         let Some(idx) = self.hover_door_idx else {
             return;
@@ -828,6 +851,7 @@ impl DungeonApp {
         );
     }
 
+    // Delete the door, room, or corridor at the pointer position.
     fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
             let target = normalized_edge(edge.0, edge.1);
@@ -887,6 +911,7 @@ impl DungeonApp {
         }
     }
 
+    // Remove a room and update corridors/doors to match.
     fn delete_room(&mut self, room_idx: usize) {
         if room_idx >= self.layout.rooms.len() {
             return;
@@ -907,6 +932,7 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    // Add or update a door at the pointer edge.
     fn add_door_at_pointer(
         &mut self,
         pointer_pos: egui::Pos2,
@@ -981,6 +1007,7 @@ impl DungeonApp {
         });
     }
 
+    // Find the nearest cell edge under the pointer for door placement.
     fn door_edge_at_pointer(
         &self,
         pointer_pos: egui::Pos2,
@@ -1081,6 +1108,7 @@ struct GridGeometry {
     rows: usize,
 }
 
+// Draw the grid and return geometry metrics for hit testing.
 fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize) -> GridGeometry {
     let cols = cols.max(1);
     let rows = rows.max(1);
@@ -1130,6 +1158,7 @@ fn draw_grid(painter: &egui::Painter, area: egui::Rect, cols: usize, rows: usize
     }
 }
 
+// Render rooms, corridors, walls, and doors in the main canvas.
 fn draw_layout(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -1345,6 +1374,7 @@ fn draw_layout(
     }
 }
 
+// Compute the rectangle for a given grid cell.
 fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
     let left = geometry.rect.left() + col as f32 * geometry.cell_size;
     let top = geometry.rect.top() + row as f32 * geometry.cell_size;
@@ -1354,6 +1384,7 @@ fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
     )
 }
 
+// Draw a rectangular wall segment between two points.
 fn draw_wall_segment(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -1383,10 +1414,12 @@ fn draw_wall_segment(
     }
 }
 
+// Normalize an edge tuple to a stable ordering.
 fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
 }
 
+// Build a set of corridor-adjacent edges from corridor cells.
 fn corridor_edges_from_cells(
     corridor_cells: &HashSet<(usize, usize)>,
 ) -> HashSet<((usize, usize), (usize, usize))> {
@@ -1404,6 +1437,7 @@ fn corridor_edges_from_cells(
     edges
 }
 
+// Build a set of internal room edges from room rectangles.
 fn room_edges_from_rooms(rooms: &[layout::Room]) -> HashSet<((usize, usize), (usize, usize))> {
     let mut edges = HashSet::new();
     for room in rooms {
@@ -1423,6 +1457,7 @@ fn room_edges_from_rooms(rooms: &[layout::Room]) -> HashSet<((usize, usize), (us
     edges
 }
 
+// Find the index of the room containing a specific cell.
 fn room_index_at_cell(rooms: &[layout::Room], cell: (usize, usize)) -> Option<usize> {
     rooms.iter().position(|room| {
         cell.0 >= room.x
@@ -1432,6 +1467,7 @@ fn room_index_at_cell(rooms: &[layout::Room], cell: (usize, usize)) -> Option<us
     })
 }
 
+// Check whether two rooms overlap by area.
 fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
     let a_right = a.x + a.width;
     let a_bottom = a.y + a.height;
@@ -1440,6 +1476,7 @@ fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
     a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
 }
 
+// Draw a single resize handle glyph at a corner.
 fn draw_resize_handle(
     painter: &egui::Painter,
     corner: egui::Pos2,
@@ -1498,6 +1535,7 @@ fn draw_resize_handle(
     }
 }
 
+// Expand a door into all grid edges it spans based on width.
 fn door_edges_for(
     door: &layout::Door,
     cols: usize,
@@ -1539,6 +1577,7 @@ fn door_edges_for(
     edges
 }
 
+// Determine the rendered door width in cells.
 fn door_render_width(door: &layout::Door) -> usize {
     if door.span_width {
         door.width.max(1)
@@ -1547,6 +1586,7 @@ fn door_render_width(door: &layout::Door) -> usize {
     }
 }
 
+// Convert a pointer position to grid coordinates if inside the grid.
 fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(f32, f32)> {
     if !geometry.rect.contains(pointer_pos) {
         return None;
@@ -1557,6 +1597,7 @@ fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(
     Some((x, y))
 }
 
+// Recompute a path that must pass through a target cell.
 fn reroute_path_through_cell(
     original_path: &[(usize, usize)],
     original_cell: (usize, usize),
@@ -1611,6 +1652,7 @@ fn reroute_path_through_cell(
     Some(full_path)
 }
 
+// Remove loops in a path by truncating back to repeated cells.
 fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
     let mut out = Vec::new();
     for &cell in path.iter() {
@@ -1623,6 +1665,7 @@ fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
     *path = out;
 }
 
+// Convert UI door settings into layout door settings.
 fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
     DoorSettings {
         frequency_percent: settings.door_frequency_percent,
@@ -1632,6 +1675,7 @@ fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
     }
 }
 
+// Draw a door line segment with a selected style.
 fn draw_door_line(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -1676,6 +1720,7 @@ enum DoorLineStyle {
     Dotted,
 }
 
+// Draw a line with solid, dashed, or dotted styling.
 fn draw_styled_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -1693,6 +1738,7 @@ fn draw_styled_line(
     }
 }
 
+// Draw a dashed line between two points.
 fn draw_dashed_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -1721,6 +1767,7 @@ fn draw_dashed_line(
     }
 }
 
+// Draw a dotted line between two points.
 fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
     let dx = to.x - from.x;
     let dy = to.y - from.y;
@@ -1741,6 +1788,7 @@ fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, s
     }
 }
 
+// Compute the center position of a grid cell.
 fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
     egui::pos2(
         geometry.rect.left() + (col as f32 + 0.5) * geometry.cell_size,
@@ -1748,6 +1796,7 @@ fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
     )
 }
 
+// Draw a crosshatch pattern inside a room for colorblind mode.
 fn draw_room_crosshatch(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -1763,6 +1812,7 @@ fn draw_room_crosshatch(
     }
 }
 
+// Draw a colored legend entry in the sidebar.
 fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
     ui.horizontal(|ui| {
         let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
@@ -1789,6 +1839,7 @@ enum LegendStyle {
     DottedLine,
 }
 
+// Draw a patterned legend entry for colorblind mode.
 fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendStyle) {
     ui.horizontal(|ui| {
         let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
