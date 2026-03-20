@@ -411,6 +411,41 @@ pub fn corridor_cells(layout: &DungeonLayout, cols: usize, rows: usize) -> HashS
                 }
             }
         }
+
+        for turn in corridor.path.windows(3) {
+            let prev = turn[0];
+            let corner = turn[1];
+            let next = turn[2];
+            let incoming = (
+                corner.0 as isize - prev.0 as isize,
+                corner.1 as isize - prev.1 as isize,
+            );
+            let outgoing = (
+                next.0 as isize - corner.0 as isize,
+                next.1 as isize - corner.1 as isize,
+            );
+            if incoming == outgoing {
+                continue;
+            }
+
+            for dx in min_offset..=max_offset {
+                let nx = corner.0 as isize + dx;
+                if nx < 0 || nx >= cols as isize {
+                    continue;
+                }
+                for dy in min_offset..=max_offset {
+                    let ny = corner.1 as isize + dy;
+                    if ny < 0 || ny >= rows as isize {
+                        continue;
+                    }
+
+                    let cell = (nx as usize, ny as usize);
+                    if !room_cells.contains(&cell) {
+                        cells.insert(cell);
+                    }
+                }
+            }
+        }
     }
 
     cells
