@@ -10,7 +10,9 @@ use std::thread;
 
 use eframe::egui;
 use egui::{Color32, Stroke};
-use layout::{DoorSettings, DungeonLayout, corridor_cells, shortest_path_cells};
+use layout::{
+    DoorSettings, DungeonLayout, blocked_room_cells, corridor_cells, shortest_path_cells,
+};
 use ui::{AddTool, UiSettings, draw_side_panel};
 
 // Boot the native app and start the egui event loop.
@@ -333,7 +335,6 @@ impl DungeonApp {
 
     // Recalculate corridor paths connected to a moved room.
     fn reroute_corridors_for_room(&mut self, room_idx: usize) {
-        let empty = HashSet::new();
         for corridor in &mut self.layout.corridors {
             if corridor.start_room_id != room_idx && corridor.end_room_id != room_idx {
                 continue;
@@ -341,9 +342,15 @@ impl DungeonApp {
 
             let start = self.layout.rooms[corridor.start_room_id].center_cell();
             let end = self.layout.rooms[corridor.end_room_id].center_cell();
-            corridor.path =
-                shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &empty)
-                    .unwrap_or_else(|| vec![start, end]);
+            let blocked = blocked_room_cells(
+                &self.layout.rooms,
+                &[corridor.start_room_id, corridor.end_room_id],
+            );
+            if let Some(path) =
+                shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &blocked)
+            {
+                corridor.path = path;
+            }
         }
     }
 
@@ -383,6 +390,7 @@ impl DungeonApp {
             self.drag_state = None;
             return;
         }
+        let corridor = &self.layout.corridors[drag.corridor_index];
 
         let target = (
             (grid_x.floor().max(0.0) as usize).min(self.settings.cols.saturating_sub(1)),
@@ -395,6 +403,10 @@ impl DungeonApp {
             target,
             self.settings.cols,
             self.settings.rows,
+            &blocked_room_cells(
+                &self.layout.rooms,
+                &[corridor.start_room_id, corridor.end_room_id],
+            ),
         ) else {
             return;
         };
@@ -540,16 +552,7 @@ impl DungeonApp {
             return;
         };
 
-        let mut blocked = HashSet::new();
-        for room in &self.layout.rooms {
-            for x in room.x..(room.x + room.width) {
-                for y in room.y..(room.y + room.height) {
-                    blocked.insert((x, y));
-                }
-            }
-        }
-        blocked.remove(&start);
-        blocked.remove(&end);
+        let blocked = blocked_room_cells(&self.layout.rooms, &[start_room, end_room]);
 
         let Some(path) =
             shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &blocked)
@@ -1604,13 +1607,14 @@ fn reroute_path_through_cell(
     target_cell: (usize, usize),
     cols: usize,
     rows: usize,
+    blocked_room_cells_set: &HashSet<(usize, usize)>,
 ) -> Option<Vec<(usize, usize)>> {
     let (&start, &end) = (original_path.first()?, original_path.last()?);
     if start == end {
         return None;
     }
 
-    let mut blocked = HashSet::new();
+    let mut blocked = blocked_room_cells_set.clone();
     blocked.insert(original_cell);
     blocked.remove(&start);
     blocked.remove(&end);

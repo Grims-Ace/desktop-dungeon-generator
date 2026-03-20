@@ -52,6 +52,26 @@ pub struct DungeonLayout {
     pub doors: Vec<Door>,
 }
 
+// Collect all room cells except those belonging to excluded room ids.
+pub fn blocked_room_cells(rooms: &[Room], excluded_room_ids: &[usize]) -> HashSet<(usize, usize)> {
+    let excluded: HashSet<usize> = excluded_room_ids.iter().copied().collect();
+    let mut blocked = HashSet::new();
+
+    for (room_idx, room) in rooms.iter().enumerate() {
+        if excluded.contains(&room_idx) {
+            continue;
+        }
+
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                blocked.insert((x, y));
+            }
+        }
+    }
+
+    blocked
+}
+
 // Build a layout based on settings and a derived deterministic seed.
 pub fn generate_layout(
     cols: usize,
@@ -178,9 +198,10 @@ pub fn generate_layout(
     for (start_room_id, end_room_id) in room_edges {
         let start = centers[start_room_id];
         let end = centers[end_room_id];
+        let blocked = blocked_room_cells(&rooms, &[start_room_id, end_room_id]);
 
         let path = if randomness <= 0.001 {
-            shortest_path_cells(start, end, cols, rows, &HashSet::new())
+            shortest_path_cells(start, end, cols, rows, &blocked)
         } else {
             Some(noisy_path(
                 start,
@@ -188,10 +209,11 @@ pub fn generate_layout(
                 cols,
                 rows,
                 randomness,
+                &blocked,
                 &mut path_rng,
             ))
         }
-        .or_else(|| shortest_path_cells(start, end, cols, rows, &HashSet::new()));
+        .or_else(|| shortest_path_cells(start, end, cols, rows, &blocked));
 
         if let Some(path) = path
             && path.len() >= 2
@@ -656,6 +678,7 @@ fn noisy_path(
     cols: usize,
     rows: usize,
     randomness: f32,
+    blocked: &HashSet<(usize, usize)>,
     rng: &mut SimpleRng,
 ) -> Vec<(usize, usize)> {
     if start == end {
@@ -698,6 +721,10 @@ fn noisy_path(
         let mut best_score = f32::INFINITY;
 
         for &candidate in &neighbors {
+            if blocked.contains(&candidate) && candidate != end {
+                continue;
+            }
+
             let step_dir = (
                 candidate.0 as isize - current.0 as isize,
                 candidate.1 as isize - current.1 as isize,
@@ -734,7 +761,7 @@ fn noisy_path(
     }
 
     if current != end
-        && let Some(tail) = shortest_path_cells(current, end, cols, rows, &HashSet::new())
+        && let Some(tail) = shortest_path_cells(current, end, cols, rows, blocked)
     {
         for &cell in tail.iter().skip(1) {
             path.push(cell);
