@@ -291,6 +291,26 @@ pub fn apply_doors(
                 });
             }
         }
+
+        for (room_idx, room) in layout.rooms.iter().enumerate() {
+            if room_idx == corridor.start_room_id || room_idx == corridor.end_room_id {
+                continue;
+            }
+
+            for edge in room_collision_edges(&corridor.path, room) {
+                if seen_edges.insert(edge) {
+                    let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+                    layout.doors.push(Door {
+                        from: edge.0,
+                        to: edge.1,
+                        width: corridor.width.max(1),
+                        span_width: true,
+                        locked: place_door && rng.next_f32() <= locked,
+                        archway: !place_door,
+                    });
+                }
+            }
+        }
     }
 
     if settings.allow_middle_corridor_doors {
@@ -355,6 +375,36 @@ fn room_exit_edge(
     }
 
     None
+}
+
+// Find every edge where a corridor path crosses into or out of a room.
+fn room_collision_edges(
+    path: &[(usize, usize)],
+    room: &Room,
+) -> Vec<((usize, usize), (usize, usize))> {
+    let in_room = |cell: (usize, usize)| {
+        cell.0 >= room.x
+            && cell.0 < room.x + room.width
+            && cell.1 >= room.y
+            && cell.1 < room.y + room.height
+    };
+
+    let mut edges = Vec::new();
+    let mut seen = HashSet::new();
+    for pair in path.windows(2) {
+        let a_in_room = in_room(pair[0]);
+        let b_in_room = in_room(pair[1]);
+        if a_in_room == b_in_room {
+            continue;
+        }
+
+        let edge = normalized_cell_edge(pair[0], pair[1]);
+        if seen.insert(edge) {
+            edges.push(edge);
+        }
+    }
+
+    edges
 }
 
 // Compute corridor cells while excluding room cells.
