@@ -432,7 +432,7 @@ fn raster_mask_target_size(settings: &UiSettings, src_w: u32, src_h: u32) -> (u3
 
 // Compute the output raster size while honoring aspect settings.
 fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
-    let mut width = settings.export_width.clamp(1, 10_000);
+    let width = settings.export_width.clamp(1, 10_000);
     let mut height = settings.export_height.clamp(1, 10_000);
 
     if !settings.allow_export_aspect_change {
