@@ -45,11 +45,23 @@ pub struct DoorSettings {
     pub allow_middle_corridor_doors: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,
     pub doors: Vec<Door>,
+    pub packed_rooms: bool,
+}
+
+impl Default for DungeonLayout {
+    fn default() -> Self {
+        Self {
+            rooms: Vec::new(),
+            corridors: Vec::new(),
+            doors: Vec::new(),
+            packed_rooms: false,
+        }
+    }
 }
 
 // Collect all room cells except those belonging to excluded room ids.
@@ -85,6 +97,7 @@ pub fn generate_layout(
     max_corridor_width: usize,
     corridor_randomness_percent: usize,
     dead_end_room_percent: usize,
+    pack_rooms_without_corridors: bool,
     door_settings: DoorSettings,
 ) -> DungeonLayout {
     let layout_salt = ((cols as u64) << 48)
@@ -110,6 +123,7 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            packed_rooms: pack_rooms_without_corridors,
         };
     }
 
@@ -130,7 +144,36 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            packed_rooms: pack_rooms_without_corridors,
         };
+    }
+
+    let room_sizes = generate_room_sizes(
+        target_room_count,
+        cols,
+        rows,
+        min_size,
+        max_size,
+        square_rooms_only,
+        &mut room_rng,
+    );
+    let room_count = room_sizes.len();
+    let centers = random_centers(room_count, cols, rows, &mut graph_rng);
+    let randomness = (corridor_randomness_percent.min(100) as f32) / 100.0;
+    let target_dead_end_rooms = ((room_count * dead_end_room_percent.min(50)) + 50) / 100;
+    let room_edges =
+        build_room_connection_edges(&centers, randomness, target_dead_end_rooms, &mut graph_rng);
+
+    if pack_rooms_without_corridors {
+        rooms = place_packed_rooms(&room_sizes, &room_edges, cols, rows, &mut room_rng);
+        let mut layout = DungeonLayout {
+            rooms,
+            corridors,
+            doors: Vec::new(),
+            packed_rooms: true,
+        };
+        apply_doors(&mut layout, seed, door_settings, cols, rows);
+        return layout;
     }
 
     let max_attempts = target_room_count.saturating_mul(40).max(50);
@@ -181,10 +224,10 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            packed_rooms: false,
         };
     }
 
-    let randomness = (corridor_randomness_percent.min(100) as f32) / 100.0;
     let mut min_width = min_corridor_width.max(1);
     let max_grid_width = cols.max(1).min(rows.max(1));
     let max_width = max_corridor_width.max(min_width).min(max_grid_width);
@@ -233,6 +276,7 @@ pub fn generate_layout(
         rooms,
         corridors,
         doors: Vec::new(),
+        packed_rooms: false,
     };
     apply_doors(&mut layout, seed, door_settings, cols, rows);
     layout
@@ -247,6 +291,11 @@ pub fn apply_doors(
     rows: usize,
 ) {
     layout.doors.clear();
+
+    if layout.packed_rooms {
+        apply_packed_room_doors(layout, seed, settings);
+        return;
+    }
 
     let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
     let base = (settings.frequency_percent.min(100) as f32) / 100.0;
@@ -347,6 +396,38 @@ pub fn apply_doors(
     }
 }
 
+fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
+    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
+    let door_chance = ((settings.frequency_percent.min(100) as f32) / 100.0)
+        * ((settings.room_hallway_percent.min(100) as f32) / 100.0);
+    let locked = (settings.locked_percent.min(100) as f32) / 100.0;
+
+    for (a_idx, b_idx, shared_edges) in shared_room_boundaries(&layout.rooms) {
+        let edge_idx = if shared_edges.len() <= 1 {
+            0
+        } else {
+            rng.range_inclusive(0, shared_edges.len() - 1)
+        };
+        let edge = shared_edges[edge_idx];
+        let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+
+        let width = shared_opening_width(
+            &layout.rooms[a_idx],
+            &layout.rooms[b_idx],
+            shared_edges.len(),
+            1,
+        );
+        layout.doors.push(Door {
+            from: edge.0,
+            to: edge.1,
+            width,
+            span_width: width > 1,
+            locked: place_door && rng.next_f32() <= locked,
+            archway: !place_door,
+        });
+    }
+}
+
 // Find the edge where a corridor path exits a room.
 fn room_exit_edge(
     path: &[(usize, usize)],
@@ -401,6 +482,53 @@ fn room_collision_edges(
         let edge = normalized_cell_edge(pair[0], pair[1]);
         if seen.insert(edge) {
             edges.push(edge);
+        }
+    }
+
+    edges
+}
+
+fn shared_room_boundaries(
+    rooms: &[Room],
+) -> Vec<(usize, usize, Vec<((usize, usize), (usize, usize))>)> {
+    let mut boundaries = Vec::new();
+    for a_idx in 0..rooms.len() {
+        for b_idx in (a_idx + 1)..rooms.len() {
+            let shared_edges = shared_boundary_edges(&rooms[a_idx], &rooms[b_idx]);
+            if !shared_edges.is_empty() {
+                boundaries.push((a_idx, b_idx, shared_edges));
+            }
+        }
+    }
+    boundaries
+}
+
+fn shared_boundary_edges(a: &Room, b: &Room) -> Vec<((usize, usize), (usize, usize))> {
+    let mut edges = Vec::new();
+
+    if a.x + a.width == b.x || b.x + b.width == a.x {
+        let left = if a.x < b.x { a } else { b };
+        let right = if a.x < b.x { b } else { a };
+        let y0 = left.y.max(right.y);
+        let y1 = (left.y + left.height).min(right.y + right.height);
+        for y in y0..y1 {
+            edges.push(normalized_cell_edge(
+                (left.x + left.width - 1, y),
+                (right.x, y),
+            ));
+        }
+    }
+
+    if a.y + a.height == b.y || b.y + b.height == a.y {
+        let top = if a.y < b.y { a } else { b };
+        let bottom = if a.y < b.y { b } else { a };
+        let x0 = top.x.max(bottom.x);
+        let x1 = (top.x + top.width).min(bottom.x + bottom.width);
+        for x in x0..x1 {
+            edges.push(normalized_cell_edge(
+                (x, top.y + top.height - 1),
+                (x, bottom.y),
+            ));
         }
     }
 
@@ -521,6 +649,291 @@ pub fn corridor_cells(layout: &DungeonLayout, cols: usize, rows: usize) -> HashS
     }
 
     cells
+}
+
+fn generate_room_sizes(
+    target_room_count: usize,
+    cols: usize,
+    rows: usize,
+    min_size: usize,
+    max_size: usize,
+    square_rooms_only: bool,
+    rng: &mut SimpleRng,
+) -> Vec<(usize, usize)> {
+    let mut sizes = Vec::new();
+    let max_attempts = target_room_count.saturating_mul(40).max(50);
+
+    for _ in 0..max_attempts {
+        if sizes.len() >= target_room_count {
+            break;
+        }
+
+        let (width, height) = if square_rooms_only {
+            let side = rng.range_inclusive(min_size, max_size.min(cols.min(rows)));
+            (side, side)
+        } else {
+            let width_max = max_size.min(cols);
+            let height_max = max_size.min(rows);
+            if min_size > width_max || min_size > height_max {
+                continue;
+            }
+            (
+                rng.range_inclusive(min_size, width_max),
+                rng.range_inclusive(min_size, height_max),
+            )
+        };
+
+        if width <= cols && height <= rows {
+            sizes.push((width, height));
+        }
+    }
+
+    sizes
+}
+
+fn random_centers(
+    count: usize,
+    cols: usize,
+    rows: usize,
+    rng: &mut SimpleRng,
+) -> Vec<(usize, usize)> {
+    let mut centers = Vec::with_capacity(count);
+    for _ in 0..count {
+        centers.push((
+            rng.range_inclusive(0, cols.saturating_sub(1)),
+            rng.range_inclusive(0, rows.saturating_sub(1)),
+        ));
+    }
+    centers
+}
+
+fn place_packed_rooms(
+    room_sizes: &[(usize, usize)],
+    room_edges: &[(usize, usize)],
+    cols: usize,
+    rows: usize,
+    rng: &mut SimpleRng,
+) -> Vec<Room> {
+    if room_sizes.is_empty() || cols == 0 || rows == 0 {
+        return Vec::new();
+    }
+
+    let mut placed: Vec<Option<Room>> = vec![None; room_sizes.len()];
+    let (first_w, first_h) = room_sizes[0];
+    if first_w > cols || first_h > rows {
+        return Vec::new();
+    }
+
+    placed[0] = Some(Room {
+        x: (cols.saturating_sub(first_w)) / 2,
+        y: (rows.saturating_sub(first_h)) / 2,
+        width: first_w,
+        height: first_h,
+    });
+
+    let mut order = placement_order(room_sizes.len(), room_edges);
+    if !order.contains(&0) {
+        order.insert(0, 0);
+    }
+
+    for room_idx in order.into_iter().skip(1) {
+        let Some(room) =
+            try_place_packed_room(room_idx, room_sizes, room_edges, &placed, cols, rows, rng)
+        else {
+            continue;
+        };
+        placed[room_idx] = Some(room);
+    }
+
+    for room_idx in 0..room_sizes.len() {
+        if placed[room_idx].is_some() {
+            continue;
+        }
+        if let Some(room) =
+            try_place_packed_room(room_idx, room_sizes, room_edges, &placed, cols, rows, rng)
+        {
+            placed[room_idx] = Some(room);
+        }
+    }
+
+    placed.into_iter().flatten().collect()
+}
+
+fn placement_order(room_count: usize, room_edges: &[(usize, usize)]) -> Vec<usize> {
+    if room_count == 0 {
+        return Vec::new();
+    }
+
+    let mut adjacency = vec![Vec::new(); room_count];
+    for &(a, b) in room_edges {
+        adjacency[a].push(b);
+        adjacency[b].push(a);
+    }
+
+    let mut visited = vec![false; room_count];
+    let mut queue = VecDeque::new();
+    let mut order = Vec::with_capacity(room_count);
+    queue.push_back(0);
+    visited[0] = true;
+
+    while let Some(idx) = queue.pop_front() {
+        order.push(idx);
+        for &next in &adjacency[idx] {
+            if !visited[next] {
+                visited[next] = true;
+                queue.push_back(next);
+            }
+        }
+    }
+
+    for idx in 0..room_count {
+        if !visited[idx] {
+            order.push(idx);
+        }
+    }
+
+    order
+}
+
+fn try_place_packed_room(
+    room_idx: usize,
+    room_sizes: &[(usize, usize)],
+    room_edges: &[(usize, usize)],
+    placed: &[Option<Room>],
+    cols: usize,
+    rows: usize,
+    rng: &mut SimpleRng,
+) -> Option<Room> {
+    let (width, height) = *room_sizes.get(room_idx)?;
+    if width > cols || height > rows {
+        return None;
+    }
+
+    let mut anchors: Vec<usize> = room_edges
+        .iter()
+        .filter_map(|&(a, b)| {
+            if a == room_idx && placed.get(b)?.is_some() {
+                Some(b)
+            } else if b == room_idx && placed.get(a)?.is_some() {
+                Some(a)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if anchors.is_empty() {
+        anchors = placed
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, room)| room.as_ref().map(|_| idx))
+            .collect();
+    }
+
+    shuffle_indices(&mut anchors, rng);
+
+    for anchor_idx in anchors {
+        let Some(anchor) = placed.get(anchor_idx).and_then(|room| room.as_ref()) else {
+            continue;
+        };
+        let mut candidates = packed_room_candidates(anchor, width, height, cols, rows);
+        shuffle_rooms(&mut candidates, rng);
+
+        for candidate in candidates {
+            if placed
+                .iter()
+                .flatten()
+                .all(|existing| !rooms_overlap(&candidate, existing))
+                && placed
+                    .iter()
+                    .flatten()
+                    .any(|existing| rooms_touch(&candidate, existing))
+            {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
+}
+
+fn packed_room_candidates(
+    anchor: &Room,
+    width: usize,
+    height: usize,
+    cols: usize,
+    rows: usize,
+) -> Vec<Room> {
+    let mut candidates = Vec::new();
+
+    let min_y = anchor.y.saturating_sub(height.saturating_sub(1));
+    let max_y = (anchor.y + anchor.height).saturating_sub(1);
+    for y in min_y..=max_y {
+        candidates.push(Room {
+            x: anchor.x.saturating_sub(width),
+            y,
+            width,
+            height,
+        });
+        candidates.push(Room {
+            x: anchor.x + anchor.width,
+            y,
+            width,
+            height,
+        });
+    }
+
+    let min_x = anchor.x.saturating_sub(width.saturating_sub(1));
+    let max_x = (anchor.x + anchor.width).saturating_sub(1);
+    for x in min_x..=max_x {
+        candidates.push(Room {
+            x,
+            y: anchor.y.saturating_sub(height),
+            width,
+            height,
+        });
+        candidates.push(Room {
+            x,
+            y: anchor.y + anchor.height,
+            width,
+            height,
+        });
+    }
+
+    candidates.retain(|room| room.x + room.width <= cols && room.y + room.height <= rows);
+    candidates
+}
+
+fn shuffle_rooms(rooms: &mut [Room], rng: &mut SimpleRng) {
+    if rooms.len() <= 1 {
+        return;
+    }
+    for i in (1..rooms.len()).rev() {
+        let j = rng.range_inclusive(0, i);
+        rooms.swap(i, j);
+    }
+}
+
+fn rooms_overlap(a: &Room, b: &Room) -> bool {
+    let a_right = a.x + a.width;
+    let a_bottom = a.y + a.height;
+    let b_right = b.x + b.width;
+    let b_bottom = b.y + b.height;
+
+    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+}
+
+fn rooms_touch(a: &Room, b: &Room) -> bool {
+    !shared_boundary_edges(a, b).is_empty()
+}
+
+fn shared_opening_width(a: &Room, b: &Room, span: usize, default_width: usize) -> usize {
+    let max_width = if a.x + a.width == b.x || b.x + b.width == a.x {
+        a.height.min(b.height)
+    } else {
+        a.width.min(b.width)
+    };
+    default_width.max(1).min(span).min(max_width.max(1))
 }
 
 // Create a connected graph of room-to-room edges with optional dead ends.

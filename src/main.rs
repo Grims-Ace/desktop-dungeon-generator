@@ -55,6 +55,7 @@ impl Default for DungeonApp {
             settings.max_corridor_width,
             settings.corridor_randomness,
             settings.dead_end_rooms_percent,
+            settings.pack_rooms_without_corridors,
             door_settings_from_ui(&settings),
         );
         Self {
@@ -222,6 +223,7 @@ impl DungeonApp {
             self.settings.max_corridor_width,
             self.settings.corridor_randomness,
             self.settings.dead_end_rooms_percent,
+            self.settings.pack_rooms_without_corridors,
             door_settings_from_ui(&self.settings),
         );
     }
@@ -335,6 +337,10 @@ impl DungeonApp {
 
     // Recalculate corridor paths connected to a moved room.
     fn reroute_corridors_for_room(&mut self, room_idx: usize) {
+        if self.layout.packed_rooms {
+            return;
+        }
+
         for corridor in &mut self.layout.corridors {
             if corridor.start_room_id != room_idx && corridor.end_room_id != room_idx {
                 continue;

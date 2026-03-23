@@ -110,6 +110,7 @@ pub struct UiSettings {
     pub max_corridor_width: usize,
     pub corridor_randomness: usize,
     pub dead_end_rooms_percent: usize,
+    pub pack_rooms_without_corridors: bool,
     pub door_frequency_percent: usize,
     pub room_hallway_door_percent: usize,
     pub locked_door_percent: usize,
@@ -140,6 +141,7 @@ impl Default for UiSettings {
             max_corridor_width: 2,
             corridor_randomness: 0,
             dead_end_rooms_percent: 0,
+            pack_rooms_without_corridors: false,
             door_frequency_percent: 30,
             room_hallway_door_percent: 70,
             locked_door_percent: 25,
@@ -435,6 +437,12 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
     ui.add_space(8.0);
     result.settings_changed |= ui
         .checkbox(&mut settings.square_rooms_only, "Square Rooms Only")
+        .changed();
+    result.settings_changed |= ui
+        .checkbox(
+            &mut settings.pack_rooms_without_corridors,
+            "Pack Rooms Together (No Corridors)",
+        )
         .changed();
 
     ui.add_space(12.0);
