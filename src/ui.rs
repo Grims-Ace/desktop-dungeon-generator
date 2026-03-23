@@ -115,6 +115,12 @@ pub struct UiSettings {
     pub room_hallway_door_percent: usize,
     pub locked_door_percent: usize,
     pub allow_middle_corridor_doors: bool,
+    pub windows_enabled: bool,
+    pub min_window_width: usize,
+    pub max_window_width: usize,
+    pub window_frequency_percent: usize,
+    pub room_hallway_window_percent: usize,
+    pub allow_internal_windows: bool,
     pub colorblind_mode: bool,
     pub export_format: ExportFormat,
     pub mask_format: MaskFormat,
@@ -146,6 +152,12 @@ impl Default for UiSettings {
             room_hallway_door_percent: 70,
             locked_door_percent: 25,
             allow_middle_corridor_doors: false,
+            windows_enabled: false,
+            min_window_width: 1,
+            max_window_width: 2,
+            window_frequency_percent: 30,
+            room_hallway_window_percent: 40,
+            allow_internal_windows: false,
             colorblind_mode: false,
             export_format: ExportFormat::Png,
             mask_format: MaskFormat::Png,
@@ -576,6 +588,92 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
             "Allow Middle Corridor Doors",
         )
         .changed();
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Window Settings").strong());
+    ui.add_space(8.0);
+
+    result.settings_changed |= ui
+        .checkbox(&mut settings.windows_enabled, "Enable Windows")
+        .changed();
+
+    if settings.windows_enabled {
+        ui.add_space(8.0);
+        ui.label("Min Window Width");
+        ui.horizontal(|ui| {
+            result.settings_changed |= ui
+                .add(egui::Slider::new(&mut settings.min_window_width, 1..=5).show_value(false))
+                .changed();
+            result.settings_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.min_window_width)
+                        .speed(1.0)
+                        .range(1..=5),
+                )
+                .changed();
+        });
+
+        ui.add_space(8.0);
+        ui.label("Max Window Width");
+        ui.horizontal(|ui| {
+            result.settings_changed |= ui
+                .add(egui::Slider::new(&mut settings.max_window_width, 1..=5).show_value(false))
+                .changed();
+            result.settings_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.max_window_width)
+                        .speed(1.0)
+                        .range(1..=5),
+                )
+                .changed();
+        });
+
+        ui.add_space(8.0);
+        ui.label("Window Frequency (%)");
+        ui.horizontal(|ui| {
+            result.settings_changed |= ui
+                .add(
+                    egui::Slider::new(&mut settings.window_frequency_percent, 0..=100)
+                        .show_value(false),
+                )
+                .changed();
+            result.settings_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.window_frequency_percent)
+                        .speed(1.0)
+                        .range(0..=100),
+                )
+                .changed();
+        });
+
+        ui.add_space(8.0);
+        ui.label("Internal Window Chance (%)");
+        ui.horizontal(|ui| {
+            result.settings_changed |= ui
+                .add(
+                    egui::Slider::new(&mut settings.room_hallway_window_percent, 0..=100)
+                        .show_value(false),
+                )
+                .changed();
+            result.settings_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut settings.room_hallway_window_percent)
+                        .speed(1.0)
+                        .range(0..=100),
+                )
+                .changed();
+        });
+
+        ui.add_space(8.0);
+        result.settings_changed |= ui
+            .checkbox(
+                &mut settings.allow_internal_windows,
+                "Allow Internal Windows",
+            )
+            .changed();
+    }
 }
 
 // Render the Add tab controls.

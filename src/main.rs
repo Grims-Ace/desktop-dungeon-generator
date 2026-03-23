@@ -11,7 +11,8 @@ use std::thread;
 use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{
-    DoorSettings, DungeonLayout, blocked_room_cells, corridor_cells, shortest_path_cells,
+    DoorSettings, DungeonLayout, WindowSettings, blocked_room_cells, corridor_cells,
+    shortest_path_cells,
 };
 use ui::{AddTool, UiSettings, draw_side_panel};
 
@@ -57,6 +58,7 @@ impl Default for DungeonApp {
             settings.dead_end_rooms_percent,
             settings.pack_rooms_without_corridors,
             door_settings_from_ui(&settings),
+            window_settings_from_ui(&settings),
         );
         Self {
             settings,
@@ -95,6 +97,9 @@ impl eframe::App for DungeonApp {
         }
         if self.settings.min_corridor_width > self.settings.max_corridor_width {
             self.settings.max_corridor_width = self.settings.min_corridor_width;
+        }
+        if self.settings.min_window_width > self.settings.max_window_width {
+            self.settings.max_window_width = self.settings.min_window_width;
         }
 
         if panel_result.clear_clicked {
@@ -160,13 +165,15 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry_colorblind(ui, "Doors", LegendStyle::LongDash);
                     draw_legend_entry_colorblind(ui, "Locked Doors", LegendStyle::ShortDash);
                     draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
+                    draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
                 } else {
                     draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
                     draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
                     draw_legend_entry(ui, Color32::BLACK, "Walls");
                     draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Doors");
                     draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
-                    draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Archways");
+                    draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
+                    draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
                 }
                 ui.add_space(10.0);
                 ui.separator();
@@ -242,6 +249,7 @@ impl DungeonApp {
             self.settings.dead_end_rooms_percent,
             self.settings.pack_rooms_without_corridors,
             door_settings_from_ui(&self.settings),
+            window_settings_from_ui(&self.settings),
         );
     }
 
@@ -444,6 +452,13 @@ impl DungeonApp {
             &mut self.layout,
             self.settings.seed,
             door_settings_from_ui(&self.settings),
+            self.settings.cols,
+            self.settings.rows,
+        );
+        layout::apply_windows(
+            &mut self.layout,
+            self.settings.seed,
+            window_settings_from_ui(&self.settings),
             self.settings.cols,
             self.settings.rows,
         );
@@ -1371,7 +1386,7 @@ fn draw_layout(
         let color = if colorblind_mode {
             Color32::BLACK
         } else if door.archway {
-            Color32::from_rgb(70, 130, 220)
+            Color32::from_rgb(230, 140, 60)
         } else if door.locked {
             Color32::from_rgb(220, 70, 70)
         } else {
@@ -1395,6 +1410,21 @@ fn draw_layout(
             door.to,
             door_render_width(door),
             Stroke::new(door_width_px, color),
+            style,
+        );
+    }
+
+    for window in &layout.windows {
+        let style = if colorblind_mode {
+            DoorLineStyle::DashDot
+        } else {
+            DoorLineStyle::Solid
+        };
+        draw_window_line(
+            painter,
+            geometry,
+            window,
+            Stroke::new(door_width_px, Color32::from_rgb(70, 130, 220)),
             style,
         );
     }
@@ -1612,6 +1642,14 @@ fn door_render_width(door: &layout::Door) -> usize {
     }
 }
 
+fn window_render_width(window: &layout::Window) -> usize {
+    if window.span_width {
+        window.width.max(1)
+    } else {
+        1
+    }
+}
+
 // Convert a pointer position to grid coordinates if inside the grid.
 fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(f32, f32)> {
     if !geometry.rect.contains(pointer_pos) {
@@ -1702,6 +1740,17 @@ fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
     }
 }
 
+fn window_settings_from_ui(settings: &UiSettings) -> WindowSettings {
+    WindowSettings {
+        enabled: settings.windows_enabled,
+        min_width: settings.min_window_width,
+        max_width: settings.max_window_width,
+        frequency_percent: settings.window_frequency_percent,
+        room_hallway_percent: settings.room_hallway_window_percent,
+        allow_internal_windows: settings.allow_internal_windows,
+    }
+}
+
 // Draw a door line segment with a selected style.
 fn draw_door_line(
     painter: &egui::Painter,
@@ -1739,12 +1788,64 @@ fn draw_door_line(
     }
 }
 
+fn draw_window_line(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    window: &layout::Window,
+    stroke: Stroke,
+    style: DoorLineStyle,
+) {
+    let width_cells = window_render_width(window).max(1) as isize;
+    let min_offset = -((width_cells - 1) / 2);
+    let max_offset = width_cells / 2;
+
+    match window.side {
+        layout::WindowSide::Left => {
+            let x = geometry.rect.left() + window.cell.0 as f32 * geometry.cell_size;
+            let row = window.cell.1 as isize;
+            let y0_cell = (row + min_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+            let y1_cell = (row + max_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+            let y0 = geometry.rect.top() + y0_cell as f32 * geometry.cell_size;
+            let y1 = geometry.rect.top() + (y1_cell as f32 + 1.0) * geometry.cell_size;
+            draw_styled_line(painter, egui::pos2(x, y0), egui::pos2(x, y1), stroke, style);
+        }
+        layout::WindowSide::Right => {
+            let x = geometry.rect.left() + (window.cell.0 as f32 + 1.0) * geometry.cell_size;
+            let row = window.cell.1 as isize;
+            let y0_cell = (row + min_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+            let y1_cell = (row + max_offset).clamp(0, geometry.rows.saturating_sub(1) as isize);
+            let y0 = geometry.rect.top() + y0_cell as f32 * geometry.cell_size;
+            let y1 = geometry.rect.top() + (y1_cell as f32 + 1.0) * geometry.cell_size;
+            draw_styled_line(painter, egui::pos2(x, y0), egui::pos2(x, y1), stroke, style);
+        }
+        layout::WindowSide::Top => {
+            let y = geometry.rect.top() + window.cell.1 as f32 * geometry.cell_size;
+            let col = window.cell.0 as isize;
+            let x0_cell = (col + min_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+            let x1_cell = (col + max_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+            let x0 = geometry.rect.left() + x0_cell as f32 * geometry.cell_size;
+            let x1 = geometry.rect.left() + (x1_cell as f32 + 1.0) * geometry.cell_size;
+            draw_styled_line(painter, egui::pos2(x0, y), egui::pos2(x1, y), stroke, style);
+        }
+        layout::WindowSide::Bottom => {
+            let y = geometry.rect.top() + (window.cell.1 as f32 + 1.0) * geometry.cell_size;
+            let col = window.cell.0 as isize;
+            let x0_cell = (col + min_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+            let x1_cell = (col + max_offset).clamp(0, geometry.cols.saturating_sub(1) as isize);
+            let x0 = geometry.rect.left() + x0_cell as f32 * geometry.cell_size;
+            let x1 = geometry.rect.left() + (x1_cell as f32 + 1.0) * geometry.cell_size;
+            draw_styled_line(painter, egui::pos2(x0, y), egui::pos2(x1, y), stroke, style);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum DoorLineStyle {
     Solid,
     LongDash,
     ShortDash,
     Dotted,
+    DashDot,
 }
 
 // Draw a line with solid, dashed, or dotted styling.
@@ -1762,6 +1863,7 @@ fn draw_styled_line(
         DoorLineStyle::LongDash => draw_dashed_line(painter, from, to, stroke, 14.0, 7.0),
         DoorLineStyle::ShortDash => draw_dashed_line(painter, from, to, stroke, 6.0, 4.0),
         DoorLineStyle::Dotted => draw_dotted_line(painter, from, to, stroke),
+        DoorLineStyle::DashDot => draw_dash_dot_line(painter, from, to, stroke),
     }
 }
 
@@ -1815,6 +1917,32 @@ fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, s
     }
 }
 
+fn draw_dash_dot_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+
+    let ux = dx / len;
+    let uy = dy / len;
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let dash_end = (dist + 7.0).min(len);
+        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
+        painter.line_segment([p0, p1], stroke);
+        dist = dash_end + 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot, (stroke.width * 0.35).max(1.0), stroke.color);
+        dist += 4.0;
+    }
+}
+
 // Compute the center position of a grid cell.
 fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
     egui::pos2(
@@ -1864,6 +1992,7 @@ enum LegendStyle {
     LongDash,
     ShortDash,
     DottedLine,
+    DashDotLine,
 }
 
 // Draw a patterned legend entry for colorblind mode.
@@ -1929,6 +2058,12 @@ fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendSty
                 2.0,
             ),
             LegendStyle::DottedLine => draw_dotted_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+            LegendStyle::DashDotLine => draw_dash_dot_line(
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),

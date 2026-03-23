@@ -37,6 +37,22 @@ pub struct Door {
     pub archway: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct Window {
+    pub cell: (usize, usize),
+    pub side: WindowSide,
+    pub width: usize,
+    pub span_width: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowSide {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct DoorSettings {
     pub frequency_percent: usize,
@@ -45,11 +61,22 @@ pub struct DoorSettings {
     pub allow_middle_corridor_doors: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct WindowSettings {
+    pub enabled: bool,
+    pub min_width: usize,
+    pub max_width: usize,
+    pub frequency_percent: usize,
+    pub room_hallway_percent: usize,
+    pub allow_internal_windows: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,
     pub doors: Vec<Door>,
+    pub windows: Vec<Window>,
     pub packed_rooms: bool,
 }
 
@@ -59,6 +86,7 @@ impl Default for DungeonLayout {
             rooms: Vec::new(),
             corridors: Vec::new(),
             doors: Vec::new(),
+            windows: Vec::new(),
             packed_rooms: false,
         }
     }
@@ -99,6 +127,7 @@ pub fn generate_layout(
     dead_end_room_percent: usize,
     pack_rooms_without_corridors: bool,
     door_settings: DoorSettings,
+    window_settings: WindowSettings,
 ) -> DungeonLayout {
     let layout_salt = ((cols as u64) << 48)
         ^ ((rows as u64) << 32)
@@ -123,6 +152,7 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            windows: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -144,6 +174,7 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            windows: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -170,9 +201,11 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            windows: Vec::new(),
             packed_rooms: true,
         };
         apply_doors(&mut layout, seed, door_settings, cols, rows);
+        apply_windows(&mut layout, seed, window_settings, cols, rows);
         return layout;
     }
 
@@ -224,6 +257,7 @@ pub fn generate_layout(
             rooms,
             corridors,
             doors: Vec::new(),
+            windows: Vec::new(),
             packed_rooms: false,
         };
     }
@@ -276,9 +310,11 @@ pub fn generate_layout(
         rooms,
         corridors,
         doors: Vec::new(),
+        windows: Vec::new(),
         packed_rooms: false,
     };
     apply_doors(&mut layout, seed, door_settings, cols, rows);
+    apply_windows(&mut layout, seed, window_settings, cols, rows);
     layout
 }
 
@@ -428,6 +464,241 @@ fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: Door
     }
 }
 
+pub fn apply_windows(
+    layout: &mut DungeonLayout,
+    seed: u64,
+    settings: WindowSettings,
+    cols: usize,
+    rows: usize,
+) {
+    layout.windows.clear();
+
+    if !settings.enabled || cols == 0 || rows == 0 {
+        return;
+    }
+
+    let mut min_width = settings.min_width.clamp(1, 5);
+    let max_width = settings.max_width.clamp(min_width, 5);
+    min_width = min_width.min(max_width);
+
+    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xA117_0055_u64));
+    let base = (settings.frequency_percent.min(100) as f32) / 100.0;
+    let internal_ratio = (settings.room_hallway_percent.min(100) as f32) / 100.0;
+
+    for segment in collect_window_segments(layout, cols, rows, settings.allow_internal_windows) {
+        let chance = if segment.internal {
+            if !settings.allow_internal_windows {
+                continue;
+            }
+            base * internal_ratio
+        } else {
+            base * (1.0 - internal_ratio)
+        };
+
+        if chance <= 0.0 || rng.next_f32() > chance {
+            continue;
+        }
+
+        let max_segment_width = max_width.min(segment.cells.len()).max(1);
+        let width = rng.range_inclusive(min_width.min(max_segment_width), max_segment_width);
+        let cell = select_segment_cell(&segment.cells, width, &mut rng);
+        layout.windows.push(Window {
+            cell,
+            side: segment.side,
+            width,
+            span_width: width > 1,
+        });
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WindowSegment {
+    cells: Vec<(usize, usize)>,
+    side: WindowSide,
+    internal: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowTarget {
+    Exterior,
+    Corridor,
+    Room(usize),
+}
+
+fn collect_window_segments(
+    layout: &DungeonLayout,
+    cols: usize,
+    rows: usize,
+    allow_internal_windows: bool,
+) -> Vec<WindowSegment> {
+    let corridor_cells = corridor_cells(layout, cols, rows);
+    let mut segments = Vec::new();
+
+    for (room_idx, room) in layout.rooms.iter().enumerate() {
+        collect_room_side_segments(
+            room_idx,
+            room,
+            layout,
+            &corridor_cells,
+            cols,
+            rows,
+            allow_internal_windows,
+            WindowSide::Left,
+            &mut segments,
+        );
+        collect_room_side_segments(
+            room_idx,
+            room,
+            layout,
+            &corridor_cells,
+            cols,
+            rows,
+            allow_internal_windows,
+            WindowSide::Right,
+            &mut segments,
+        );
+        collect_room_side_segments(
+            room_idx,
+            room,
+            layout,
+            &corridor_cells,
+            cols,
+            rows,
+            allow_internal_windows,
+            WindowSide::Top,
+            &mut segments,
+        );
+        collect_room_side_segments(
+            room_idx,
+            room,
+            layout,
+            &corridor_cells,
+            cols,
+            rows,
+            allow_internal_windows,
+            WindowSide::Bottom,
+            &mut segments,
+        );
+    }
+
+    segments
+}
+
+fn collect_room_side_segments(
+    room_idx: usize,
+    room: &Room,
+    layout: &DungeonLayout,
+    corridor_cells: &HashSet<(usize, usize)>,
+    cols: usize,
+    rows: usize,
+    allow_internal_windows: bool,
+    side: WindowSide,
+    segments: &mut Vec<WindowSegment>,
+) {
+    let cells: Vec<(usize, usize)> = match side {
+        WindowSide::Left => (room.y..(room.y + room.height))
+            .map(|y| (room.x, y))
+            .collect(),
+        WindowSide::Right => (room.y..(room.y + room.height))
+            .map(|y| (room.x + room.width - 1, y))
+            .collect(),
+        WindowSide::Top => (room.x..(room.x + room.width))
+            .map(|x| (x, room.y))
+            .collect(),
+        WindowSide::Bottom => (room.x..(room.x + room.width))
+            .map(|x| (x, room.y + room.height - 1))
+            .collect(),
+    };
+
+    let mut current_target = None;
+    let mut current_cells = Vec::new();
+
+    for cell in cells {
+        let Some(neighbor) = outward_neighbor(cell, side, cols, rows) else {
+            push_window_segment(current_target, side, &mut current_cells, segments);
+            current_target = Some(WindowTarget::Exterior);
+            current_cells.push(cell);
+            continue;
+        };
+
+        let target = if let Some(other_room_idx) = room_index_at_cell(&layout.rooms, neighbor) {
+            if other_room_idx == room_idx || !allow_internal_windows || other_room_idx < room_idx {
+                None
+            } else {
+                Some(WindowTarget::Room(other_room_idx))
+            }
+        } else if corridor_cells.contains(&neighbor) {
+            allow_internal_windows.then_some(WindowTarget::Corridor)
+        } else {
+            Some(WindowTarget::Exterior)
+        };
+
+        if current_target != target {
+            push_window_segment(current_target, side, &mut current_cells, segments);
+            current_target = target;
+        }
+
+        if target.is_some() {
+            current_cells.push(cell);
+        }
+    }
+
+    push_window_segment(current_target, side, &mut current_cells, segments);
+}
+
+fn push_window_segment(
+    target: Option<WindowTarget>,
+    side: WindowSide,
+    cells: &mut Vec<(usize, usize)>,
+    segments: &mut Vec<WindowSegment>,
+) {
+    let Some(target) = target else {
+        cells.clear();
+        return;
+    };
+    if cells.is_empty() {
+        return;
+    }
+
+    segments.push(WindowSegment {
+        cells: std::mem::take(cells),
+        side,
+        internal: !matches!(target, WindowTarget::Exterior),
+    });
+}
+
+fn outward_neighbor(
+    cell: (usize, usize),
+    side: WindowSide,
+    cols: usize,
+    rows: usize,
+) -> Option<(usize, usize)> {
+    match side {
+        WindowSide::Left => cell.0.checked_sub(1).map(|x| (x, cell.1)),
+        WindowSide::Right => (cell.0 + 1 < cols).then_some((cell.0 + 1, cell.1)),
+        WindowSide::Top => cell.1.checked_sub(1).map(|y| (cell.0, y)),
+        WindowSide::Bottom => (cell.1 + 1 < rows).then_some((cell.0, cell.1 + 1)),
+    }
+}
+
+fn select_segment_cell(
+    cells: &[(usize, usize)],
+    width: usize,
+    rng: &mut SimpleRng,
+) -> (usize, usize) {
+    let width = width.max(1);
+    let min_offset = -((width as isize - 1) / 2);
+    let max_offset = width as isize / 2;
+    let low = (-min_offset) as usize;
+    let high = cells.len().saturating_sub(1 + max_offset.max(0) as usize);
+    let idx = if low <= high {
+        rng.range_inclusive(low, high)
+    } else {
+        cells.len() / 2
+    };
+    cells[idx]
+}
+
 // Find the edge where a corridor path exits a room.
 fn room_exit_edge(
     path: &[(usize, usize)],
@@ -533,6 +804,15 @@ fn shared_boundary_edges(a: &Room, b: &Room) -> Vec<((usize, usize), (usize, usi
     }
 
     edges
+}
+
+fn room_index_at_cell(rooms: &[Room], cell: (usize, usize)) -> Option<usize> {
+    rooms.iter().position(|room| {
+        cell.0 >= room.x
+            && cell.0 < room.x + room.width
+            && cell.1 >= room.y
+            && cell.1 < room.y + room.height
+    })
 }
 
 // Compute corridor cells while excluding room cells.

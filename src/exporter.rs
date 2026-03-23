@@ -6,7 +6,7 @@ use image::{DynamicImage, ImageFormat, RgbaImage, imageops::FilterType};
 use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
-use crate::layout::{Door, DungeonLayout, Room, corridor_cells};
+use crate::layout::{Door, DungeonLayout, Room, Window, WindowSide, corridor_cells};
 use crate::ui::{ExportFormat, MaskFormat, UiSettings};
 
 const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
@@ -16,7 +16,8 @@ const CORRIDOR: (u8, u8, u8, u8) = (210, 190, 120, 255);
 const BLACK: (u8, u8, u8, u8) = (0, 0, 0, 255);
 const OPEN_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
 const LOCKED_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
-const ARCHWAY: (u8, u8, u8, u8) = (70, 130, 220, 255);
+const ARCHWAY: (u8, u8, u8, u8) = (230, 140, 60, 255);
+const WINDOW: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
 
 pub enum ExportTarget {
@@ -30,6 +31,7 @@ enum DoorStyle {
     LongDash,
     ShortDash,
     Dotted,
+    DashDot,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -257,6 +259,15 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         draw_door(&mut pixmap, &g, door, door_w, color, style);
     }
 
+    for window in &layout.windows {
+        let style = if settings.colorblind_mode {
+            DoorStyle::DashDot
+        } else {
+            DoorStyle::Solid
+        };
+        draw_window(&mut pixmap, &g, window, door_w, WINDOW, style);
+    }
+
     Ok(pixmap)
 }
 
@@ -311,9 +322,12 @@ fn export_composite_masks(
         .ok_or_else(|| "Failed to allocate archways mask canvas".to_string())?;
     let mut locked_doors = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate locked doors mask canvas".to_string())?;
+    let mut windows = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate windows mask canvas".to_string())?;
     fill_bg(&mut doors, BLACK);
     fill_bg(&mut archways, BLACK);
     fill_bg(&mut locked_doors, BLACK);
+    fill_bg(&mut windows, BLACK);
     for door in &layout.doors {
         if door.archway {
             draw_door(&mut archways, &g, door, door_w, WHITE, DoorStyle::Solid);
@@ -322,6 +336,9 @@ fn export_composite_masks(
         } else {
             draw_door(&mut doors, &g, door, door_w, WHITE, DoorStyle::Solid);
         }
+    }
+    for window in &layout.windows {
+        draw_window(&mut windows, &g, window, door_w, WHITE, DoorStyle::Solid);
     }
 
     let composite = render_pixmap(layout, settings)?;
@@ -337,6 +354,7 @@ fn export_composite_masks(
     save_mask_image(folder, "doors_mask", &doors, settings)?;
     save_mask_image(folder, "archways_mask", &archways, settings)?;
     save_mask_image(folder, "locked_doors_mask", &locked_doors, settings)?;
+    save_mask_image(folder, "windows_mask", &windows, settings)?;
     if settings.export_show_grid {
         let mut grid = Pixmap::new(g.width, g.height)
             .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
@@ -610,6 +628,25 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
                 let _ = writeln!(
                     s,
                     "<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='{color}' stroke-width='{door_w}'/>"
+                );
+            }
+        }
+    }
+
+    for window in &layout.windows {
+        let dash = settings.colorblind_mode.then_some("7,3,1,4");
+        if let Some((x1, y1, x2, y2)) = window_line_points(&g, window) {
+            if let Some(pattern) = dash {
+                let _ = writeln!(
+                    s,
+                    "<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='rgb({},{},{})' stroke-width='{door_w}' stroke-dasharray='{pattern}'/>",
+                    WINDOW.0, WINDOW.1, WINDOW.2
+                );
+            } else {
+                let _ = writeln!(
+                    s,
+                    "<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='rgb({},{},{})' stroke-width='{door_w}'/>",
+                    WINDOW.0, WINDOW.1, WINDOW.2
                 );
             }
         }
@@ -970,6 +1007,20 @@ fn draw_door(
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
 }
 
+fn draw_window(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    window: &Window,
+    width: f32,
+    color: (u8, u8, u8, u8),
+    style: DoorStyle,
+) {
+    let Some((x1, y1, x2, y2)) = window_line_points(g, window) else {
+        return;
+    };
+    draw_line(pixmap, x1, y1, x2, y2, width, color, style);
+}
+
 // Compute the door line endpoints in export space.
 fn door_line_points(
     g: &ExportGeometry,
@@ -1004,6 +1055,51 @@ fn door_line_points(
     }
 }
 
+fn window_line_points(g: &ExportGeometry, window: &Window) -> Option<(f32, f32, f32, f32)> {
+    let width_cells = window_render_width(window).max(1) as isize;
+    let min_offset = -((width_cells - 1) / 2);
+    let max_offset = width_cells / 2;
+
+    match window.side {
+        WindowSide::Left => {
+            let x = g.left() + window.cell.0 as f32 * g.cell;
+            let row = window.cell.1 as isize;
+            let y0_cell = (row + min_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+            let y1_cell = (row + max_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+            let y0 = g.top() + y0_cell as f32 * g.cell;
+            let y1 = g.top() + (y1_cell as f32 + 1.0) * g.cell;
+            Some((x, y0, x, y1))
+        }
+        WindowSide::Right => {
+            let x = g.left() + (window.cell.0 as f32 + 1.0) * g.cell;
+            let row = window.cell.1 as isize;
+            let y0_cell = (row + min_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+            let y1_cell = (row + max_offset).clamp(0, g.rows.saturating_sub(1) as isize);
+            let y0 = g.top() + y0_cell as f32 * g.cell;
+            let y1 = g.top() + (y1_cell as f32 + 1.0) * g.cell;
+            Some((x, y0, x, y1))
+        }
+        WindowSide::Top => {
+            let y = g.top() + window.cell.1 as f32 * g.cell;
+            let col = window.cell.0 as isize;
+            let x0_cell = (col + min_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+            let x1_cell = (col + max_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+            let x0 = g.left() + x0_cell as f32 * g.cell;
+            let x1 = g.left() + (x1_cell as f32 + 1.0) * g.cell;
+            Some((x0, y, x1, y))
+        }
+        WindowSide::Bottom => {
+            let y = g.top() + (window.cell.1 as f32 + 1.0) * g.cell;
+            let col = window.cell.0 as isize;
+            let x0_cell = (col + min_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+            let x1_cell = (col + max_offset).clamp(0, g.cols.saturating_sub(1) as isize);
+            let x0 = g.left() + x0_cell as f32 * g.cell;
+            let x1 = g.left() + (x1_cell as f32 + 1.0) * g.cell;
+            Some((x0, y, x1, y))
+        }
+    }
+}
+
 // Draw a styled line in the pixmap.
 fn draw_line(
     pixmap: &mut Pixmap,
@@ -1020,6 +1116,7 @@ fn draw_line(
         DoorStyle::LongDash => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((14.0, 7.0))),
         DoorStyle::ShortDash => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((6.0, 4.0))),
         DoorStyle::Dotted => dotted_line(pixmap, x1, y1, x2, y2, width, color),
+        DoorStyle::DashDot => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((7.0, 3.0))),
     }
 }
 
@@ -1166,6 +1263,14 @@ fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<((usize, usize),
 fn door_render_width(door: &Door) -> usize {
     if door.span_width {
         door.width.max(1)
+    } else {
+        1
+    }
+}
+
+fn window_render_width(window: &Window) -> usize {
+    if window.span_width {
+        window.width.max(1)
     } else {
         1
     }
