@@ -16,3 +16,6 @@ image = { version = "0.25", default-features = true }
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+[target.'cfg(windows)'.rustflags]
+rustflags = ["-C", "link-args=-mwindows"]
