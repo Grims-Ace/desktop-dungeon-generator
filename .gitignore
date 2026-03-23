@@ -28,3 +28,6 @@ TODO
 # Added by cargo
 
 /target
+
+#ignore any hidden linux directories
+.*
