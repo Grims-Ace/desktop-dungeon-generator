@@ -36,6 +36,7 @@ pub struct Door {
     pub locked: bool,
     pub archway: bool,
     pub secret: bool,
+    pub manual: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -362,6 +363,7 @@ pub fn apply_doors(
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
                     secret: false,
+                    manual: false,
                 });
             }
         }
@@ -377,6 +379,7 @@ pub fn apply_doors(
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
                     secret: false,
+                    manual: false,
                 });
             }
         }
@@ -397,6 +400,7 @@ pub fn apply_doors(
                         locked: place_door && rng.next_f32() <= locked,
                         archway: !place_door,
                         secret: false,
+                        manual: false,
                     });
                 }
             }
@@ -418,6 +422,7 @@ pub fn apply_doors(
                         locked: rng.next_f32() <= locked,
                         archway: false,
                         secret: false,
+                        manual: false,
                     });
                 }
             }
@@ -432,6 +437,7 @@ pub fn apply_doors(
                         locked: rng.next_f32() <= locked,
                         archway: false,
                         secret: false,
+                        manual: false,
                     });
                 }
             }
@@ -470,6 +476,7 @@ fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: Door
             locked: place_door && rng.next_f32() <= locked,
             archway: !place_door,
             secret: false,
+            manual: false,
         });
     }
 

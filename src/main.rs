@@ -37,6 +37,7 @@ fn main() -> eframe::Result<()> {
 struct DungeonApp {
     settings: UiSettings,
     layout: DungeonLayout,
+    suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
     drag_state: Option<DragState>,
     export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     pending_delete: bool,
@@ -70,6 +71,7 @@ impl Default for DungeonApp {
         Self {
             settings,
             layout,
+            suppressed_auto_door_edges: HashSet::new(),
             drag_state: None,
             export_rx: None,
             pending_delete: false,
@@ -232,6 +234,7 @@ impl DungeonApp {
             packed_rooms: self.settings.pack_rooms_without_corridors,
             ..DungeonLayout::default()
         };
+        self.suppressed_auto_door_edges.clear();
         self.drag_state = None;
         self.add_corridor_drag = None;
         self.resize_state = None;
@@ -244,6 +247,7 @@ impl DungeonApp {
     // Regenerate the dungeon layout from current settings and reset drag state.
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
+        self.suppressed_auto_door_edges.clear();
         self.layout = layout::generate_layout(
             self.settings.cols,
             self.settings.rows,
@@ -464,6 +468,11 @@ impl DungeonApp {
             self.settings.cols,
             self.settings.rows,
         );
+        self.layout.doors.retain(|door| {
+            !door_edges_for(door, self.settings.cols, self.settings.rows)
+                .iter()
+                .any(|edge| self.suppressed_auto_door_edges.contains(edge))
+        });
         layout::apply_windows(
             &mut self.layout,
             self.settings.seed,
@@ -915,6 +924,18 @@ impl DungeonApp {
                     .iter()
                     .any(|e| normalized_edge(e.0, e.1) == target)
             }) {
+                if !self.layout.doors[idx].manual {
+                    for edge in door_edges_for(
+                        &self.layout.doors[idx],
+                        self.settings.cols,
+                        self.settings.rows,
+                    ) {
+                        self.suppressed_auto_door_edges.insert(edge);
+                    }
+                    self.layout.doors.remove(idx);
+                    return;
+                }
+
                 let edges = door_edges_for(
                     &self.layout.doors[idx],
                     self.settings.cols,
@@ -941,6 +962,7 @@ impl DungeonApp {
                         locked: false,
                         archway: true,
                         secret: false,
+                        manual: true,
                     });
                 }
                 let door = &mut self.layout.doors[idx];
@@ -949,6 +971,7 @@ impl DungeonApp {
                 door.secret = false;
                 door.width = 1;
                 door.span_width = false;
+                door.manual = true;
                 self.layout.doors.extend(spawned);
                 return;
             }
@@ -1031,6 +1054,7 @@ impl DungeonApp {
                     locked: false,
                     archway: true,
                     secret: false,
+                    manual: true,
                 });
             }
             let door = &mut self.layout.doors[idx];
@@ -1039,6 +1063,10 @@ impl DungeonApp {
             door.secret = kind == ManualDoorKind::Secret;
             door.width = 1;
             door.span_width = false;
+            door.manual = true;
+            for edge in door_edges_for(door, self.settings.cols, self.settings.rows) {
+                self.suppressed_auto_door_edges.remove(&edge);
+            }
             self.layout.doors.extend(spawned);
             return;
         }
@@ -1064,7 +1092,9 @@ impl DungeonApp {
             locked: kind == ManualDoorKind::Locked,
             archway: false,
             secret: kind == ManualDoorKind::Secret,
+            manual: true,
         });
+        self.suppressed_auto_door_edges.remove(&target);
     }
 
     // Find the nearest cell edge under the pointer for door placement.
