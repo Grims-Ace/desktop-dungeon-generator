@@ -692,7 +692,7 @@ impl DungeonApp {
 
         if response.secondary_clicked() && self.resize_state.is_none() {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
-                if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+                if let Some(room_idx) = self.resize_room_at_pointer(pointer_pos, geometry) {
                     if let Some(state) = self.start_resize(room_idx, pointer_pos, geometry) {
                         self.resize_state = Some(state);
                         return true;
@@ -716,6 +716,39 @@ impl DungeonApp {
         }
 
         false
+    }
+
+    // Resolve the room that should respond to a resize click, including outer corner targets.
+    fn resize_room_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<usize> {
+        if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+            return Some(room_idx);
+        }
+
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let clicked = (
+            grid_x.floor().max(0.0) as usize,
+            grid_y.floor().max(0.0) as usize,
+        );
+
+        for (room_idx, room) in self.layout.rooms.iter().enumerate().rev() {
+            if resize_hit_cells(
+                room,
+                room_idx,
+                &self.layout.rooms,
+                geometry.cols,
+                geometry.rows,
+            )
+            .contains(&clicked)
+            {
+                return Some(room_idx);
+            }
+        }
+
+        None
     }
 
     // Choose the nearest room corner and initialize resize state.
@@ -778,7 +811,6 @@ impl DungeonApp {
     fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
         let cols = self.settings.cols.max(1);
         let rows = self.settings.rows.max(1);
-        let min_size = self.settings.min_room_size.max(1);
 
         let ax = state.anchor_cell.0 as isize;
         let ay = state.anchor_cell.1 as isize;
@@ -797,7 +829,7 @@ impl DungeonApp {
             height: (y1 - y0 + 1) as usize,
         };
 
-        if new_room.width < min_size || new_room.height < min_size {
+        if new_room.width == 0 || new_room.height == 0 {
             return;
         }
 
@@ -1583,6 +1615,69 @@ fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
     let b_right = b.x + b.width;
     let b_bottom = b.y + b.height;
     a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+}
+
+fn resize_hit_cells(
+    room: &layout::Room,
+    room_idx: usize,
+    rooms: &[layout::Room],
+    cols: usize,
+    rows: usize,
+) -> HashSet<(usize, usize)> {
+    let mut cells = HashSet::new();
+    let corners = [
+        (room.x as isize, room.y as isize, -1isize, -1isize),
+        (
+            (room.x + room.width - 1) as isize,
+            room.y as isize,
+            1isize,
+            -1isize,
+        ),
+        (
+            room.x as isize,
+            (room.y + room.height - 1) as isize,
+            -1isize,
+            1isize,
+        ),
+        (
+            (room.x + room.width - 1) as isize,
+            (room.y + room.height - 1) as isize,
+            1isize,
+            1isize,
+        ),
+    ];
+
+    for (cx, cy, ox, oy) in corners {
+        let candidates = [
+            (cx, cy),
+            (cx - ox, cy),
+            (cx, cy - oy),
+            (cx - ox, cy - oy),
+            (cx + ox, cy),
+            (cx, cy + oy),
+            (cx + ox, cy + oy),
+        ];
+
+        for (x, y) in candidates {
+            if x < 0 || y < 0 || x >= cols as isize || y >= rows as isize {
+                continue;
+            }
+
+            let cell = (x as usize, y as usize);
+            let in_other_room = rooms.iter().enumerate().any(|(idx, other_room)| {
+                idx != room_idx
+                    && cell.0 >= other_room.x
+                    && cell.0 < other_room.x + other_room.width
+                    && cell.1 >= other_room.y
+                    && cell.1 < other_room.y + other_room.height
+            });
+            if !in_other_room {
+                cells.insert(cell);
+            }
+        }
+    }
+
+    cells
 }
 
 // Draw a single resize handle glyph at a corner.
