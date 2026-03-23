@@ -97,7 +97,9 @@ impl eframe::App for DungeonApp {
             self.settings.max_corridor_width = self.settings.min_corridor_width;
         }
 
-        if panel_result.reset_clicked || panel_result.settings_changed {
+        if panel_result.clear_clicked {
+            self.clear_layout();
+        } else if panel_result.reset_clicked || panel_result.settings_changed {
             self.regenerate_layout();
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
@@ -208,6 +210,21 @@ impl eframe::App for DungeonApp {
 }
 
 impl DungeonApp {
+    // Clear the current layout and reset transient interaction state.
+    fn clear_layout(&mut self) {
+        self.layout = DungeonLayout {
+            packed_rooms: self.settings.pack_rooms_without_corridors,
+            ..DungeonLayout::default()
+        };
+        self.drag_state = None;
+        self.add_corridor_drag = None;
+        self.resize_state = None;
+        self.hover_room_idx = None;
+        self.hover_corridor_idx = None;
+        self.hover_door_idx = None;
+        self.pending_delete = false;
+    }
+
     // Regenerate the dungeon layout from current settings and reset drag state.
     fn regenerate_layout(&mut self) {
         self.drag_state = None;

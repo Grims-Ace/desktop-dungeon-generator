@@ -172,6 +172,7 @@ pub enum AddTool {
 pub struct SidePanelResult {
     pub settings_changed: bool,
     pub reset_clicked: bool,
+    pub clear_clicked: bool,
     pub export_clicked: bool,
 }
 
@@ -273,9 +274,14 @@ fn draw_generate_tab(
     });
 
     ui.add_space(8.0);
-    if ui.button("Reset").clicked() {
-        result.reset_clicked = true;
-    }
+    ui.horizontal(|ui| {
+        if ui.button("Reset").clicked() {
+            result.reset_clicked = true;
+        }
+        if ui.button("Clear").clicked() {
+            result.clear_clicked = true;
+        }
+    });
 
     ui.add_space(12.0);
     ui.separator();
