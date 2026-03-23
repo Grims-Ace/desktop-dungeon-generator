@@ -114,6 +114,7 @@ pub struct UiSettings {
     pub door_frequency_percent: usize,
     pub room_hallway_door_percent: usize,
     pub locked_door_percent: usize,
+    pub secret_door_percent: usize,
     pub allow_middle_corridor_doors: bool,
     pub windows_enabled: bool,
     pub min_window_width: usize,
@@ -151,6 +152,7 @@ impl Default for UiSettings {
             door_frequency_percent: 30,
             room_hallway_door_percent: 70,
             locked_door_percent: 25,
+            secret_door_percent: 10,
             allow_middle_corridor_doors: false,
             windows_enabled: false,
             min_window_width: 1,
@@ -178,6 +180,7 @@ pub enum AddTool {
     Corridor,
     Door,
     LockedDoor,
+    SecretDoor,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -582,6 +585,21 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
     });
 
     ui.add_space(8.0);
+    ui.label("Secret Door Chance (%)");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.secret_door_percent, 0..=100).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.secret_door_percent)
+                    .speed(1.0)
+                    .range(0..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
     result.settings_changed |= ui
         .checkbox(
             &mut settings.allow_middle_corridor_doors,
@@ -690,6 +708,11 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
             AddTool::LockedDoor,
             "Add Locked Door",
         );
+        ui.selectable_value(
+            &mut settings.add_tool,
+            AddTool::SecretDoor,
+            "Add Secret Door",
+        );
     });
 
     ui.add_space(6.0);
@@ -698,6 +721,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
         AddTool::Corridor => ui.label("Click-drag to place a corridor between two cells."),
         AddTool::Door => ui.label("Click a room/corridor edge to place a door."),
         AddTool::LockedDoor => ui.label("Click a room/corridor edge to place a locked door."),
+        AddTool::SecretDoor => ui.label("Click a room/corridor edge to place a secret door."),
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
 }

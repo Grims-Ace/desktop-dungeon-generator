@@ -35,6 +35,7 @@ pub struct Door {
     pub span_width: bool,
     pub locked: bool,
     pub archway: bool,
+    pub secret: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,7 @@ pub struct DoorSettings {
     pub frequency_percent: usize,
     pub room_hallway_percent: usize,
     pub locked_percent: usize,
+    pub secret_percent: usize,
     pub allow_middle_corridor_doors: bool,
 }
 
@@ -359,6 +361,7 @@ pub fn apply_doors(
                     span_width: true,
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
+                    secret: false,
                 });
             }
         }
@@ -373,6 +376,7 @@ pub fn apply_doors(
                     span_width: true,
                     locked: place_door && rng.next_f32() <= locked,
                     archway: !place_door,
+                    secret: false,
                 });
             }
         }
@@ -392,6 +396,7 @@ pub fn apply_doors(
                         span_width: true,
                         locked: place_door && rng.next_f32() <= locked,
                         archway: !place_door,
+                        secret: false,
                     });
                 }
             }
@@ -412,6 +417,7 @@ pub fn apply_doors(
                         span_width: false,
                         locked: rng.next_f32() <= locked,
                         archway: false,
+                        secret: false,
                     });
                 }
             }
@@ -425,11 +431,14 @@ pub fn apply_doors(
                         span_width: false,
                         locked: rng.next_f32() <= locked,
                         archway: false,
+                        secret: false,
                     });
                 }
             }
         }
     }
+
+    apply_secret_doors(layout, seed, settings);
 }
 
 fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
@@ -460,8 +469,116 @@ fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: Door
             span_width: width > 1,
             locked: place_door && rng.next_f32() <= locked,
             archway: !place_door,
+            secret: false,
         });
     }
+
+    apply_secret_doors(layout, seed, settings);
+}
+
+fn apply_secret_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
+    let secret_percent = settings.secret_percent.min(100);
+    let chance = (secret_percent as f32) / 100.0;
+    if chance <= 0.0 || layout.rooms.is_empty() || layout.doors.is_empty() {
+        return;
+    }
+
+    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0x5EC2_E700_u64));
+    let room_door_map = room_to_door_indices(layout);
+    let eligible_secret_doors = (0..layout.doors.len())
+        .filter(|&door_idx| {
+            let door = &layout.doors[door_idx];
+            !door.archway
+                && !door.locked
+                && door_is_secret_eligible_for_rooms(layout, &room_door_map, door_idx)
+        })
+        .collect::<HashSet<_>>();
+
+    for (door_idx, door) in layout.doors.iter_mut().enumerate() {
+        if !eligible_secret_doors.contains(&door_idx) {
+            continue;
+        }
+
+        if rng.next_f32() <= chance {
+            door.locked = false;
+            door.archway = false;
+            door.secret = true;
+        }
+    }
+}
+
+fn door_is_secret_eligible_for_rooms(
+    layout: &DungeonLayout,
+    room_door_map: &[Vec<usize>],
+    door_idx: usize,
+) -> bool {
+    for door_indices in room_door_map {
+        if !door_indices.contains(&door_idx) {
+            continue;
+        }
+
+        for &other_door_idx in door_indices {
+            if other_door_idx == door_idx {
+                continue;
+            }
+
+            if !door_directly_connects_rooms(layout, other_door_idx) {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn room_to_door_indices(layout: &DungeonLayout) -> Vec<Vec<usize>> {
+    let mut room_door_map = vec![Vec::new(); layout.rooms.len()];
+    for (door_idx, door) in layout.doors.iter().enumerate() {
+        for (room_idx, room) in layout.rooms.iter().enumerate() {
+            if door_touches_room(door, room) {
+                room_door_map[room_idx].push(door_idx);
+            }
+        }
+    }
+    room_door_map
+}
+
+fn secret_room_ids(layout: &DungeonLayout) -> HashSet<usize> {
+    let mut secret_rooms = HashSet::new();
+    for door in layout.doors.iter().filter(|door| door.secret) {
+        for (room_idx, room) in layout.rooms.iter().enumerate() {
+            if door_touches_room(door, room) {
+                secret_rooms.insert(room_idx);
+            }
+        }
+    }
+    secret_rooms
+}
+
+fn door_touches_room(door: &Door, room: &Room) -> bool {
+    cell_in_room(door.from, room) || cell_in_room(door.to, room)
+}
+
+fn door_directly_connects_rooms(layout: &DungeonLayout, door_idx: usize) -> bool {
+    let Some(door) = layout.doors.get(door_idx) else {
+        return false;
+    };
+
+    let touching_rooms = layout
+        .rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(room_idx, room)| door_touches_room(door, room).then_some(room_idx))
+        .collect::<Vec<_>>();
+
+    touching_rooms.len() >= 2
+}
+
+fn cell_in_room(cell: (usize, usize), room: &Room) -> bool {
+    cell.0 >= room.x
+        && cell.0 < room.x + room.width
+        && cell.1 >= room.y
+        && cell.1 < room.y + room.height
 }
 
 pub fn apply_windows(
@@ -532,9 +649,13 @@ fn collect_window_segments(
     allow_internal_windows: bool,
 ) -> Vec<WindowSegment> {
     let corridor_cells = corridor_cells(layout, cols, rows);
+    let secret_rooms = secret_room_ids(layout);
     let mut segments = Vec::new();
 
     for (room_idx, room) in layout.rooms.iter().enumerate() {
+        if secret_rooms.contains(&room_idx) {
+            continue;
+        }
         collect_room_side_segments(
             room_idx,
             room,

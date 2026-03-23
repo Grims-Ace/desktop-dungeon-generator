@@ -16,6 +16,7 @@ const CORRIDOR: (u8, u8, u8, u8) = (210, 190, 120, 255);
 const BLACK: (u8, u8, u8, u8) = (0, 0, 0, 255);
 const OPEN_DOOR: (u8, u8, u8, u8) = (80, 200, 120, 255);
 const LOCKED_DOOR: (u8, u8, u8, u8) = (220, 70, 70, 255);
+const SECRET_DOOR: (u8, u8, u8, u8) = (170, 80, 170, 255);
 const ARCHWAY: (u8, u8, u8, u8) = (230, 140, 60, 255);
 const WINDOW: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
@@ -32,6 +33,7 @@ enum DoorStyle {
     ShortDash,
     Dotted,
     DashDot,
+    DashDotDot,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -241,7 +243,9 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
 
     for door in &layout.doors {
         let (color, style) = if settings.colorblind_mode {
-            let s = if door.archway {
+            let s = if door.secret {
+                DoorStyle::DashDotDot
+            } else if door.archway {
                 DoorStyle::Dotted
             } else if door.locked {
                 DoorStyle::ShortDash
@@ -249,6 +253,8 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
                 DoorStyle::LongDash
             };
             (BLACK, s)
+        } else if door.secret {
+            (SECRET_DOOR, DoorStyle::Solid)
         } else if door.archway {
             (ARCHWAY, DoorStyle::Solid)
         } else if door.locked {
@@ -322,14 +328,19 @@ fn export_composite_masks(
         .ok_or_else(|| "Failed to allocate archways mask canvas".to_string())?;
     let mut locked_doors = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate locked doors mask canvas".to_string())?;
+    let mut secret_doors = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate secret doors mask canvas".to_string())?;
     let mut windows = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate windows mask canvas".to_string())?;
     fill_bg(&mut doors, BLACK);
     fill_bg(&mut archways, BLACK);
     fill_bg(&mut locked_doors, BLACK);
+    fill_bg(&mut secret_doors, BLACK);
     fill_bg(&mut windows, BLACK);
     for door in &layout.doors {
-        if door.archway {
+        if door.secret {
+            draw_door(&mut secret_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
+        } else if door.archway {
             draw_door(&mut archways, &g, door, door_w, WHITE, DoorStyle::Solid);
         } else if door.locked {
             draw_door(&mut locked_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
@@ -354,6 +365,7 @@ fn export_composite_masks(
     save_mask_image(folder, "doors_mask", &doors, settings)?;
     save_mask_image(folder, "archways_mask", &archways, settings)?;
     save_mask_image(folder, "locked_doors_mask", &locked_doors, settings)?;
+    save_mask_image(folder, "secret_doors_mask", &secret_doors, settings)?;
     save_mask_image(folder, "windows_mask", &windows, settings)?;
     if settings.export_show_grid {
         let mut grid = Pixmap::new(g.width, g.height)
@@ -601,19 +613,23 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
 
     for door in &layout.doors {
         let (color, dash) = if settings.colorblind_mode {
-            if door.archway {
+            if door.secret {
+                ("black", Some("7,3,1,3,1,4"))
+            } else if door.archway {
                 ("black", Some("2,4"))
             } else if door.locked {
                 ("black", Some("6,4"))
             } else {
                 ("black", Some("14,7"))
             }
+        } else if door.secret {
+            ("rgb(170,80,170)", None)
         } else if door.archway {
-            ("rgb(70,130,220)", None)
+            ("rgb(230,140,60)", None)
         } else if door.locked {
-            ("rgb(80,200,120)", None)
-        } else {
             ("rgb(220,70,70)", None)
+        } else {
+            ("rgb(80,200,120)", None)
         };
 
         if let Some((x1, y1, x2, y2)) =
@@ -1117,6 +1133,9 @@ fn draw_line(
         DoorStyle::ShortDash => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((6.0, 4.0))),
         DoorStyle::Dotted => dotted_line(pixmap, x1, y1, x2, y2, width, color),
         DoorStyle::DashDot => stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((7.0, 3.0))),
+        DoorStyle::DashDotDot => {
+            stroke_path(pixmap, x1, y1, x2, y2, width, color, Some((7.0, 3.0)))
+        }
     }
 }
 

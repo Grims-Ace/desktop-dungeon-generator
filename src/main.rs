@@ -16,6 +16,13 @@ use layout::{
 };
 use ui::{AddTool, UiSettings, draw_side_panel};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManualDoorKind {
+    Regular,
+    Locked,
+    Secret,
+}
+
 // Boot the native app and start the egui event loop.
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
@@ -164,6 +171,7 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry_colorblind(ui, "Walls", LegendStyle::SolidLine);
                     draw_legend_entry_colorblind(ui, "Doors", LegendStyle::LongDash);
                     draw_legend_entry_colorblind(ui, "Locked Doors", LegendStyle::ShortDash);
+                    draw_legend_entry_colorblind(ui, "Secret Doors", LegendStyle::DashDotDotLine);
                     draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
                     draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
                 } else {
@@ -172,6 +180,7 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::BLACK, "Walls");
                     draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Doors");
                     draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
+                    draw_legend_entry(ui, Color32::from_rgb(170, 80, 170), "Secret Doors");
                     draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
                 }
@@ -511,13 +520,18 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
-            AddTool::Door | AddTool::LockedDoor => {
+            AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
                 self.add_corridor_drag = None;
                 if response.clicked()
                     && let Some(pointer_pos) = response.interact_pointer_pos()
                 {
-                    let locked = self.settings.add_tool == AddTool::LockedDoor;
-                    self.add_door_at_pointer(pointer_pos, geometry, locked);
+                    let kind = match self.settings.add_tool {
+                        AddTool::Door => ManualDoorKind::Regular,
+                        AddTool::LockedDoor => ManualDoorKind::Locked,
+                        AddTool::SecretDoor => ManualDoorKind::Secret,
+                        _ => unreachable!(),
+                    };
+                    self.add_door_at_pointer(pointer_pos, geometry, kind);
                     self.settings.add_tool = AddTool::None;
                 }
             }
@@ -926,11 +940,13 @@ impl DungeonApp {
                         span_width: false,
                         locked: false,
                         archway: true,
+                        secret: false,
                     });
                 }
                 let door = &mut self.layout.doors[idx];
                 door.locked = false;
                 door.archway = true;
+                door.secret = false;
                 door.width = 1;
                 door.span_width = false;
                 self.layout.doors.extend(spawned);
@@ -978,7 +994,7 @@ impl DungeonApp {
         &mut self,
         pointer_pos: egui::Pos2,
         geometry: &GridGeometry,
-        locked: bool,
+        kind: ManualDoorKind,
     ) {
         let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) else {
             return;
@@ -1014,11 +1030,13 @@ impl DungeonApp {
                     span_width: false,
                     locked: false,
                     archway: true,
+                    secret: false,
                 });
             }
             let door = &mut self.layout.doors[idx];
-            door.locked = locked;
+            door.locked = kind == ManualDoorKind::Locked;
             door.archway = false;
+            door.secret = kind == ManualDoorKind::Secret;
             door.width = 1;
             door.span_width = false;
             self.layout.doors.extend(spawned);
@@ -1043,8 +1061,9 @@ impl DungeonApp {
             to: edge.1,
             width: 1,
             span_width: false,
-            locked,
+            locked: kind == ManualDoorKind::Locked,
             archway: false,
+            secret: kind == ManualDoorKind::Secret,
         });
     }
 
@@ -1385,6 +1404,8 @@ fn draw_layout(
     for door in &layout.doors {
         let color = if colorblind_mode {
             Color32::BLACK
+        } else if door.secret {
+            Color32::from_rgb(170, 80, 170)
         } else if door.archway {
             Color32::from_rgb(230, 140, 60)
         } else if door.locked {
@@ -1393,7 +1414,9 @@ fn draw_layout(
             Color32::from_rgb(80, 200, 120)
         };
         let style = if colorblind_mode {
-            if door.archway {
+            if door.secret {
+                DoorLineStyle::DashDotDot
+            } else if door.archway {
                 DoorLineStyle::Dotted
             } else if door.locked {
                 DoorLineStyle::ShortDash
@@ -1736,6 +1759,7 @@ fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
         frequency_percent: settings.door_frequency_percent,
         room_hallway_percent: settings.room_hallway_door_percent,
         locked_percent: settings.locked_door_percent,
+        secret_percent: settings.secret_door_percent,
         allow_middle_corridor_doors: settings.allow_middle_corridor_doors,
     }
 }
@@ -1846,6 +1870,7 @@ enum DoorLineStyle {
     ShortDash,
     Dotted,
     DashDot,
+    DashDotDot,
 }
 
 // Draw a line with solid, dashed, or dotted styling.
@@ -1864,6 +1889,7 @@ fn draw_styled_line(
         DoorLineStyle::ShortDash => draw_dashed_line(painter, from, to, stroke, 6.0, 4.0),
         DoorLineStyle::Dotted => draw_dotted_line(painter, from, to, stroke),
         DoorLineStyle::DashDot => draw_dash_dot_line(painter, from, to, stroke),
+        DoorLineStyle::DashDotDot => draw_dash_dot_dot_line(painter, from, to, stroke),
     }
 }
 
@@ -1943,6 +1969,44 @@ fn draw_dash_dot_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2,
     }
 }
 
+fn draw_dash_dot_dot_line(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    stroke: Stroke,
+) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+
+    let ux = dx / len;
+    let uy = dy / len;
+    let radius = (stroke.width * 0.35).max(1.0);
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let dash_end = (dist + 7.0).min(len);
+        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
+        painter.line_segment([p0, p1], stroke);
+        dist = dash_end + 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot1 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot1, radius, stroke.color);
+        dist += 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot2 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot2, radius, stroke.color);
+        dist += 4.0;
+    }
+}
+
 // Compute the center position of a grid cell.
 fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
     egui::pos2(
@@ -1993,6 +2057,7 @@ enum LegendStyle {
     ShortDash,
     DottedLine,
     DashDotLine,
+    DashDotDotLine,
 }
 
 // Draw a patterned legend entry for colorblind mode.
@@ -2064,6 +2129,12 @@ fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendSty
                 Stroke::new(2.0, Color32::BLACK),
             ),
             LegendStyle::DashDotLine => draw_dash_dot_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+            LegendStyle::DashDotDotLine => draw_dash_dot_dot_line(
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
