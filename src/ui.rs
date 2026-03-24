@@ -130,6 +130,7 @@ pub struct UiSettings {
     pub allow_export_aspect_change: bool,
     pub export_show_grid: bool,
     pub add_tool: AddTool,
+    pub add_text_value: String,
     active_tab: Tab,
 }
 
@@ -168,6 +169,7 @@ impl Default for UiSettings {
             allow_export_aspect_change: false,
             export_show_grid: true,
             add_tool: AddTool::None,
+            add_text_value: "Text".to_string(),
             active_tab: Tab::Generate,
         }
     }
@@ -181,6 +183,7 @@ pub enum AddTool {
     Door,
     LockedDoor,
     SecretDoor,
+    Text,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -713,6 +716,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
             AddTool::SecretDoor,
             "Add Secret Door",
         );
+        ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
     });
 
     ui.add_space(6.0);
@@ -722,6 +726,15 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
         AddTool::Door => ui.label("Click a room/corridor edge to place a door."),
         AddTool::LockedDoor => ui.label("Click a room/corridor edge to place a locked door."),
         AddTool::SecretDoor => ui.label("Click a room/corridor edge to place a secret door."),
+        AddTool::Text => {
+            ui.label("Enter the label text, then click a grid cell to place it.");
+            ui.add_space(6.0);
+            ui.label("Text");
+            let response = ui.text_edit_singleline(&mut settings.add_text_value);
+            ui.add_space(4.0);
+            ui.label("Note: Left click on the canvas to place the text.");
+            response
+        }
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
 }

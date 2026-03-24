@@ -47,6 +47,13 @@ pub struct Window {
     pub span_width: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextLabel {
+    pub cell: (usize, usize),
+    pub text: String,
+    pub font_size: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowSide {
     Left,
@@ -80,6 +87,7 @@ pub struct DungeonLayout {
     pub corridors: Vec<Corridor>,
     pub doors: Vec<Door>,
     pub windows: Vec<Window>,
+    pub text_labels: Vec<TextLabel>,
     pub packed_rooms: bool,
 }
 
@@ -90,6 +98,7 @@ impl Default for DungeonLayout {
             corridors: Vec::new(),
             doors: Vec::new(),
             windows: Vec::new(),
+            text_labels: Vec::new(),
             packed_rooms: false,
         }
     }
@@ -156,6 +165,7 @@ pub fn generate_layout(
             corridors,
             doors: Vec::new(),
             windows: Vec::new(),
+            text_labels: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -178,6 +188,7 @@ pub fn generate_layout(
             corridors,
             doors: Vec::new(),
             windows: Vec::new(),
+            text_labels: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -205,6 +216,7 @@ pub fn generate_layout(
             corridors,
             doors: Vec::new(),
             windows: Vec::new(),
+            text_labels: Vec::new(),
             packed_rooms: true,
         };
         apply_doors(&mut layout, seed, door_settings, cols, rows);
@@ -261,6 +273,7 @@ pub fn generate_layout(
             corridors,
             doors: Vec::new(),
             windows: Vec::new(),
+            text_labels: Vec::new(),
             packed_rooms: false,
         };
     }
@@ -314,6 +327,7 @@ pub fn generate_layout(
         corridors,
         doors: Vec::new(),
         windows: Vec::new(),
+        text_labels: Vec::new(),
         packed_rooms: false,
     };
     apply_doors(&mut layout, seed, door_settings, cols, rows);

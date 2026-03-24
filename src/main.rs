@@ -51,10 +51,11 @@ struct DungeonApp {
     export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     pending_delete: bool,
     add_corridor_drag: Option<AddCorridorDrag>,
-    resize_state: Option<RoomResizeState>,
+    resize_state: Option<ResizeState>,
     hover_room_idx: Option<usize>,
     hover_corridor_idx: Option<usize>,
     hover_door_idx: Option<usize>,
+    hover_text_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -91,6 +92,7 @@ impl Default for DungeonApp {
             hover_room_idx: None,
             hover_corridor_idx: None,
             hover_door_idx: None,
+            hover_text_idx: None,
         }
     }
 }
@@ -215,11 +217,11 @@ impl eframe::App for DungeonApp {
                 ui.add_space(8.0);
                 ui.heading("Keybinds");
                 ui.add_space(6.0);
-                ui.label("Delete / Backspace: Remove hovered room or corridor");
-                ui.label("Ctrl+Z: Undo");
-                ui.label("Ctrl+Y: Redo");
-                ui.label("Right click: Cancel add tool");
-                ui.label("Right click + drag: Resize hovered room");
+                ui.label("• Delete / Backspace: Remove hovered room or corridor");
+                ui.label("• Ctrl+Z: Undo");
+                ui.label("• Ctrl+Y: Redo");
+                ui.label("• Right click: Cancel add tool");
+                ui.label("• Right click + drag: Resize hovered room");
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -244,6 +246,7 @@ impl eframe::App for DungeonApp {
                 &geometry,
                 &self.layout,
                 self.settings.colorblind_mode,
+                self.hover_text_idx,
             );
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
@@ -284,6 +287,7 @@ impl DungeonApp {
         self.hover_room_idx = None;
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
+        self.hover_text_idx = None;
         self.pending_delete = false;
     }
 
@@ -316,6 +320,7 @@ impl DungeonApp {
         self.hover_room_idx = None;
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
+        self.hover_text_idx = None;
         self.pending_delete = false;
     }
 
@@ -356,6 +361,12 @@ impl DungeonApp {
         }
         if response.drag_started()
             && let Some(pointer_pos) = response.interact_pointer_pos()
+            && let Some(text_idx) = self.text_at_pointer(pointer_pos, geometry)
+        {
+            self.push_undo_snapshot();
+            self.drag_state = Some(DragState::Text(TextDragState { text_idx }));
+        } else if response.drag_started()
+            && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some((room_idx, offset_x, offset_y)) =
                 self.room_at_pointer(pointer_pos, geometry)
         {
@@ -379,6 +390,7 @@ impl DungeonApp {
         {
             match drag_state {
                 DragState::Room(drag) => self.drag_room_to_pointer(drag, pointer_pos, geometry),
+                DragState::Text(drag) => self.drag_text_to_pointer(drag, pointer_pos, geometry),
                 DragState::Corridor(drag) => {
                     self.drag_corridor_to_pointer(drag, pointer_pos, geometry)
                 }
@@ -448,6 +460,29 @@ impl DungeonApp {
         self.layout.rooms[drag.room_idx].y = new_y;
         self.reroute_corridors_for_room(drag.room_idx);
         self.refresh_doors();
+    }
+
+    fn drag_text_to_pointer(
+        &mut self,
+        drag: TextDragState,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) {
+        let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) else {
+            return;
+        };
+
+        if drag.text_idx >= self.layout.text_labels.len() {
+            self.drag_state = None;
+            return;
+        }
+
+        let target = (
+            (grid_x.floor().max(0.0) as usize).min(self.settings.cols.saturating_sub(1)),
+            (grid_y.floor().max(0.0) as usize).min(self.settings.rows.saturating_sub(1)),
+        );
+
+        self.layout.text_labels[drag.text_idx].cell = target;
     }
 
     // Recalculate corridor paths connected to a moved room.
@@ -621,6 +656,17 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
+            AddTool::Text => {
+                self.add_corridor_drag = None;
+                if response.clicked()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    self.add_text_at_cell(cell);
+                    self.settings.add_tool = AddTool::None;
+                }
+            }
             AddTool::None => {
                 self.add_corridor_drag = None;
             }
@@ -720,12 +766,41 @@ impl DungeonApp {
         self.refresh_doors();
     }
 
+    fn add_text_at_cell(&mut self, cell: (usize, usize)) {
+        if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
+            return;
+        }
+
+        let text = self.settings.add_text_value.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+
+        self.push_undo_snapshot();
+        if let Some(existing) = self
+            .layout
+            .text_labels
+            .iter_mut()
+            .find(|label| label.cell == cell)
+        {
+            existing.text = text;
+            return;
+        }
+
+        self.layout.text_labels.push(layout::TextLabel {
+            cell,
+            text,
+            font_size: 18,
+        });
+    }
+
     // Update which room/corridor/door is currently hovered.
     fn update_hover_targets(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
+            self.hover_text_idx = None;
             return;
         };
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
@@ -738,8 +813,17 @@ impl DungeonApp {
             if self.hover_door_idx.is_some() {
                 self.hover_room_idx = None;
                 self.hover_corridor_idx = None;
+                self.hover_text_idx = None;
                 return;
             }
+        }
+
+        self.hover_text_idx = self.text_at_pointer(pointer_pos, geometry);
+        if self.hover_text_idx.is_some() {
+            self.hover_room_idx = None;
+            self.hover_corridor_idx = None;
+            self.hover_door_idx = None;
+            return;
         }
 
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
@@ -758,6 +842,15 @@ impl DungeonApp {
         }
     }
 
+    fn text_at_pointer(&self, pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<usize> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
+        self.layout
+            .text_labels
+            .iter()
+            .position(|label| label.cell == clicked)
+    }
+
     // Handle right-click resizing of rooms and return whether resizing is active.
     fn handle_resize(
         &mut self,
@@ -771,10 +864,16 @@ impl DungeonApp {
 
         if response.secondary_clicked() && self.resize_state.is_none() {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
-                if let Some(room_idx) = self.resize_room_at_pointer(pointer_pos, geometry) {
+                if let Some(text_idx) = self.text_at_pointer(pointer_pos, geometry) {
+                    if let Some(state) = self.start_text_resize(text_idx) {
+                        self.push_undo_snapshot();
+                        self.resize_state = Some(ResizeState::Text(state));
+                        return true;
+                    }
+                } else if let Some(room_idx) = self.resize_room_at_pointer(pointer_pos, geometry) {
                     if let Some(state) = self.start_resize(room_idx, pointer_pos, geometry) {
                         self.push_undo_snapshot();
-                        self.resize_state = Some(state);
+                        self.resize_state = Some(ResizeState::Room(state));
                         return true;
                     }
                 }
@@ -785,7 +884,10 @@ impl DungeonApp {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 if let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) {
                     let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
-                    self.resize_room(&state, cell);
+                    match state {
+                        ResizeState::Room(state) => self.resize_room(&state, cell),
+                        ResizeState::Text(state) => self.resize_text(&state, cell),
+                    }
                 }
             }
 
@@ -796,6 +898,15 @@ impl DungeonApp {
         }
 
         false
+    }
+
+    fn start_text_resize(&self, text_idx: usize) -> Option<TextResizeState> {
+        let label = self.layout.text_labels.get(text_idx)?;
+        Some(TextResizeState {
+            text_idx,
+            origin_cell: label.cell,
+            original_font_size: label.font_size,
+        })
     }
 
     // Resolve the room that should respond to a resize click, including outer corner targets.
@@ -937,12 +1048,49 @@ impl DungeonApp {
         }
     }
 
+    fn resize_text(&mut self, state: &TextResizeState, target_cell: (usize, usize)) {
+        let Some(label) = self.layout.text_labels.get_mut(state.text_idx) else {
+            self.resize_state = None;
+            return;
+        };
+
+        let dx = target_cell.0 as isize - state.origin_cell.0 as isize;
+        let dy = target_cell.1 as isize - state.origin_cell.1 as isize;
+        let delta_cells = if dx.abs() >= dy.abs() { dx } else { -dy };
+        let new_size = (state.original_font_size as isize + (delta_cells * 4)).clamp(8, 96);
+        label.font_size = new_size as u16;
+    }
+
     // Draw dashed overlays for room resizing interactions.
     fn draw_resize_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        if let Some(text_idx) = self
+            .resize_state
+            .as_ref()
+            .and_then(|s| match s {
+                ResizeState::Text(state) => Some(state.text_idx),
+                ResizeState::Room(_) => None,
+            })
+            .or(self.hover_text_idx)
+        {
+            if let Some(label) = self.layout.text_labels.get(text_idx) {
+                let rect = text_label_rect(geometry, label).expand(3.0);
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    Stroke::new(2.0, Color32::from_gray(180)),
+                    egui::StrokeKind::Middle,
+                );
+                return;
+            }
+        }
+
         let room_idx = self
             .resize_state
             .as_ref()
-            .map(|s| s.room_idx)
+            .and_then(|s| match s {
+                ResizeState::Room(state) => Some(state.room_idx),
+                ResizeState::Text(_) => None,
+            })
             .or(self.hover_room_idx);
         let Some(room_idx) = room_idx else {
             return;
@@ -980,7 +1128,7 @@ impl DungeonApp {
         );
         painter.text(center_left, egui::Align2::CENTER_CENTER, "^v", font, color);
 
-        if self.resize_state.is_some() {
+        if matches!(self.resize_state, Some(ResizeState::Room(_))) {
             draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
             draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
             draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
@@ -1029,6 +1177,14 @@ impl DungeonApp {
 
     // Delete the door, room, or corridor at the pointer position.
     fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
+        if let Some(idx) = self.text_at_pointer(pointer_pos, geometry) {
+            self.push_undo_snapshot();
+            if idx < self.layout.text_labels.len() {
+                self.layout.text_labels.remove(idx);
+            }
+            return;
+        }
+
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
             let target = normalized_edge(edge.0, edge.1);
             if let Some(idx) = self.layout.doors.iter().position(|d| {
@@ -1275,6 +1431,11 @@ struct RoomDragState {
 }
 
 #[derive(Debug, Clone)]
+struct TextDragState {
+    text_idx: usize,
+}
+
+#[derive(Debug, Clone)]
 struct CorridorDragState {
     corridor_index: usize,
     original_path: Vec<(usize, usize)>,
@@ -1304,7 +1465,21 @@ struct RoomResizeState {
 #[derive(Debug, Clone)]
 enum DragState {
     Room(RoomDragState),
+    Text(TextDragState),
     Corridor(CorridorDragState),
+}
+
+#[derive(Debug, Clone)]
+struct TextResizeState {
+    text_idx: usize,
+    origin_cell: (usize, usize),
+    original_font_size: u16,
+}
+
+#[derive(Debug, Clone)]
+enum ResizeState {
+    Room(RoomResizeState),
+    Text(TextResizeState),
 }
 
 struct GridGeometry {
@@ -1370,6 +1545,7 @@ fn draw_layout(
     geometry: &GridGeometry,
     layout: &DungeonLayout,
     colorblind_mode: bool,
+    hover_text_idx: Option<usize>,
 ) {
     let wall_width_px = (geometry.cell_size / 5.0).max(1.0);
     let door_width_px = (geometry.cell_size / 10.0).max(1.0);
@@ -1595,6 +1771,30 @@ fn draw_layout(
             window,
             Stroke::new(door_width_px, Color32::from_rgb(70, 130, 220)),
             style,
+        );
+    }
+
+    for (idx, label) in layout.text_labels.iter().enumerate() {
+        if hover_text_idx == Some(idx) {
+            painter.rect_stroke(
+                text_label_rect(geometry, label).expand(2.0),
+                0.0,
+                Stroke::new(2.0, Color32::from_rgb(255, 220, 120)),
+                egui::StrokeKind::Middle,
+            );
+        }
+        let pos = cell_center(geometry, label.cell.0, label.cell.1);
+        let color = if colorblind_mode {
+            Color32::BLACK
+        } else {
+            Color32::WHITE
+        };
+        painter.text(
+            pos,
+            egui::Align2::CENTER_CENTER,
+            &label.text,
+            egui::FontId::proportional(label.font_size as f32),
+            color,
         );
     }
 }
@@ -2222,6 +2422,15 @@ fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
         geometry.rect.left() + (col as f32 + 0.5) * geometry.cell_size,
         geometry.rect.top() + (row as f32 + 0.5) * geometry.cell_size,
     )
+}
+
+fn text_label_rect(geometry: &GridGeometry, label: &layout::TextLabel) -> egui::Rect {
+    let center = cell_center(geometry, label.cell.0, label.cell.1);
+    let font_size = label.font_size as f32;
+    let width =
+        (label.text.chars().count().max(1) as f32 * font_size * 0.6).max(geometry.cell_size * 0.5);
+    let height = font_size.max(geometry.cell_size * 0.35);
+    egui::Rect::from_center_size(center, egui::vec2(width, height))
 }
 
 // Draw a crosshatch pattern inside a room for colorblind mode.
