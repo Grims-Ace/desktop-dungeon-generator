@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::seed;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Room {
     pub x: usize,
     pub y: usize,
@@ -17,7 +17,7 @@ impl Room {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Corridor {
     #[allow(dead_code)]
     pub id: u64,
@@ -27,7 +27,7 @@ pub struct Corridor {
     pub width: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Door {
     pub from: (usize, usize),
     pub to: (usize, usize),
@@ -39,7 +39,7 @@ pub struct Door {
     pub manual: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Window {
     pub cell: (usize, usize),
     pub side: WindowSide,
@@ -74,7 +74,7 @@ pub struct WindowSettings {
     pub allow_internal_windows: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,

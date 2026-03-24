@@ -23,6 +23,13 @@ enum ManualDoorKind {
     Secret,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AppSnapshot {
+    settings: UiSettings,
+    layout: DungeonLayout,
+    suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
+}
+
 // Boot the native app and start the egui event loop.
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions::default();
@@ -38,6 +45,8 @@ struct DungeonApp {
     settings: UiSettings,
     layout: DungeonLayout,
     suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
+    undo_stack: Vec<AppSnapshot>,
+    redo_stack: Vec<AppSnapshot>,
     drag_state: Option<DragState>,
     export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     pending_delete: bool,
@@ -72,6 +81,8 @@ impl Default for DungeonApp {
             settings,
             layout,
             suppressed_auto_door_edges: HashSet::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             drag_state: None,
             export_rx: None,
             pending_delete: false,
@@ -97,6 +108,11 @@ impl eframe::App for DungeonApp {
     // Render UI, handle input, and update app state each frame.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let panel_result = draw_side_panel(ctx, &mut self.settings, self.export_rx.is_some());
+        let undo_requested = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z));
+        let redo_requested = ctx.input(|i| {
+            (i.modifiers.command && i.key_pressed(egui::Key::Y))
+                || (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z))
+        });
 
         if self.settings.min_room_size > self.settings.max_room_size {
             self.settings.max_room_size = self.settings.min_room_size;
@@ -111,9 +127,17 @@ impl eframe::App for DungeonApp {
             self.settings.max_window_width = self.settings.min_window_width;
         }
 
+        if undo_requested {
+            self.undo();
+        } else if redo_requested {
+            self.redo();
+        }
+
         if panel_result.clear_clicked {
+            self.push_undo_snapshot();
             self.clear_layout();
         } else if panel_result.reset_clicked || panel_result.settings_changed {
+            self.push_undo_snapshot();
             self.regenerate_layout();
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
@@ -192,6 +216,8 @@ impl eframe::App for DungeonApp {
                 ui.heading("Keybinds");
                 ui.add_space(6.0);
                 ui.label("Delete / Backspace: Remove hovered room or corridor");
+                ui.label("Ctrl+Z: Undo");
+                ui.label("Ctrl+Y: Redo");
                 ui.label("Right click: Cancel add tool");
                 ui.label("Right click + drag: Resize hovered room");
             });
@@ -228,6 +254,55 @@ impl eframe::App for DungeonApp {
 }
 
 impl DungeonApp {
+    fn snapshot(&self) -> AppSnapshot {
+        AppSnapshot {
+            settings: self.settings.clone(),
+            layout: self.layout.clone(),
+            suppressed_auto_door_edges: self.suppressed_auto_door_edges.clone(),
+        }
+    }
+
+    fn push_undo_snapshot(&mut self) {
+        let snapshot = self.snapshot();
+        if self.undo_stack.last() == Some(&snapshot) {
+            return;
+        }
+        self.undo_stack.push(snapshot);
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    fn restore_snapshot(&mut self, snapshot: AppSnapshot) {
+        self.settings = snapshot.settings;
+        self.layout = snapshot.layout;
+        self.suppressed_auto_door_edges = snapshot.suppressed_auto_door_edges;
+        self.drag_state = None;
+        self.add_corridor_drag = None;
+        self.resize_state = None;
+        self.hover_room_idx = None;
+        self.hover_corridor_idx = None;
+        self.hover_door_idx = None;
+        self.pending_delete = false;
+    }
+
+    fn undo(&mut self) {
+        let Some(snapshot) = self.undo_stack.pop() else {
+            return;
+        };
+        self.redo_stack.push(self.snapshot());
+        self.restore_snapshot(snapshot);
+    }
+
+    fn redo(&mut self) {
+        let Some(snapshot) = self.redo_stack.pop() else {
+            return;
+        };
+        self.undo_stack.push(self.snapshot());
+        self.restore_snapshot(snapshot);
+    }
+
     // Clear the current layout and reset transient interaction state.
     fn clear_layout(&mut self) {
         self.layout = DungeonLayout {
@@ -284,6 +359,7 @@ impl DungeonApp {
             && let Some((room_idx, offset_x, offset_y)) =
                 self.room_at_pointer(pointer_pos, geometry)
         {
+            self.push_undo_snapshot();
             self.drag_state = Some(DragState::Room(RoomDragState {
                 room_idx,
                 offset_x,
@@ -293,6 +369,7 @@ impl DungeonApp {
             && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry)
         {
+            self.push_undo_snapshot();
             self.drag_state = Some(DragState::Corridor(corridor_drag));
         }
 
@@ -568,6 +645,7 @@ impl DungeonApp {
 
     // Add a room anchored to the given grid cell if space allows.
     fn add_room_at_cell(&mut self, cell: (usize, usize)) {
+        self.push_undo_snapshot();
         let width = self.settings.min_room_size.max(1);
         let height = self.settings.min_room_size.max(1);
         if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
@@ -603,6 +681,7 @@ impl DungeonApp {
 
     // Add a corridor between two room cells using a shortest path.
     fn add_corridor_between(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.push_undo_snapshot();
         if start == end {
             return;
         }
@@ -694,6 +773,7 @@ impl DungeonApp {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 if let Some(room_idx) = self.resize_room_at_pointer(pointer_pos, geometry) {
                     if let Some(state) = self.start_resize(room_idx, pointer_pos, geometry) {
+                        self.push_undo_snapshot();
                         self.resize_state = Some(state);
                         return true;
                     }
@@ -956,6 +1036,7 @@ impl DungeonApp {
                     .iter()
                     .any(|e| normalized_edge(e.0, e.1) == target)
             }) {
+                self.push_undo_snapshot();
                 if !self.layout.doors[idx].manual {
                     for edge in door_edges_for(
                         &self.layout.doors[idx],
@@ -1010,12 +1091,14 @@ impl DungeonApp {
         }
 
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
+            self.push_undo_snapshot();
             self.delete_room(room_idx);
             return;
         }
 
         if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
             if corridor_drag.corridor_index < self.layout.corridors.len() {
+                self.push_undo_snapshot();
                 self.layout.corridors.remove(corridor_drag.corridor_index);
                 self.drag_state = None;
                 self.refresh_doors();
@@ -1051,6 +1134,7 @@ impl DungeonApp {
         geometry: &GridGeometry,
         kind: ManualDoorKind,
     ) {
+        self.push_undo_snapshot();
         let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) else {
             return;
         };
