@@ -705,6 +705,9 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Room, "Add Room");
         ui.selectable_value(&mut settings.add_tool, AddTool::Corridor, "Add Corridor");
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Add Door");
         ui.selectable_value(
             &mut settings.add_tool,
@@ -716,6 +719,9 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
             AddTool::SecretDoor,
             "Add Secret Door",
         );
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
     });
 
