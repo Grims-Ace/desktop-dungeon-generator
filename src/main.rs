@@ -220,6 +220,7 @@ impl eframe::App for DungeonApp {
                 ui.label("• Delete / Backspace: Remove hovered room or corridor");
                 ui.label("• Ctrl+Z: Undo");
                 ui.label("• Ctrl+Y: Redo");
+                ui.label("• Left click + drag: Move hovered room");
                 ui.label("• Right click: Cancel add tool");
                 ui.label("• Right click + drag: Resize hovered room");
             });
@@ -862,7 +863,7 @@ impl DungeonApp {
             return false;
         }
 
-        if response.secondary_clicked() && self.resize_state.is_none() {
+        if ctx.input(|i| i.pointer.secondary_pressed()) && self.resize_state.is_none() {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 if let Some(text_idx) = self.text_at_pointer(pointer_pos, geometry) {
                     if let Some(state) = self.start_text_resize(text_idx) {
@@ -881,7 +882,10 @@ impl DungeonApp {
         }
 
         if let Some(state) = self.resize_state.clone() {
-            if let Some(pointer_pos) = response.interact_pointer_pos() {
+            if response.dragged_by(egui::PointerButton::Secondary)
+                && ctx.input(|i| i.pointer.secondary_down())
+                && let Some(pointer_pos) = response.interact_pointer_pos()
+            {
                 if let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) {
                     let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
                     match state {
@@ -942,76 +946,53 @@ impl DungeonApp {
         None
     }
 
-    // Choose the nearest room corner and initialize resize state.
+    // Pick the resize corner from the initial click quadrant and keep the opposite corner fixed.
     fn start_resize(
         &self,
         room_idx: usize,
         pointer_pos: egui::Pos2,
         geometry: &GridGeometry,
     ) -> Option<RoomResizeState> {
-        let room = self.layout.rooms.get(room_idx)?;
+        let original_room = self.layout.rooms.get(room_idx)?.clone();
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
-        let px = grid_x.floor().max(0.0) as isize;
-        let py = grid_y.floor().max(0.0) as isize;
+        let center_x = original_room.x as f32 + original_room.width as f32 * 0.5;
+        let center_y = original_room.y as f32 + original_room.height as f32 * 0.5;
+        let pointer_x = grid_x;
+        let pointer_y = grid_y;
 
-        let corners = [
-            (ResizeCorner::TopLeft, (room.x as isize, room.y as isize)),
-            (
-                ResizeCorner::TopRight,
-                ((room.x + room.width - 1) as isize, room.y as isize),
-            ),
-            (
-                ResizeCorner::BottomLeft,
-                (room.x as isize, (room.y + room.height - 1) as isize),
-            ),
-            (
-                ResizeCorner::BottomRight,
-                (
-                    (room.x + room.width - 1) as isize,
-                    (room.y + room.height - 1) as isize,
-                ),
-            ),
-        ];
-
-        let mut best = corners[0];
-        let mut best_dist = isize::MAX;
-        for corner in corners {
-            let dx = corner.1.0 - px;
-            let dy = corner.1.1 - py;
-            let dist = dx * dx + dy * dy;
-            if dist < best_dist {
-                best = corner;
-                best_dist = dist;
-            }
-        }
-
-        let anchor_cell = match best.0 {
-            ResizeCorner::TopLeft => (room.x + room.width - 1, room.y + room.height - 1),
-            ResizeCorner::TopRight => (room.x, room.y + room.height - 1),
-            ResizeCorner::BottomLeft => (room.x + room.width - 1, room.y),
-            ResizeCorner::BottomRight => (room.x, room.y),
+        let resize_corner = match (pointer_x >= center_x, pointer_y >= center_y) {
+            (false, false) => ResizeCorner::TopLeft,
+            (true, false) => ResizeCorner::TopRight,
+            (false, true) => ResizeCorner::BottomLeft,
+            (true, true) => ResizeCorner::BottomRight,
         };
 
         Some(RoomResizeState {
             room_idx,
-            anchor_cell,
+            original_room,
+            resize_corner,
         })
     }
 
-    // Resize a room toward a target cell while honoring constraints.
+    // Resize only the corner chosen at drag start while keeping the opposite corner fixed.
     fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
         let cols = self.settings.cols.max(1);
         let rows = self.settings.rows.max(1);
 
-        let ax = state.anchor_cell.0 as isize;
-        let ay = state.anchor_cell.1 as isize;
         let tx = target_cell.0.min(cols - 1) as isize;
         let ty = target_cell.1.min(rows - 1) as isize;
+        let original = &state.original_room;
 
-        let x0 = ax.min(tx);
-        let x1 = ax.max(tx);
-        let y0 = ay.min(ty);
-        let y1 = ay.max(ty);
+        let left = original.x as isize;
+        let top = original.y as isize;
+        let right = (original.x + original.width - 1) as isize;
+        let bottom = (original.y + original.height - 1) as isize;
+        let (x0, x1, y0, y1) = match state.resize_corner {
+            ResizeCorner::TopLeft => (tx.min(right), right, ty.min(bottom), bottom),
+            ResizeCorner::TopRight => (left, tx.max(left), ty.min(bottom), bottom),
+            ResizeCorner::BottomLeft => (tx.min(right), right, top, ty.max(top)),
+            ResizeCorner::BottomRight => (left, tx.max(left), top, ty.max(top)),
+        };
 
         let new_room = layout::Room {
             x: x0 as usize,
@@ -1459,7 +1440,8 @@ enum ResizeCorner {
 #[derive(Debug, Clone)]
 struct RoomResizeState {
     room_idx: usize,
-    anchor_cell: (usize, usize),
+    original_room: layout::Room,
+    resize_corner: ResizeCorner,
 }
 
 #[derive(Debug, Clone)]
