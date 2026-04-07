@@ -180,6 +180,7 @@ pub enum AddTool {
     None,
     Room,
     Corridor,
+    Archway,
     Door,
     LockedDoor,
     SecretDoor,
@@ -708,6 +709,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     });
     ui.add_space(4.0);
     ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::Archway, "Add Archway");
         ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Add Door");
         ui.selectable_value(
             &mut settings.add_tool,
@@ -729,6 +731,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     match settings.add_tool {
         AddTool::Room => ui.label("Click to place a room at the grid cell."),
         AddTool::Corridor => ui.label("Click-drag to place a corridor between two cells."),
+        AddTool::Archway => ui.label("Click a valid room or corridor edge to place an archway."),
         AddTool::Door => ui.label("Click a room/corridor edge to place a door."),
         AddTool::LockedDoor => ui.label("Click a room/corridor edge to place a locked door."),
         AddTool::SecretDoor => ui.label("Click a room/corridor edge to place a secret door."),

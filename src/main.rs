@@ -18,6 +18,7 @@ use ui::{AddTool, UiSettings, draw_side_panel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManualDoorKind {
+    Archway,
     Regular,
     Locked,
     Secret,
@@ -642,12 +643,13 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
-            AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
+            AddTool::Archway | AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
                 self.add_corridor_drag = None;
                 if response.clicked()
                     && let Some(pointer_pos) = response.interact_pointer_pos()
                 {
                     let kind = match self.settings.add_tool {
+                        AddTool::Archway => ManualDoorKind::Archway,
                         AddTool::Door => ManualDoorKind::Regular,
                         AddTool::LockedDoor => ManualDoorKind::Locked,
                         AddTool::SecretDoor => ManualDoorKind::Secret,
@@ -1186,43 +1188,7 @@ impl DungeonApp {
                     return;
                 }
 
-                let edges = door_edges_for(
-                    &self.layout.doors[idx],
-                    self.settings.cols,
-                    self.settings.rows,
-                );
-                let mut spawned = Vec::new();
-                for edge in edges {
-                    if normalized_edge(edge.0, edge.1) == target {
-                        continue;
-                    }
-                    if self
-                        .layout
-                        .doors
-                        .iter()
-                        .any(|d| normalized_edge(d.from, d.to) == normalized_edge(edge.0, edge.1))
-                    {
-                        continue;
-                    }
-                    spawned.push(layout::Door {
-                        from: edge.0,
-                        to: edge.1,
-                        width: 1,
-                        span_width: false,
-                        locked: false,
-                        archway: true,
-                        secret: false,
-                        manual: true,
-                    });
-                }
-                let door = &mut self.layout.doors[idx];
-                door.locked = false;
-                door.archway = true;
-                door.secret = false;
-                door.width = 1;
-                door.span_width = false;
-                door.manual = true;
-                self.layout.doors.extend(spawned);
+                self.layout.doors.remove(idx);
                 return;
             }
         }
@@ -1312,7 +1278,7 @@ impl DungeonApp {
             }
             let door = &mut self.layout.doors[idx];
             door.locked = kind == ManualDoorKind::Locked;
-            door.archway = false;
+            door.archway = kind == ManualDoorKind::Archway;
             door.secret = kind == ManualDoorKind::Secret;
             door.width = 1;
             door.span_width = false;
@@ -1325,15 +1291,12 @@ impl DungeonApp {
         }
 
         let corridor_cells = corridor_cells(&self.layout, self.settings.cols, self.settings.rows);
-        let a_in_room = room_index_at_cell(&self.layout.rooms, edge.0).is_some();
-        let b_in_room = room_index_at_cell(&self.layout.rooms, edge.1).is_some();
+        let a_room = room_index_at_cell(&self.layout.rooms, edge.0);
+        let b_room = room_index_at_cell(&self.layout.rooms, edge.1);
         let a_in_corridor = corridor_cells.contains(&edge.0);
         let b_in_corridor = corridor_cells.contains(&edge.1);
 
-        if !(a_in_room ^ b_in_room) {
-            return;
-        }
-        if !(a_in_corridor ^ b_in_corridor) {
+        if !manual_door_edge_allowed(a_room, b_room, a_in_corridor, b_in_corridor) {
             return;
         }
 
@@ -1343,7 +1306,7 @@ impl DungeonApp {
             width: 1,
             span_width: false,
             locked: kind == ManualDoorKind::Locked,
-            archway: false,
+            archway: kind == ManualDoorKind::Archway,
             secret: kind == ManualDoorKind::Secret,
             manual: true,
         });
@@ -1881,6 +1844,21 @@ fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
     let b_right = b.x + b.width;
     let b_bottom = b.y + b.height;
     a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+}
+
+fn manual_door_edge_allowed(
+    a_room: Option<usize>,
+    b_room: Option<usize>,
+    a_in_corridor: bool,
+    b_in_corridor: bool,
+) -> bool {
+    if matches!((a_room, b_room), (Some(a), Some(b)) if a == b) {
+        return false;
+    }
+
+    let a_is_feature = a_room.is_some() || a_in_corridor;
+    let b_is_feature = b_room.is_some() || b_in_corridor;
+    a_is_feature || b_is_feature
 }
 
 fn resize_hit_cells(
