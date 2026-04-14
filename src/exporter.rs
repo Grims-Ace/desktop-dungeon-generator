@@ -341,11 +341,17 @@ fn export_composite_masks(
         .ok_or_else(|| "Failed to allocate secret doors mask canvas".to_string())?;
     let mut windows = Pixmap::new(g.width, g.height)
         .ok_or_else(|| "Failed to allocate windows mask canvas".to_string())?;
+    let mut start_markers = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate start markers mask canvas".to_string())?;
+    let mut end_markers = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| "Failed to allocate end markers mask canvas".to_string())?;
     fill_bg(&mut doors, BLACK);
     fill_bg(&mut archways, BLACK);
     fill_bg(&mut locked_doors, BLACK);
     fill_bg(&mut secret_doors, BLACK);
     fill_bg(&mut windows, BLACK);
+    fill_bg(&mut start_markers, BLACK);
+    fill_bg(&mut end_markers, BLACK);
     for door in &layout.doors {
         if door.secret {
             draw_door(&mut secret_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
@@ -359,6 +365,12 @@ fn export_composite_masks(
     }
     for window in &layout.windows {
         draw_window(&mut windows, &g, window, door_w, WHITE, DoorStyle::Solid);
+    }
+    for marker in &layout.start_markers {
+        fill_rect_marker(&mut start_markers, &g, marker, WHITE);
+    }
+    for marker in &layout.end_markers {
+        fill_rect_marker(&mut end_markers, &g, marker, WHITE);
     }
 
     let composite = render_pixmap(layout, settings)?;
@@ -376,6 +388,8 @@ fn export_composite_masks(
     save_mask_image(folder, "locked_doors_mask", &locked_doors, settings)?;
     save_mask_image(folder, "secret_doors_mask", &secret_doors, settings)?;
     save_mask_image(folder, "windows_mask", &windows, settings)?;
+    save_mask_image(folder, "start_markers_mask", &start_markers, settings)?;
+    save_mask_image(folder, "end_markers_mask", &end_markers, settings)?;
     if settings.export_show_grid {
         let mut grid = Pixmap::new(g.width, g.height)
             .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
