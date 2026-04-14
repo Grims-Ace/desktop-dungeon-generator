@@ -59,37 +59,30 @@ pub fn populate_random_markers(
         consume_room(&mut available_end_rooms, end_room_idx);
     }
 
-    for idx in pair_count..start_count {
-        let room_idx = pick_room_index(
-            &available_start_rooms,
-            layout.rooms.len(),
-            seed::derive_seed(settings.seed, EXTRA_START_ROOM_STREAM_BASE + idx as u64),
-        );
-        let room = &layout.rooms[room_idx];
-        layout.start_markers.push(marker_in_room(
-            room,
-            settings.min_start_marker_size,
-            settings.max_start_marker_size,
-            seed::derive_seed(settings.seed, EXTRA_START_MARKER_STREAM_BASE + idx as u64),
-        ));
-        consume_room(&mut available_start_rooms, room_idx);
-    }
-
-    for idx in pair_count..end_count {
-        let room_idx = pick_room_index(
-            &available_end_rooms,
-            layout.rooms.len(),
-            seed::derive_seed(settings.seed, EXTRA_END_ROOM_STREAM_BASE + idx as u64),
-        );
-        let room = &layout.rooms[room_idx];
-        layout.end_markers.push(marker_in_room(
-            room,
-            settings.min_end_marker_size,
-            settings.max_end_marker_size,
-            seed::derive_seed(settings.seed, EXTRA_END_MARKER_STREAM_BASE + idx as u64),
-        ));
-        consume_room(&mut available_end_rooms, room_idx);
-    }
+    assign_extra_markers(
+        &mut layout.start_markers,
+        &layout.rooms,
+        &mut available_start_rooms,
+        pair_count,
+        start_count,
+        settings.min_start_marker_size,
+        settings.max_start_marker_size,
+        settings.seed,
+        EXTRA_START_ROOM_STREAM_BASE,
+        EXTRA_START_MARKER_STREAM_BASE,
+    );
+    assign_extra_markers(
+        &mut layout.end_markers,
+        &layout.rooms,
+        &mut available_end_rooms,
+        pair_count,
+        end_count,
+        settings.min_end_marker_size,
+        settings.max_end_marker_size,
+        settings.seed,
+        EXTRA_END_ROOM_STREAM_BASE,
+        EXTRA_END_MARKER_STREAM_BASE,
+    );
 
     layout
 }
@@ -140,6 +133,34 @@ fn marker_in_room(
             (seed_value.rotate_left(19) as usize) % (y_span + 1)
         };
     layout::AreaMarker { cell: (x, y), size }
+}
+
+fn assign_extra_markers(
+    markers: &mut Vec<layout::AreaMarker>,
+    rooms: &[layout::Room],
+    available_rooms: &mut Vec<usize>,
+    start_idx: usize,
+    end_idx: usize,
+    min_size: usize,
+    max_size: usize,
+    seed_base: u64,
+    room_stream_base: u64,
+    marker_stream_base: u64,
+) {
+    for idx in start_idx..end_idx {
+        let room_idx = pick_room_index(
+            available_rooms,
+            rooms.len(),
+            seed::derive_seed(seed_base, room_stream_base + idx as u64),
+        );
+        markers.push(marker_in_room(
+            &rooms[room_idx],
+            min_size,
+            max_size,
+            seed::derive_seed(seed_base, marker_stream_base + idx as u64),
+        ));
+        consume_room(available_rooms, room_idx);
+    }
 }
 
 // Match each start/end pair to the farthest available room combination.

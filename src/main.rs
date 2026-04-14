@@ -285,6 +285,22 @@ fn clamp_dependent_settings(settings: &mut UiSettings) {
 }
 
 impl DungeonApp {
+    fn clear_hover_targets(&mut self) {
+        self.hover_room_idx = None;
+        self.hover_corridor_idx = None;
+        self.hover_door_idx = None;
+        self.hover_text_idx = None;
+        self.hover_marker = None;
+    }
+
+    fn reset_transient_state(&mut self) {
+        self.drag_state = None;
+        self.add_corridor_drag = None;
+        self.resize_state = None;
+        self.clear_hover_targets();
+        self.pending_delete = false;
+    }
+
     fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             settings: self.settings.clone(),
@@ -309,15 +325,7 @@ impl DungeonApp {
         self.settings = snapshot.settings;
         self.layout = snapshot.layout;
         self.suppressed_auto_door_edges = snapshot.suppressed_auto_door_edges;
-        self.drag_state = None;
-        self.add_corridor_drag = None;
-        self.resize_state = None;
-        self.hover_room_idx = None;
-        self.hover_corridor_idx = None;
-        self.hover_door_idx = None;
-        self.hover_text_idx = None;
-        self.hover_marker = None;
-        self.pending_delete = false;
+        self.reset_transient_state();
     }
 
     fn undo(&mut self) {
@@ -343,15 +351,7 @@ impl DungeonApp {
             ..DungeonLayout::default()
         };
         self.suppressed_auto_door_edges.clear();
-        self.drag_state = None;
-        self.add_corridor_drag = None;
-        self.resize_state = None;
-        self.hover_room_idx = None;
-        self.hover_corridor_idx = None;
-        self.hover_door_idx = None;
-        self.hover_text_idx = None;
-        self.hover_marker = None;
-        self.pending_delete = false;
+        self.reset_transient_state();
     }
 
     // Regenerate the dungeon layout from current settings and reset drag state.
@@ -868,11 +868,7 @@ impl DungeonApp {
     // Update which room/corridor/door is currently hovered.
     fn update_hover_targets(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
-            self.hover_room_idx = None;
-            self.hover_corridor_idx = None;
-            self.hover_door_idx = None;
-            self.hover_text_idx = None;
-            self.hover_marker = None;
+            self.clear_hover_targets();
             return;
         };
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
@@ -1941,28 +1937,26 @@ fn draw_layout(
         );
     }
 
-    for (idx, marker) in layout.start_markers.iter().enumerate() {
-        draw_area_marker(
-            painter,
-            geometry,
-            marker,
-            "S",
-            Color32::from_rgb(60, 220, 200),
-            colorblind_mode,
-            hover_marker == Some(HoverMarker::Start(idx)),
-        );
-    }
-    for (idx, marker) in layout.end_markers.iter().enumerate() {
-        draw_area_marker(
-            painter,
-            geometry,
-            marker,
-            "E",
-            Color32::from_rgb(240, 90, 90),
-            colorblind_mode,
-            hover_marker == Some(HoverMarker::End(idx)),
-        );
-    }
+    draw_area_marker_group(
+        painter,
+        geometry,
+        &layout.start_markers,
+        "S",
+        Color32::from_rgb(60, 220, 200),
+        colorblind_mode,
+        hover_marker,
+        MarkerKind::Start,
+    );
+    draw_area_marker_group(
+        painter,
+        geometry,
+        &layout.end_markers,
+        "E",
+        Color32::from_rgb(240, 90, 90),
+        colorblind_mode,
+        hover_marker,
+        MarkerKind::End,
+    );
 }
 
 // Compute the rectangle for a given grid cell.
@@ -2049,6 +2043,34 @@ fn draw_area_marker(
         egui::FontId::proportional(font_size),
         text_color,
     );
+}
+
+fn draw_area_marker_group(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    markers: &[layout::AreaMarker],
+    label: &str,
+    base_color: Color32,
+    colorblind_mode: bool,
+    hover_marker: Option<HoverMarker>,
+    kind: MarkerKind,
+) {
+    for (idx, marker) in markers.iter().enumerate() {
+        let hovered = match (kind, hover_marker) {
+            (MarkerKind::Start, Some(HoverMarker::Start(hover_idx))) => hover_idx == idx,
+            (MarkerKind::End, Some(HoverMarker::End(hover_idx))) => hover_idx == idx,
+            _ => false,
+        };
+        draw_area_marker(
+            painter,
+            geometry,
+            marker,
+            label,
+            base_color,
+            colorblind_mode,
+            hovered,
+        );
+    }
 }
 
 // Draw a rectangular wall segment between two points.

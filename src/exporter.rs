@@ -276,12 +276,22 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         draw_window(&mut pixmap, &g, window, door_w, WINDOW, style);
     }
 
-    for marker in &layout.start_markers {
-        draw_area_marker(&mut pixmap, &g, marker, "S", START_MARKER, settings.colorblind_mode);
-    }
-    for marker in &layout.end_markers {
-        draw_area_marker(&mut pixmap, &g, marker, "E", END_MARKER, settings.colorblind_mode);
-    }
+    draw_area_marker_group(
+        &mut pixmap,
+        &g,
+        &layout.start_markers,
+        "S",
+        START_MARKER,
+        settings.colorblind_mode,
+    );
+    draw_area_marker_group(
+        &mut pixmap,
+        &g,
+        &layout.end_markers,
+        "E",
+        END_MARKER,
+        settings.colorblind_mode,
+    );
 
     Ok(pixmap)
 }
@@ -352,12 +362,8 @@ fn export_composite_masks(
     for window in &layout.windows {
         draw_window(&mut windows, &g, window, door_w, WHITE, DoorStyle::Solid);
     }
-    for marker in &layout.start_markers {
-        fill_rect_marker(&mut start_markers, &g, marker, WHITE);
-    }
-    for marker in &layout.end_markers {
-        fill_rect_marker(&mut end_markers, &g, marker, WHITE);
-    }
+    fill_marker_mask(&mut start_markers, &g, &layout.start_markers);
+    fill_marker_mask(&mut end_markers, &g, &layout.end_markers);
 
     let composite = render_pixmap(layout, settings)?;
     let composite_img = raster_image_from_pixmap(&composite, settings)?;
@@ -392,6 +398,12 @@ fn blank_mask(g: &ExportGeometry, name: &str) -> Result<Pixmap, String> {
         .ok_or_else(|| format!("Failed to allocate {name} mask canvas"))?;
     fill_bg(&mut pixmap, BLACK);
     Ok(pixmap)
+}
+
+fn fill_marker_mask(pixmap: &mut Pixmap, g: &ExportGeometry, markers: &[AreaMarker]) {
+    for marker in markers {
+        fill_rect_marker(pixmap, g, marker, WHITE);
+    }
 }
 
 // Write a single mask image to disk.
@@ -684,12 +696,22 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         }
     }
 
-    for marker in &layout.start_markers {
-        append_svg_area_marker(&mut s, &g, marker, "S", START_MARKER, settings.colorblind_mode);
-    }
-    for marker in &layout.end_markers {
-        append_svg_area_marker(&mut s, &g, marker, "E", END_MARKER, settings.colorblind_mode);
-    }
+    append_svg_area_marker_group(
+        &mut s,
+        &g,
+        &layout.start_markers,
+        "S",
+        START_MARKER,
+        settings.colorblind_mode,
+    );
+    append_svg_area_marker_group(
+        &mut s,
+        &g,
+        &layout.end_markers,
+        "E",
+        END_MARKER,
+        settings.colorblind_mode,
+    );
 
     s.push_str("</svg>\n");
     s
@@ -851,6 +873,19 @@ fn draw_area_marker(
             symbol,
             DoorStyle::Solid,
         );
+    }
+}
+
+fn draw_area_marker_group(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    markers: &[AreaMarker],
+    label: &str,
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    for marker in markers {
+        draw_area_marker(pixmap, g, marker, label, color, colorblind_mode);
     }
 }
 
@@ -1162,6 +1197,19 @@ fn append_svg_area_marker(
             x + w * 0.25,
             y + h * 0.75
         );
+    }
+}
+
+fn append_svg_area_marker_group(
+    out: &mut String,
+    g: &ExportGeometry,
+    markers: &[AreaMarker],
+    label: &str,
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    for marker in markers {
+        append_svg_area_marker(out, g, marker, label, color, colorblind_mode);
     }
 }
 
