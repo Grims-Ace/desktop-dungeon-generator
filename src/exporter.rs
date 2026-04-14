@@ -6,7 +6,7 @@ use image::{DynamicImage, ImageFormat, RgbaImage, imageops::FilterType};
 use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
-use crate::layout::{Door, DungeonLayout, Room, Window, WindowSide, corridor_cells};
+use crate::layout::{AreaMarker, Door, DungeonLayout, Room, Window, WindowSide, corridor_cells};
 use crate::ui::{ExportFormat, MaskFormat, UiSettings};
 
 const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
@@ -20,6 +20,8 @@ const SECRET_DOOR: (u8, u8, u8, u8) = (170, 80, 170, 255);
 const ARCHWAY: (u8, u8, u8, u8) = (230, 140, 60, 255);
 const WINDOW: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
+const START_MARKER: (u8, u8, u8, u8) = (60, 220, 200, 255);
+const END_MARKER: (u8, u8, u8, u8) = (240, 90, 90, 255);
 
 pub enum ExportTarget {
     File(PathBuf),
@@ -272,6 +274,13 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
             DoorStyle::Solid
         };
         draw_window(&mut pixmap, &g, window, door_w, WINDOW, style);
+    }
+
+    if let Some(marker) = layout.start_marker.as_ref() {
+        draw_area_marker(&mut pixmap, &g, marker, "S", START_MARKER, settings.colorblind_mode);
+    }
+    if let Some(marker) = layout.end_marker.as_ref() {
+        draw_area_marker(&mut pixmap, &g, marker, "E", END_MARKER, settings.colorblind_mode);
     }
 
     Ok(pixmap)
@@ -668,6 +677,13 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         }
     }
 
+    if let Some(marker) = layout.start_marker.as_ref() {
+        append_svg_area_marker(&mut s, &g, marker, "S", START_MARKER, settings.colorblind_mode);
+    }
+    if let Some(marker) = layout.end_marker.as_ref() {
+        append_svg_area_marker(&mut s, &g, marker, "E", END_MARKER, settings.colorblind_mode);
+    }
+
     s.push_str("</svg>\n");
     s
 }
@@ -744,6 +760,91 @@ fn fill_rect_room(pixmap: &mut Pixmap, g: &ExportGeometry, room: &Room, color: (
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.0, color.1, color.2, color.3);
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn fill_rect_marker(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    marker: &AreaMarker,
+    color: (u8, u8, u8, u8),
+) {
+    let Some(rect) = Rect::from_xywh(
+        g.left() + marker.cell.0 as f32 * g.cell,
+        g.top() + marker.cell.1 as f32 * g.cell,
+        marker.size as f32 * g.cell,
+        marker.size as f32 * g.cell,
+    ) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn draw_area_marker(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    marker: &AreaMarker,
+    label: &str,
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    let overlay = (color.0, color.1, color.2, if colorblind_mode { 56 } else { 90 });
+    fill_rect_marker(pixmap, g, marker, overlay);
+
+    let x = g.left() + marker.cell.0 as f32 * g.cell;
+    let y = g.top() + marker.cell.1 as f32 * g.cell;
+    let w = marker.size as f32 * g.cell;
+    let h = marker.size as f32 * g.cell;
+    draw_wall_segment(pixmap, x, y, x + w, y, 3.0, color);
+    draw_wall_segment(pixmap, x, y + h, x + w, y + h, 3.0, color);
+    draw_wall_segment(pixmap, x, y, x, y + h, 3.0, color);
+    draw_wall_segment(pixmap, x + w, y, x + w, y + h, 3.0, color);
+
+    let symbol = if colorblind_mode { BLACK } else { WHITE };
+    if label == "S" {
+        draw_line(
+            pixmap,
+            x + w * 0.25,
+            y + h * 0.75,
+            x + w * 0.5,
+            y + h * 0.25,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        draw_line(
+            pixmap,
+            x + w * 0.5,
+            y + h * 0.25,
+            x + w * 0.75,
+            y + h * 0.75,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+    } else {
+        draw_line(
+            pixmap,
+            x + w * 0.25,
+            y + h * 0.25,
+            x + w * 0.75,
+            y + h * 0.75,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        draw_line(
+            pixmap,
+            x + w * 0.75,
+            y + h * 0.25,
+            x + w * 0.25,
+            y + h * 0.75,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+    }
 }
 
 // Draw a filled circle for dot patterns.
@@ -1004,6 +1105,56 @@ fn append_svg_walls(
                 (right - left) + width
             );
         }
+    }
+}
+
+fn append_svg_area_marker(
+    out: &mut String,
+    g: &ExportGeometry,
+    marker: &AreaMarker,
+    label: &str,
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    let x = g.left() + marker.cell.0 as f32 * g.cell;
+    let y = g.top() + marker.cell.1 as f32 * g.cell;
+    let w = marker.size as f32 * g.cell;
+    let h = marker.size as f32 * g.cell;
+    let alpha = if colorblind_mode { 0.22 } else { 0.35 };
+    let _ = writeln!(
+        out,
+        "<rect x='{x}' y='{y}' width='{w}' height='{h}' fill='rgb({},{},{})' fill-opacity='{alpha}' stroke='rgb({},{},{})' stroke-width='3'/>",
+        color.0, color.1, color.2, color.0, color.1, color.2
+    );
+    let symbol = if colorblind_mode { "black" } else { "white" };
+    if label == "S" {
+        let _ = writeln!(
+            out,
+            "<polyline points='{},{} {},{} {},{}' fill='none' stroke='{symbol}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>",
+            x + w * 0.25,
+            y + h * 0.75,
+            x + w * 0.5,
+            y + h * 0.25,
+            x + w * 0.75,
+            y + h * 0.75
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{symbol}' stroke-width='4' stroke-linecap='round'/>",
+            x + w * 0.25,
+            y + h * 0.25,
+            x + w * 0.75,
+            y + h * 0.75
+        );
+        let _ = writeln!(
+            out,
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{symbol}' stroke-width='4' stroke-linecap='round'/>",
+            x + w * 0.75,
+            y + h * 0.25,
+            x + w * 0.25,
+            y + h * 0.75
+        );
     }
 }
 

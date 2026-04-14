@@ -54,6 +54,12 @@ pub struct TextLabel {
     pub font_size: u16,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AreaMarker {
+    pub cell: (usize, usize),
+    pub size: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowSide {
     Left,
@@ -88,6 +94,8 @@ pub struct DungeonLayout {
     pub doors: Vec<Door>,
     pub windows: Vec<Window>,
     pub text_labels: Vec<TextLabel>,
+    pub start_marker: Option<AreaMarker>,
+    pub end_marker: Option<AreaMarker>,
     pub packed_rooms: bool,
 }
 
@@ -99,6 +107,8 @@ impl Default for DungeonLayout {
             doors: Vec::new(),
             windows: Vec::new(),
             text_labels: Vec::new(),
+            start_marker: None,
+            end_marker: None,
             packed_rooms: false,
         }
     }
@@ -166,6 +176,8 @@ pub fn generate_layout(
             doors: Vec::new(),
             windows: Vec::new(),
             text_labels: Vec::new(),
+            start_marker: None,
+            end_marker: None,
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -189,6 +201,8 @@ pub fn generate_layout(
             doors: Vec::new(),
             windows: Vec::new(),
             text_labels: Vec::new(),
+            start_marker: None,
+            end_marker: None,
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -217,6 +231,8 @@ pub fn generate_layout(
             doors: Vec::new(),
             windows: Vec::new(),
             text_labels: Vec::new(),
+            start_marker: None,
+            end_marker: None,
             packed_rooms: true,
         };
         apply_doors(&mut layout, seed, door_settings, cols, rows);
@@ -274,6 +290,8 @@ pub fn generate_layout(
             doors: Vec::new(),
             windows: Vec::new(),
             text_labels: Vec::new(),
+            start_marker: None,
+            end_marker: None,
             packed_rooms: false,
         };
     }
@@ -328,6 +346,8 @@ pub fn generate_layout(
         doors: Vec::new(),
         windows: Vec::new(),
         text_labels: Vec::new(),
+        start_marker: None,
+        end_marker: None,
         packed_rooms: false,
     };
     apply_doors(&mut layout, seed, door_settings, cols, rows);

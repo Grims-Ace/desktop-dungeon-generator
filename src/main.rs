@@ -57,6 +57,7 @@ struct DungeonApp {
     hover_corridor_idx: Option<usize>,
     hover_door_idx: Option<usize>,
     hover_text_idx: Option<usize>,
+    hover_marker_kind: Option<MarkerKind>,
 }
 
 impl Default for DungeonApp {
@@ -94,6 +95,7 @@ impl Default for DungeonApp {
             hover_corridor_idx: None,
             hover_door_idx: None,
             hover_text_idx: None,
+            hover_marker_kind: None,
         }
     }
 }
@@ -203,6 +205,8 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry_colorblind(ui, "Secret Doors", LegendStyle::DashDotDotLine);
                     draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
                     draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
+                    draw_legend_entry_colorblind(ui, "Start Marker", LegendStyle::SolidLine);
+                    draw_legend_entry_colorblind(ui, "End Marker", LegendStyle::SolidLine);
                 } else {
                     draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
                     draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
@@ -212,13 +216,15 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::from_rgb(170, 80, 170), "Secret Doors");
                     draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
+                    draw_legend_entry(ui, Color32::from_rgb(60, 220, 200), "Start Marker");
+                    draw_legend_entry(ui, Color32::from_rgb(240, 90, 90), "End Marker");
                 }
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(8.0);
                 ui.heading("Keybinds");
                 ui.add_space(6.0);
-                ui.label("• Delete / Backspace: Remove hovered room or corridor");
+                ui.label("• Delete / Backspace: Remove hovered room, corridor, door, text, or marker");
                 ui.label("• Ctrl+Z: Undo");
                 ui.label("• Ctrl+Y: Redo");
                 ui.label("• Left click + drag: Move hovered room");
@@ -249,6 +255,7 @@ impl eframe::App for DungeonApp {
                 &self.layout,
                 self.settings.colorblind_mode,
                 self.hover_text_idx,
+                self.hover_marker_kind,
             );
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
@@ -290,6 +297,7 @@ impl DungeonApp {
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
         self.hover_text_idx = None;
+        self.hover_marker_kind = None;
         self.pending_delete = false;
     }
 
@@ -323,6 +331,7 @@ impl DungeonApp {
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
         self.hover_text_idx = None;
+        self.hover_marker_kind = None;
         self.pending_delete = false;
     }
 
@@ -670,6 +679,22 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
+            AddTool::StartMarker | AddTool::EndMarker => {
+                self.add_corridor_drag = None;
+                if response.clicked()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    let kind = match self.settings.add_tool {
+                        AddTool::StartMarker => MarkerKind::Start,
+                        AddTool::EndMarker => MarkerKind::End,
+                        _ => unreachable!(),
+                    };
+                    self.add_marker_at_cell(cell, kind);
+                    self.settings.add_tool = AddTool::None;
+                }
+            }
             AddTool::None => {
                 self.add_corridor_drag = None;
             }
@@ -797,6 +822,26 @@ impl DungeonApp {
         });
     }
 
+    fn add_marker_at_cell(&mut self, cell: (usize, usize), kind: MarkerKind) {
+        if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
+            return;
+        }
+
+        let size = match kind {
+            MarkerKind::Start => self.settings.start_marker_size,
+            MarkerKind::End => self.settings.end_marker_size,
+        }
+        .clamp(1, 10);
+        let origin = centered_marker_origin(cell, size, self.settings.cols, self.settings.rows);
+        let marker = layout::AreaMarker { cell: origin, size };
+
+        self.push_undo_snapshot();
+        match kind {
+            MarkerKind::Start => self.layout.start_marker = Some(marker),
+            MarkerKind::End => self.layout.end_marker = Some(marker),
+        }
+    }
+
     // Update which room/corridor/door is currently hovered.
     fn update_hover_targets(&mut self, ctx: &egui::Context, geometry: &GridGeometry) {
         let Some(pointer_pos) = ctx.pointer_hover_pos() else {
@@ -804,6 +849,7 @@ impl DungeonApp {
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
             self.hover_text_idx = None;
+            self.hover_marker_kind = None;
             return;
         };
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
@@ -817,12 +863,22 @@ impl DungeonApp {
                 self.hover_room_idx = None;
                 self.hover_corridor_idx = None;
                 self.hover_text_idx = None;
+                self.hover_marker_kind = None;
                 return;
             }
         }
 
         self.hover_text_idx = self.text_at_pointer(pointer_pos, geometry);
         if self.hover_text_idx.is_some() {
+            self.hover_room_idx = None;
+            self.hover_corridor_idx = None;
+            self.hover_door_idx = None;
+            self.hover_marker_kind = None;
+            return;
+        }
+
+        self.hover_marker_kind = self.marker_at_pointer(pointer_pos, geometry);
+        if self.hover_marker_kind.is_some() {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
@@ -833,14 +889,17 @@ impl DungeonApp {
             self.hover_room_idx = Some(room_idx);
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
+            self.hover_marker_kind = None;
         } else {
             self.hover_room_idx = None;
             if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
                 self.hover_corridor_idx = Some(corridor_drag.corridor_index);
                 self.hover_door_idx = None;
+                self.hover_marker_kind = None;
             } else {
                 self.hover_corridor_idx = None;
                 self.hover_door_idx = None;
+                self.hover_marker_kind = None;
             }
         }
     }
@@ -852,6 +911,20 @@ impl DungeonApp {
             .text_labels
             .iter()
             .position(|label| label.cell == clicked)
+    }
+
+    fn marker_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<MarkerKind> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
+        marker_contains_cell(self.layout.start_marker.as_ref(), clicked)
+            .then_some(MarkerKind::Start)
+            .or_else(|| {
+                marker_contains_cell(self.layout.end_marker.as_ref(), clicked).then_some(MarkerKind::End)
+            })
     }
 
     // Handle right-click resizing of rooms and return whether resizing is active.
@@ -1168,6 +1241,15 @@ impl DungeonApp {
             return;
         }
 
+        if let Some(kind) = self.marker_at_pointer(pointer_pos, geometry) {
+            self.push_undo_snapshot();
+            match kind {
+                MarkerKind::Start => self.layout.start_marker = None,
+                MarkerKind::End => self.layout.end_marker = None,
+            }
+            return;
+        }
+
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
             let target = normalized_edge(edge.0, edge.1);
             if let Some(idx) = self.layout.doors.iter().position(|d| {
@@ -1400,6 +1482,12 @@ enum ResizeCorner {
     BottomRight,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MarkerKind {
+    Start,
+    End,
+}
+
 #[derive(Debug, Clone)]
 struct RoomResizeState {
     room_idx: usize,
@@ -1491,6 +1579,7 @@ fn draw_layout(
     layout: &DungeonLayout,
     colorblind_mode: bool,
     hover_text_idx: Option<usize>,
+    hover_marker_kind: Option<MarkerKind>,
 ) {
     let wall_width_px = (geometry.cell_size / 5.0).max(1.0);
     let door_width_px = (geometry.cell_size / 10.0).max(1.0);
@@ -1742,6 +1831,29 @@ fn draw_layout(
             color,
         );
     }
+
+    if let Some(marker) = layout.start_marker.as_ref() {
+        draw_area_marker(
+            painter,
+            geometry,
+            marker,
+            "S",
+            Color32::from_rgb(60, 220, 200),
+            colorblind_mode,
+            hover_marker_kind == Some(MarkerKind::Start),
+        );
+    }
+    if let Some(marker) = layout.end_marker.as_ref() {
+        draw_area_marker(
+            painter,
+            geometry,
+            marker,
+            "E",
+            Color32::from_rgb(240, 90, 90),
+            colorblind_mode,
+            hover_marker_kind == Some(MarkerKind::End),
+        );
+    }
 }
 
 // Compute the rectangle for a given grid cell.
@@ -1752,6 +1864,82 @@ fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
         egui::pos2(left, top),
         egui::vec2(geometry.cell_size, geometry.cell_size),
     )
+}
+
+fn marker_rect(marker: &layout::AreaMarker, geometry: &GridGeometry) -> egui::Rect {
+    let left = geometry.rect.left() + marker.cell.0 as f32 * geometry.cell_size;
+    let top = geometry.rect.top() + marker.cell.1 as f32 * geometry.cell_size;
+    egui::Rect::from_min_size(
+        egui::pos2(left, top),
+        egui::vec2(
+            marker.size as f32 * geometry.cell_size,
+            marker.size as f32 * geometry.cell_size,
+        ),
+    )
+}
+
+fn marker_contains_cell(marker: Option<&layout::AreaMarker>, cell: (usize, usize)) -> bool {
+    let Some(marker) = marker else {
+        return false;
+    };
+    cell.0 >= marker.cell.0
+        && cell.0 < marker.cell.0 + marker.size
+        && cell.1 >= marker.cell.1
+        && cell.1 < marker.cell.1 + marker.size
+}
+
+fn centered_marker_origin(
+    cell: (usize, usize),
+    size: usize,
+    cols: usize,
+    rows: usize,
+) -> (usize, usize) {
+    let size = size.clamp(1, 10).min(cols.max(1)).min(rows.max(1));
+    let half = size / 2;
+    let max_x = cols.saturating_sub(size);
+    let max_y = rows.saturating_sub(size);
+    (cell.0.saturating_sub(half).min(max_x), cell.1.saturating_sub(half).min(max_y))
+}
+
+fn draw_area_marker(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    marker: &layout::AreaMarker,
+    label: &str,
+    base_color: Color32,
+    colorblind_mode: bool,
+    hovered: bool,
+) {
+    let rect = marker_rect(marker, geometry);
+    let fill = base_color.gamma_multiply(if colorblind_mode { 0.22 } else { 0.35 });
+    let stroke_color = if hovered {
+        Color32::from_rgb(255, 220, 120)
+    } else if colorblind_mode {
+        Color32::BLACK
+    } else {
+        base_color
+    };
+    let text_color = if colorblind_mode {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    };
+    let font_size = (geometry.cell_size * marker.size as f32 * 0.5).clamp(14.0, 72.0);
+
+    painter.rect_filled(rect, 4.0, fill);
+    painter.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(if hovered { 3.0 } else { 2.0 }, stroke_color),
+        egui::StrokeKind::Middle,
+    );
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(font_size),
+        text_color,
+    );
 }
 
 // Draw a rectangular wall segment between two points.
