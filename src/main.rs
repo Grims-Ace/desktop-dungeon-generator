@@ -57,7 +57,7 @@ struct DungeonApp {
     hover_corridor_idx: Option<usize>,
     hover_door_idx: Option<usize>,
     hover_text_idx: Option<usize>,
-    hover_marker_kind: Option<MarkerKind>,
+    hover_marker: Option<HoverMarker>,
 }
 
 impl Default for DungeonApp {
@@ -80,6 +80,7 @@ impl Default for DungeonApp {
             door_settings_from_ui(&settings),
             window_settings_from_ui(&settings),
         );
+        let layout = populate_random_markers(layout, &settings);
         Self {
             settings,
             layout,
@@ -95,7 +96,7 @@ impl Default for DungeonApp {
             hover_corridor_idx: None,
             hover_door_idx: None,
             hover_text_idx: None,
-            hover_marker_kind: None,
+            hover_marker: None,
         }
     }
 }
@@ -130,6 +131,18 @@ impl eframe::App for DungeonApp {
         }
         if self.settings.min_window_width > self.settings.max_window_width {
             self.settings.max_window_width = self.settings.min_window_width;
+        }
+        if self.settings.min_start_marker_size > self.settings.max_start_marker_size {
+            self.settings.max_start_marker_size = self.settings.min_start_marker_size;
+        }
+        if self.settings.min_end_marker_size > self.settings.max_end_marker_size {
+            self.settings.max_end_marker_size = self.settings.min_end_marker_size;
+        }
+        if self.settings.min_start_marker_count > self.settings.max_start_marker_count {
+            self.settings.max_start_marker_count = self.settings.min_start_marker_count;
+        }
+        if self.settings.min_end_marker_count > self.settings.max_end_marker_count {
+            self.settings.max_end_marker_count = self.settings.min_end_marker_count;
         }
 
         if undo_requested {
@@ -255,7 +268,7 @@ impl eframe::App for DungeonApp {
                 &self.layout,
                 self.settings.colorblind_mode,
                 self.hover_text_idx,
-                self.hover_marker_kind,
+                self.hover_marker,
             );
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
@@ -297,7 +310,7 @@ impl DungeonApp {
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
         self.hover_text_idx = None;
-        self.hover_marker_kind = None;
+        self.hover_marker = None;
         self.pending_delete = false;
     }
 
@@ -331,7 +344,7 @@ impl DungeonApp {
         self.hover_corridor_idx = None;
         self.hover_door_idx = None;
         self.hover_text_idx = None;
-        self.hover_marker_kind = None;
+        self.hover_marker = None;
         self.pending_delete = false;
     }
 
@@ -339,7 +352,7 @@ impl DungeonApp {
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.suppressed_auto_door_edges.clear();
-        self.layout = layout::generate_layout(
+        let layout = layout::generate_layout(
             self.settings.cols,
             self.settings.rows,
             self.settings.room_count,
@@ -355,6 +368,7 @@ impl DungeonApp {
             door_settings_from_ui(&self.settings),
             window_settings_from_ui(&self.settings),
         );
+        self.layout = populate_random_markers(layout, &self.settings);
     }
 
     // Handle dragging rooms or corridors with the primary mouse button.
@@ -376,6 +390,12 @@ impl DungeonApp {
         {
             self.push_undo_snapshot();
             self.drag_state = Some(DragState::Text(TextDragState { text_idx }));
+        } else if response.drag_started()
+            && let Some(pointer_pos) = response.interact_pointer_pos()
+            && let Some(marker_drag) = self.marker_drag_at_pointer(pointer_pos, geometry)
+        {
+            self.push_undo_snapshot();
+            self.drag_state = Some(DragState::Marker(marker_drag));
         } else if response.drag_started()
             && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some((room_idx, offset_x, offset_y)) =
@@ -402,6 +422,7 @@ impl DungeonApp {
             match drag_state {
                 DragState::Room(drag) => self.drag_room_to_pointer(drag, pointer_pos, geometry),
                 DragState::Text(drag) => self.drag_text_to_pointer(drag, pointer_pos, geometry),
+                DragState::Marker(drag) => self.drag_marker_to_pointer(drag, pointer_pos, geometry),
                 DragState::Corridor(drag) => {
                     self.drag_corridor_to_pointer(drag, pointer_pos, geometry)
                 }
@@ -827,18 +848,14 @@ impl DungeonApp {
             return;
         }
 
-        let size = match kind {
-            MarkerKind::Start => self.settings.start_marker_size,
-            MarkerKind::End => self.settings.end_marker_size,
-        }
-        .clamp(1, 10);
+        let size = manual_marker_size(&self.settings, kind);
         let origin = centered_marker_origin(cell, size, self.settings.cols, self.settings.rows);
         let marker = layout::AreaMarker { cell: origin, size };
 
         self.push_undo_snapshot();
         match kind {
-            MarkerKind::Start => self.layout.start_marker = Some(marker),
-            MarkerKind::End => self.layout.end_marker = Some(marker),
+            MarkerKind::Start => self.layout.start_markers.push(marker),
+            MarkerKind::End => self.layout.end_markers.push(marker),
         }
     }
 
@@ -849,7 +866,7 @@ impl DungeonApp {
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
             self.hover_text_idx = None;
-            self.hover_marker_kind = None;
+            self.hover_marker = None;
             return;
         };
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
@@ -863,7 +880,7 @@ impl DungeonApp {
                 self.hover_room_idx = None;
                 self.hover_corridor_idx = None;
                 self.hover_text_idx = None;
-                self.hover_marker_kind = None;
+                self.hover_marker = None;
                 return;
             }
         }
@@ -873,12 +890,12 @@ impl DungeonApp {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
-            self.hover_marker_kind = None;
+            self.hover_marker = None;
             return;
         }
 
-        self.hover_marker_kind = self.marker_at_pointer(pointer_pos, geometry);
-        if self.hover_marker_kind.is_some() {
+        self.hover_marker = self.marker_at_pointer(pointer_pos, geometry);
+        if self.hover_marker.is_some() {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
@@ -889,17 +906,17 @@ impl DungeonApp {
             self.hover_room_idx = Some(room_idx);
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
-            self.hover_marker_kind = None;
+            self.hover_marker = None;
         } else {
             self.hover_room_idx = None;
             if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
                 self.hover_corridor_idx = Some(corridor_drag.corridor_index);
                 self.hover_door_idx = None;
-                self.hover_marker_kind = None;
+                self.hover_marker = None;
             } else {
                 self.hover_corridor_idx = None;
                 self.hover_door_idx = None;
-                self.hover_marker_kind = None;
+                self.hover_marker = None;
             }
         }
     }
@@ -917,14 +934,77 @@ impl DungeonApp {
         &self,
         pointer_pos: egui::Pos2,
         geometry: &GridGeometry,
-    ) -> Option<MarkerKind> {
+    ) -> Option<HoverMarker> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
         let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
-        marker_contains_cell(self.layout.start_marker.as_ref(), clicked)
-            .then_some(MarkerKind::Start)
+        self.layout
+            .start_markers
+            .iter()
+            .enumerate()
+            .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
+            .map(|(idx, _)| HoverMarker::Start(idx))
             .or_else(|| {
-                marker_contains_cell(self.layout.end_marker.as_ref(), clicked).then_some(MarkerKind::End)
+                self.layout
+                    .end_markers
+                    .iter()
+                    .enumerate()
+                    .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
+                    .map(|(idx, _)| HoverMarker::End(idx))
             })
+    }
+
+    fn marker_drag_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<MarkerDragState> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        match self.marker_at_pointer(pointer_pos, geometry)? {
+            HoverMarker::Start(marker_idx) => {
+                let marker = self.layout.start_markers.get(marker_idx)?;
+                Some(MarkerDragState {
+                    kind: MarkerKind::Start,
+                    marker_idx,
+                    offset_x: grid_x - marker.cell.0 as f32,
+                    offset_y: grid_y - marker.cell.1 as f32,
+                })
+            }
+            HoverMarker::End(marker_idx) => {
+                let marker = self.layout.end_markers.get(marker_idx)?;
+                Some(MarkerDragState {
+                    kind: MarkerKind::End,
+                    marker_idx,
+                    offset_x: grid_x - marker.cell.0 as f32,
+                    offset_y: grid_y - marker.cell.1 as f32,
+                })
+            }
+        }
+    }
+
+    fn drag_marker_to_pointer(
+        &mut self,
+        drag: MarkerDragState,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) {
+        let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) else {
+            return;
+        };
+
+        let markers = match drag.kind {
+            MarkerKind::Start => &mut self.layout.start_markers,
+            MarkerKind::End => &mut self.layout.end_markers,
+        };
+        let Some(marker) = markers.get_mut(drag.marker_idx) else {
+            self.drag_state = None;
+            return;
+        };
+
+        let max_x = self.settings.cols.saturating_sub(marker.size);
+        let max_y = self.settings.rows.saturating_sub(marker.size);
+        let target_x = (grid_x - drag.offset_x).floor().max(0.0) as usize;
+        let target_y = (grid_y - drag.offset_y).floor().max(0.0) as usize;
+        marker.cell = (target_x.min(max_x), target_y.min(max_y));
     }
 
     // Handle right-click resizing of rooms and return whether resizing is active.
@@ -1241,11 +1321,19 @@ impl DungeonApp {
             return;
         }
 
-        if let Some(kind) = self.marker_at_pointer(pointer_pos, geometry) {
+        if let Some(marker) = self.marker_at_pointer(pointer_pos, geometry) {
             self.push_undo_snapshot();
-            match kind {
-                MarkerKind::Start => self.layout.start_marker = None,
-                MarkerKind::End => self.layout.end_marker = None,
+            match marker {
+                HoverMarker::Start(idx) => {
+                    if idx < self.layout.start_markers.len() {
+                        self.layout.start_markers.remove(idx);
+                    }
+                }
+                HoverMarker::End(idx) => {
+                    if idx < self.layout.end_markers.len() {
+                        self.layout.end_markers.remove(idx);
+                    }
+                }
             }
             return;
         }
@@ -1462,6 +1550,14 @@ struct TextDragState {
 }
 
 #[derive(Debug, Clone)]
+struct MarkerDragState {
+    kind: MarkerKind,
+    marker_idx: usize,
+    offset_x: f32,
+    offset_y: f32,
+}
+
+#[derive(Debug, Clone)]
 struct CorridorDragState {
     corridor_index: usize,
     original_path: Vec<(usize, usize)>,
@@ -1488,6 +1584,12 @@ enum MarkerKind {
     End,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HoverMarker {
+    Start(usize),
+    End(usize),
+}
+
 #[derive(Debug, Clone)]
 struct RoomResizeState {
     room_idx: usize,
@@ -1499,6 +1601,7 @@ struct RoomResizeState {
 enum DragState {
     Room(RoomDragState),
     Text(TextDragState),
+    Marker(MarkerDragState),
     Corridor(CorridorDragState),
 }
 
@@ -1579,7 +1682,7 @@ fn draw_layout(
     layout: &DungeonLayout,
     colorblind_mode: bool,
     hover_text_idx: Option<usize>,
-    hover_marker_kind: Option<MarkerKind>,
+    hover_marker: Option<HoverMarker>,
 ) {
     let wall_width_px = (geometry.cell_size / 5.0).max(1.0);
     let door_width_px = (geometry.cell_size / 10.0).max(1.0);
@@ -1832,7 +1935,7 @@ fn draw_layout(
         );
     }
 
-    if let Some(marker) = layout.start_marker.as_ref() {
+    for (idx, marker) in layout.start_markers.iter().enumerate() {
         draw_area_marker(
             painter,
             geometry,
@@ -1840,10 +1943,10 @@ fn draw_layout(
             "S",
             Color32::from_rgb(60, 220, 200),
             colorblind_mode,
-            hover_marker_kind == Some(MarkerKind::Start),
+            hover_marker == Some(HoverMarker::Start(idx)),
         );
     }
-    if let Some(marker) = layout.end_marker.as_ref() {
+    for (idx, marker) in layout.end_markers.iter().enumerate() {
         draw_area_marker(
             painter,
             geometry,
@@ -1851,7 +1954,7 @@ fn draw_layout(
             "E",
             Color32::from_rgb(240, 90, 90),
             colorblind_mode,
-            hover_marker_kind == Some(MarkerKind::End),
+            hover_marker == Some(HoverMarker::End(idx)),
         );
     }
 }
@@ -1899,6 +2002,180 @@ fn centered_marker_origin(
     let max_x = cols.saturating_sub(size);
     let max_y = rows.saturating_sub(size);
     (cell.0.saturating_sub(half).min(max_x), cell.1.saturating_sub(half).min(max_y))
+}
+
+fn populate_random_markers(
+    mut layout: DungeonLayout,
+    settings: &UiSettings,
+) -> DungeonLayout {
+    layout.start_markers.clear();
+    layout.end_markers.clear();
+
+    if layout.rooms.is_empty() {
+        return layout;
+    }
+
+    let start_count = random_range_inclusive(
+        settings.min_start_marker_count,
+        settings.max_start_marker_count,
+        seed::derive_seed(settings.seed, 10_001),
+    );
+    let end_count = random_range_inclusive(
+        settings.min_end_marker_count,
+        settings.max_end_marker_count,
+        seed::derive_seed(settings.seed, 10_002),
+    );
+    let pair_count = start_count.min(end_count);
+
+    let mut available_start_rooms: Vec<usize> = (0..layout.rooms.len()).collect();
+    let mut available_end_rooms: Vec<usize> = (0..layout.rooms.len()).collect();
+
+    for pair_idx in 0..pair_count {
+        let (start_room_idx, end_room_idx) =
+            farthest_room_pair(&layout.rooms, &available_start_rooms, &available_end_rooms);
+        let start_room = &layout.rooms[start_room_idx];
+        let end_room = &layout.rooms[end_room_idx];
+        layout.start_markers.push(marker_in_room(
+            start_room,
+            settings.min_start_marker_size,
+            settings.max_start_marker_size,
+            seed::derive_seed(settings.seed, 11_000 + pair_idx as u64),
+        ));
+        layout.end_markers.push(marker_in_room(
+            end_room,
+            settings.min_end_marker_size,
+            settings.max_end_marker_size,
+            seed::derive_seed(settings.seed, 12_000 + pair_idx as u64),
+        ));
+        consume_room(&mut available_start_rooms, start_room_idx);
+        consume_room(&mut available_end_rooms, end_room_idx);
+    }
+
+    for idx in pair_count..start_count {
+        let room_idx = pick_room_index(
+            &available_start_rooms,
+            layout.rooms.len(),
+            seed::derive_seed(settings.seed, 13_000 + idx as u64),
+        );
+        let room = &layout.rooms[room_idx];
+        layout.start_markers.push(marker_in_room(
+            room,
+            settings.min_start_marker_size,
+            settings.max_start_marker_size,
+            seed::derive_seed(settings.seed, 14_000 + idx as u64),
+        ));
+        consume_room(&mut available_start_rooms, room_idx);
+    }
+
+    for idx in pair_count..end_count {
+        let room_idx = pick_room_index(
+            &available_end_rooms,
+            layout.rooms.len(),
+            seed::derive_seed(settings.seed, 15_000 + idx as u64),
+        );
+        let room = &layout.rooms[room_idx];
+        layout.end_markers.push(marker_in_room(
+            room,
+            settings.min_end_marker_size,
+            settings.max_end_marker_size,
+            seed::derive_seed(settings.seed, 16_000 + idx as u64),
+        ));
+        consume_room(&mut available_end_rooms, room_idx);
+    }
+
+    layout
+}
+
+fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
+    let min = min.max(1);
+    let max = max.max(min);
+    let span = max - min + 1;
+    min + (seed_value as usize % span)
+}
+
+fn manual_marker_size(settings: &UiSettings, kind: MarkerKind) -> usize {
+    match kind {
+        MarkerKind::Start => settings.min_start_marker_size.min(settings.max_start_marker_size),
+        MarkerKind::End => settings.min_end_marker_size.min(settings.max_end_marker_size),
+    }
+    .clamp(1, 10)
+}
+
+fn marker_in_room(room: &layout::Room, min_size: usize, max_size: usize, seed_value: u64) -> layout::AreaMarker {
+    let room_limit = room.width.min(room.height).max(1);
+    let min_size = min_size.clamp(1, 10).min(room_limit);
+    let max_size = max_size.clamp(min_size, 10).min(room_limit);
+    let size = random_range_inclusive(min_size, max_size, seed_value.rotate_left(7));
+    let x_span = room.width.saturating_sub(size);
+    let y_span = room.height.saturating_sub(size);
+    let x = room.x
+        + if x_span == 0 {
+            0
+        } else {
+            (seed_value as usize) % (x_span + 1)
+        };
+    let y = room.y
+        + if y_span == 0 {
+            0
+        } else {
+            (seed_value.rotate_left(19) as usize) % (y_span + 1)
+        };
+    layout::AreaMarker { cell: (x, y), size }
+}
+
+fn farthest_room_pair(
+    rooms: &[layout::Room],
+    available_start_rooms: &[usize],
+    available_end_rooms: &[usize],
+) -> (usize, usize) {
+    let start_rooms = if available_start_rooms.is_empty() {
+        (0..rooms.len()).collect::<Vec<_>>()
+    } else {
+        available_start_rooms.to_vec()
+    };
+    let end_rooms = if available_end_rooms.is_empty() {
+        (0..rooms.len()).collect::<Vec<_>>()
+    } else {
+        available_end_rooms.to_vec()
+    };
+
+    let mut best = (start_rooms[0], end_rooms[0]);
+    let mut best_dist = 0usize;
+    for &start_idx in &start_rooms {
+        for &end_idx in &end_rooms {
+            if rooms.len() > 1 && start_idx == end_idx {
+                continue;
+            }
+            let dist = room_distance_sq(&rooms[start_idx], &rooms[end_idx]);
+            if dist > best_dist {
+                best = (start_idx, end_idx);
+                best_dist = dist;
+            }
+        }
+    }
+    best
+}
+
+fn room_distance_sq(a: &layout::Room, b: &layout::Room) -> usize {
+    let ac = a.center_cell();
+    let bc = b.center_cell();
+    let dx = ac.0.abs_diff(bc.0);
+    let dy = ac.1.abs_diff(bc.1);
+    dx * dx + dy * dy
+}
+
+fn consume_room(available_rooms: &mut Vec<usize>, room_idx: usize) {
+    if let Some(pos) = available_rooms.iter().position(|&idx| idx == room_idx) {
+        available_rooms.remove(pos);
+    }
+}
+
+fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value: u64) -> usize {
+    if !available_rooms.is_empty() {
+        available_rooms[seed_value as usize % available_rooms.len()]
+    } else {
+        seed_value as usize % room_count.max(1)
+    }
 }
 
 fn draw_area_marker(

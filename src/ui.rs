@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 enum Tab {
     Generate,
     Layout,
+    StartAndEnd,
     Add,
-    MonstersAndTraps,
 }
 
 impl Default for Tab {
@@ -132,8 +132,14 @@ pub struct UiSettings {
     pub export_show_grid: bool,
     pub add_tool: AddTool,
     pub add_text_value: String,
-    pub start_marker_size: usize,
-    pub end_marker_size: usize,
+    pub min_start_marker_size: usize,
+    pub max_start_marker_size: usize,
+    pub min_end_marker_size: usize,
+    pub max_end_marker_size: usize,
+    pub min_start_marker_count: usize,
+    pub max_start_marker_count: usize,
+    pub min_end_marker_count: usize,
+    pub max_end_marker_count: usize,
     active_tab: Tab,
 }
 
@@ -173,8 +179,14 @@ impl Default for UiSettings {
             export_show_grid: true,
             add_tool: AddTool::None,
             add_text_value: "Text".to_string(),
-            start_marker_size: 1,
-            end_marker_size: 1,
+            min_start_marker_size: 1,
+            max_start_marker_size: 1,
+            min_end_marker_size: 1,
+            max_end_marker_size: 1,
+            min_start_marker_count: 1,
+            max_start_marker_count: 1,
+            min_end_marker_count: 1,
+            max_end_marker_count: 1,
             active_tab: Tab::Generate,
         }
     }
@@ -219,8 +231,8 @@ pub fn draw_side_panel(
             ui.horizontal(|ui| {
                 let is_generate = settings.active_tab == Tab::Generate;
                 let is_layout = settings.active_tab == Tab::Layout;
+                let is_start_and_end = settings.active_tab == Tab::StartAndEnd;
                 let is_add = settings.active_tab == Tab::Add;
-                let is_monsters_and_traps = settings.active_tab == Tab::MonstersAndTraps;
 
                 if ui.selectable_label(is_generate, "Generate").clicked() {
                     settings.active_tab = Tab::Generate;
@@ -228,14 +240,11 @@ pub fn draw_side_panel(
                 if ui.selectable_label(is_layout, "Layout").clicked() {
                     settings.active_tab = Tab::Layout;
                 }
+                if ui.selectable_label(is_start_and_end, "Start & End").clicked() {
+                    settings.active_tab = Tab::StartAndEnd;
+                }
                 if ui.selectable_label(is_add, "Add").clicked() {
                     settings.active_tab = Tab::Add;
-                }
-                if ui
-                    .selectable_label(is_monsters_and_traps, "Monsters & Traps")
-                    .clicked()
-                {
-                    settings.active_tab = Tab::MonstersAndTraps;
                 }
             });
             ui.separator();
@@ -243,8 +252,8 @@ pub fn draw_side_panel(
             match settings.active_tab {
                 Tab::Generate => draw_generate_tab(ui, settings, &mut result, export_in_progress),
                 Tab::Layout => draw_layout_tab(ui, settings, &mut result),
+                Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
                 Tab::Add => draw_add_tab(ui, settings),
-                Tab::MonstersAndTraps => draw_monsters_and_traps_tab(ui, settings),
             }
         });
 
@@ -740,6 +749,8 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
+        ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Place Start");
+        ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
     });
 
     ui.add_space(6.0);
@@ -759,72 +770,136 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
             ui.label("Note: Left click on the canvas to place the text.");
             response
         }
-        AddTool::StartMarker | AddTool::EndMarker => {
-            ui.label("Use the Monsters & Traps tab to place start and end markers.")
-        }
+        AddTool::StartMarker => ui.label("Click the grid to place the start marker."),
+        AddTool::EndMarker => ui.label("Click the grid to place the end marker."),
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
 }
 
-fn draw_monsters_and_traps_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
-    ui.label(RichText::new("Start / End Markers").strong());
+fn draw_start_and_end_tab(
+    ui: &mut egui::Ui,
+    settings: &mut UiSettings,
+    result: &mut SidePanelResult,
+) {
+    ui.label(RichText::new("Start Markers").strong());
     ui.add_space(8.0);
-
-    ui.label("Start Marker Size");
+    ui.label("Min Start Marker Size");
     ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut settings.start_marker_size, 1..=10).show_value(false));
-        ui.add(
-            egui::DragValue::new(&mut settings.start_marker_size)
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_start_marker_size, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.min_start_marker_size)
                 .speed(1.0)
                 .range(1..=10),
-        );
+        )
+            .changed();
     });
-
-    ui.add_space(4.0);
-    if ui
-        .selectable_label(settings.add_tool == AddTool::StartMarker, "Place Start Marker")
-        .clicked()
-    {
-        settings.add_tool = if settings.add_tool == AddTool::StartMarker {
-            AddTool::None
-        } else {
-            AddTool::StartMarker
-        };
-    }
-
-    ui.add_space(10.0);
-    ui.label("End Marker Size");
+    ui.add_space(6.0);
+    ui.label("Max Start Marker Size");
     ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut settings.end_marker_size, 1..=10).show_value(false));
-        ui.add(
-            egui::DragValue::new(&mut settings.end_marker_size)
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_start_marker_size, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.max_start_marker_size)
                 .speed(1.0)
                 .range(1..=10),
-        );
+        )
+            .changed();
+    });
+    ui.add_space(6.0);
+    ui.label("Min Start Marker Count");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_start_marker_count, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.min_start_marker_count)
+                .speed(1.0)
+                .range(1..=100),
+        )
+            .changed();
+    });
+    ui.add_space(6.0);
+    ui.label("Max Start Marker Count");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_start_marker_count, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.max_start_marker_count)
+                .speed(1.0)
+                .range(1..=100),
+        )
+            .changed();
     });
 
-    ui.add_space(4.0);
-    if ui
-        .selectable_label(settings.add_tool == AddTool::EndMarker, "Place End Marker")
-        .clicked()
-    {
-        settings.add_tool = if settings.add_tool == AddTool::EndMarker {
-            AddTool::None
-        } else {
-            AddTool::EndMarker
-        };
-    }
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("End Markers").strong());
+    ui.add_space(8.0);
+    ui.label("Min End Marker Size");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_end_marker_size, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.min_end_marker_size)
+                .speed(1.0)
+                .range(1..=10),
+        )
+            .changed();
+    });
+    ui.add_space(6.0);
+    ui.label("Max End Marker Size");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_end_marker_size, 1..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.max_end_marker_size)
+                .speed(1.0)
+                .range(1..=10),
+        )
+            .changed();
+    });
+    ui.add_space(6.0);
+    ui.label("Min End Marker Count");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_end_marker_count, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.min_end_marker_count)
+                .speed(1.0)
+                .range(1..=100),
+        )
+            .changed();
+    });
+    ui.add_space(6.0);
+    ui.label("Max End Marker Count");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_end_marker_count, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+            egui::DragValue::new(&mut settings.max_end_marker_count)
+                .speed(1.0)
+                .range(1..=100),
+        )
+            .changed();
+    });
 
     ui.add_space(8.0);
-    match settings.add_tool {
-        AddTool::StartMarker => {
-            ui.label("Click the grid to place the start marker. It is centered on the clicked cell.");
-        }
-        AddTool::EndMarker => {
-            ui.label("Click the grid to place the end marker. It is centered on the clicked cell.");
-        }
-        _ => {
-            ui.label("Monsters, traps, and bosses will live here next. For now, place start and end markers.");
-        }
-    }
+    ui.label("Markers are generated inside rooms. Matching start/end indices are paired as far apart as possible.");
 }

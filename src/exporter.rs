@@ -276,10 +276,10 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         draw_window(&mut pixmap, &g, window, door_w, WINDOW, style);
     }
 
-    if let Some(marker) = layout.start_marker.as_ref() {
+    for marker in &layout.start_markers {
         draw_area_marker(&mut pixmap, &g, marker, "S", START_MARKER, settings.colorblind_mode);
     }
-    if let Some(marker) = layout.end_marker.as_ref() {
+    for marker in &layout.end_markers {
         draw_area_marker(&mut pixmap, &g, marker, "E", END_MARKER, settings.colorblind_mode);
     }
 
@@ -677,10 +677,10 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         }
     }
 
-    if let Some(marker) = layout.start_marker.as_ref() {
+    for marker in &layout.start_markers {
         append_svg_area_marker(&mut s, &g, marker, "S", START_MARKER, settings.colorblind_mode);
     }
-    if let Some(marker) = layout.end_marker.as_ref() {
+    for marker in &layout.end_markers {
         append_svg_area_marker(&mut s, &g, marker, "E", END_MARKER, settings.colorblind_mode);
     }
 
