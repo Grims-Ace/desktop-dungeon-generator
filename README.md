@@ -49,7 +49,7 @@ It combines deterministic generation with manual editing, so you can generate a 
   - `.webp`
   - `.svg`
   - composite folder export with masks
-- Accessibility mode with alternate visual encodings for rooms, corridors, walls, doors, archways, and windows
+- Colorblind mode with alternate visual encodings for rooms, corridors, walls, doors, archways, and windows
 
 ## Tabs
 
@@ -124,9 +124,10 @@ Folder export writes a composite image plus separate masks for:
 - end markers
 - grid, when enabled
 
-## Run
+## Build and Run Yourself
 
 ```bash
+git clone https://codeberg.org/Grimsace/desktop_dungeon_generator.git
 cargo run
 ```
 
