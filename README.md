@@ -1,73 +1,128 @@
 # Desktop Dungeon Generator
 
-**Pre-release Notice:** This program is incomplete and functionality is subject to change and it might break, you've been warned. *though releases should at least be stable enough to run*
+Desktop Dungeon Generator is a Rust desktop app for building and exporting simple tabletop RPG dungeon layouts.
 
-A Rust desktop app for generating simple tabletop dungeon layouts.
+It combines deterministic generation with manual editing, so you can generate a baseline layout from a seed and then adjust rooms, corridors, doors, text labels, and start/end markers directly on the canvas.
 
 ## Current Features
 
-- Resizable split layout:
-  - Left panel: generation settings
-  - Right panel: vector-rendered grid + dungeon preview
-- Grid controls:
-  - Columns
-  - Rows
-- Room controls:
-  - Room count
-  - Minimum room size (in grid cells)
-  - Maximum room size (in grid cells)
-  - `Square Rooms Only` toggle
-- Corridor controls:
-  - `Corridor Randomness (%)` from `0` to `100`
-  - `Dead-End Rooms (%)` from `0` to `50`
-- Door controls:
-  - `Door Frequency (%)`
-  - `Room/Hallway Door Chance (%)`
-  - `Locked Door Chance (%)`
-  - `Allow Middle Corridor Doors` toggle
-- Accessibility:
-  - `Colorblind Mode` toggle (right panel)
-  - Pattern/style encoding:
-    - Rooms: crosshatch
-    - Corridors: dotted fill
-    - Walls: solid lines
-    - Doors: long dashes
-    - Locked doors: short dashes
-    - Archways: dotted lines
-- Generate control:
-  - Master seed input (`u64`)
-  - `Random` seed button
-  - `Reset` button
-  - `Export Image` button
-  - Export format selector: `.png`, `.jpeg`, `.webp`, `.svg`
-  - Export uses an OS folder picker to choose save location
+- Deterministic dungeon generation from a master seed
+- Room generation with configurable:
+  - room count
+  - minimum and maximum room size
+  - square-only rooms
+  - packed-room mode without corridors
+- Corridor generation with configurable:
+  - minimum and maximum corridor width
+  - corridor randomness
+  - dead-end room percentage
+- Automatic door generation with configurable:
+  - overall frequency
+  - room/hallway chance
+  - locked door chance
+  - secret door chance
+  - middle-corridor doors toggle
+- Automatic window generation with configurable:
+  - enable/disable
+  - minimum and maximum width
+  - overall frequency
+  - room/hallway chance
+  - internal windows toggle
+- Generated start/end markers with configurable:
+  - minimum and maximum size
+  - minimum and maximum count
+  - placement inside rooms
+  - farthest-pair matching between start and end markers
+- Manual editing tools for:
+  - rooms
+  - corridors
+  - archways
+  - doors
+  - locked doors
+  - secret doors
+  - text labels
+  - start markers
+  - end markers
+- Export support for:
+  - `.png`
+  - `.jpeg`
+  - `.webp`
+  - `.svg`
+  - composite folder export with masks
+- Accessibility mode with alternate visual encodings for rooms, corridors, walls, doors, archways, and windows
 
-## Generation Behavior
+## Tabs
 
-- Rooms are stored as rectangles (`x`, `y`, `width`, `height`) and placed without overlap.
-- Corridors are stored separately as vector line segments between grid cells.
-- Every generated room is connected into one navigable network when possible.
-- A master seed drives deterministic generation, and internal subsystems derive their own sub-seeds from it.
-- Doors are generated from corridor adjacency:
-  - Open doors are rendered in red
-  - Locked doors are rendered in green
-  - Doors are rendered as line segments on grid boundaries
+### Generate
 
-### Corridor Randomness
+Controls global generation and export:
 
-- `0%` randomness:
-  - Uses shortest-path routing for room-to-room corridor paths.
-  - Produces cleaner, direct corridor routes.
-- `100%` randomness:
-  - Uses noisy/randomized routing while still ensuring room connectivity.
-  - Produces more wandering, less direct routes.
-- Intermediate values blend between the two behaviors.
+- grid columns and rows
+- master seed and random-seed button
+- reset and clear actions
+- export format, dimensions, and grid visibility
 
-### Dead-End Rooms
+### Layout
 
-- Controls how many rooms should end up as dead ends (rooms with only one room-to-room connection).
-- `0%` targets no dead-end rooms (except tiny edge cases where topology makes this impossible, such as only 2 rooms).
-- `50%` is the upper cap to avoid over-constraining connectivity.
+Controls room, corridor, door, and window generation behavior.
+
+Changing values in this tab regenerates the dungeon immediately.
+
+### Start & End
+
+Controls generated start/end marker behavior:
+
+- minimum and maximum start marker size
+- minimum and maximum end marker size
+- minimum and maximum start marker count
+- minimum and maximum end marker count
+
+Changing values in this tab regenerates the dungeon immediately.
+
+Generated markers are placed inside rooms. Matching start/end indices are paired to rooms that are as far apart as possible.
+
+### Add
+
+Contains manual placement tools for editing the current layout without regenerating it.
+
+## Canvas Interaction
+
+- Left click and drag a room to move it
+- Left click and drag a start/end marker to move it
+- Right click and drag a room to resize it
+- Right click without dragging to cancel an active add tool
+- `Delete` or `Backspace` removes the currently hovered room, corridor, door, text label, or marker
+- `Ctrl+Z` undoes
+- `Ctrl+Y` redoes
+
+## Start / End Markers
+
+The app currently supports two marker workflows:
+
+- Generated markers:
+  - created automatically during dungeon generation
+  - always placed inside rooms
+  - sized from the configured min/max ranges
+  - paired by distance for each matching start/end index
+- Manual markers:
+  - added from the `Add` tab
+  - use the configured minimum size for their marker type
+  - can be repositioned by dragging on the canvas
+
+## Folder Export Masks
+
+Folder export writes a composite image plus separate masks for:
+
+- floors
+- walls
+- doors
+- archways
+- locked doors
+- secret doors
+- windows
+- start markers
+- end markers
+- grid, when enabled
 
 ## Run
 
@@ -77,8 +132,5 @@ cargo run
 
 ## Notes
 
-- Rendering is vector-based in-app (`egui` painter), so zooming/scaling the preview remains crisp.
-- Room and corridor vectors are stored separately to support future export workflows (for example, SVG export).
-- Settings are persisted on exit and restored on startup from:
-  - Windows: `%LOCALAPPDATA%/desktop_dungeon_generator/settings.json`
-  - Linux: `~/.local/share/desktop_dungeon_generator/settings.json` (or distro-equivalent local data dir)
+- Settings are persisted between runs using the local OS application data directory.
+- The app is still pre-release and the file layout and feature set may continue to change.

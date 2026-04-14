@@ -122,30 +122,7 @@ impl eframe::App for DungeonApp {
                 || (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z))
         });
 
-        if self.settings.min_room_size > self.settings.max_room_size {
-            self.settings.max_room_size = self.settings.min_room_size;
-        }
-        if self.settings.min_corridor_width == 0 {
-            self.settings.min_corridor_width = 1;
-        }
-        if self.settings.min_corridor_width > self.settings.max_corridor_width {
-            self.settings.max_corridor_width = self.settings.min_corridor_width;
-        }
-        if self.settings.min_window_width > self.settings.max_window_width {
-            self.settings.max_window_width = self.settings.min_window_width;
-        }
-        if self.settings.min_start_marker_size > self.settings.max_start_marker_size {
-            self.settings.max_start_marker_size = self.settings.min_start_marker_size;
-        }
-        if self.settings.min_end_marker_size > self.settings.max_end_marker_size {
-            self.settings.max_end_marker_size = self.settings.min_end_marker_size;
-        }
-        if self.settings.min_start_marker_count > self.settings.max_start_marker_count {
-            self.settings.max_start_marker_count = self.settings.min_start_marker_count;
-        }
-        if self.settings.min_end_marker_count > self.settings.max_end_marker_count {
-            self.settings.max_end_marker_count = self.settings.min_end_marker_count;
-        }
+        clamp_dependent_settings(&mut self.settings);
 
         if undo_requested {
             self.undo();
@@ -277,6 +254,33 @@ impl eframe::App for DungeonApp {
             self.draw_corridor_hover_overlay(&painter, &geometry);
             self.draw_door_hover_overlay(&painter, &geometry);
         });
+    }
+}
+
+fn clamp_dependent_settings(settings: &mut UiSettings) {
+    if settings.min_room_size > settings.max_room_size {
+        settings.max_room_size = settings.min_room_size;
+    }
+    if settings.min_corridor_width == 0 {
+        settings.min_corridor_width = 1;
+    }
+    if settings.min_corridor_width > settings.max_corridor_width {
+        settings.max_corridor_width = settings.min_corridor_width;
+    }
+    if settings.min_window_width > settings.max_window_width {
+        settings.max_window_width = settings.min_window_width;
+    }
+    if settings.min_start_marker_size > settings.max_start_marker_size {
+        settings.max_start_marker_size = settings.min_start_marker_size;
+    }
+    if settings.min_end_marker_size > settings.max_end_marker_size {
+        settings.max_end_marker_size = settings.min_end_marker_size;
+    }
+    if settings.min_start_marker_count > settings.max_start_marker_count {
+        settings.max_start_marker_count = settings.min_start_marker_count;
+    }
+    if settings.min_end_marker_count > settings.max_end_marker_count {
+        settings.max_end_marker_count = settings.min_end_marker_count;
     }
 }
 

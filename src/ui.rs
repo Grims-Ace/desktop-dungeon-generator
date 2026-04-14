@@ -783,123 +783,97 @@ fn draw_start_and_end_tab(
 ) {
     ui.label(RichText::new("Start Markers").strong());
     ui.add_space(8.0);
-    ui.label("Min Start Marker Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_start_marker_size, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.min_start_marker_size)
-                .speed(1.0)
-                .range(1..=10),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Max Start Marker Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_start_marker_size, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.max_start_marker_size)
-                .speed(1.0)
-                .range(1..=10),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Min Start Marker Count");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_start_marker_count, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.min_start_marker_count)
-                .speed(1.0)
-                .range(1..=100),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Max Start Marker Count");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_start_marker_count, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.max_start_marker_count)
-                .speed(1.0)
-                .range(1..=100),
-        )
-            .changed();
-    });
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min Start Marker Size",
+        &mut settings.min_start_marker_size,
+        1..=10,
+        1..=10,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max Start Marker Size",
+        &mut settings.max_start_marker_size,
+        1..=10,
+        1..=10,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min Start Marker Count",
+        &mut settings.min_start_marker_count,
+        1..=20,
+        1..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max Start Marker Count",
+        &mut settings.max_start_marker_count,
+        1..=20,
+        1..=100,
+    );
 
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(8.0);
     ui.label(RichText::new("End Markers").strong());
     ui.add_space(8.0);
-    ui.label("Min End Marker Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_end_marker_size, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.min_end_marker_size)
-                .speed(1.0)
-                .range(1..=10),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Max End Marker Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_end_marker_size, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.max_end_marker_size)
-                .speed(1.0)
-                .range(1..=10),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Min End Marker Count");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_end_marker_count, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.min_end_marker_count)
-                .speed(1.0)
-                .range(1..=100),
-        )
-            .changed();
-    });
-    ui.add_space(6.0);
-    ui.label("Max End Marker Count");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_end_marker_count, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-            egui::DragValue::new(&mut settings.max_end_marker_count)
-                .speed(1.0)
-                .range(1..=100),
-        )
-            .changed();
-    });
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min End Marker Size",
+        &mut settings.min_end_marker_size,
+        1..=10,
+        1..=10,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max End Marker Size",
+        &mut settings.max_end_marker_size,
+        1..=10,
+        1..=10,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min End Marker Count",
+        &mut settings.min_end_marker_count,
+        1..=20,
+        1..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max End Marker Count",
+        &mut settings.max_end_marker_count,
+        1..=20,
+        1..=100,
+    );
 
     ui.add_space(8.0);
     ui.label("Markers are generated inside rooms. Matching start/end indices are paired as far apart as possible.");
+}
+
+fn draw_usize_slider_row(
+    ui: &mut egui::Ui,
+    result: &mut SidePanelResult,
+    label: &str,
+    value: &mut usize,
+    slider_range: std::ops::RangeInclusive<usize>,
+    drag_range: std::ops::RangeInclusive<usize>,
+) {
+    ui.label(label);
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(value, slider_range).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(egui::DragValue::new(value).speed(1.0).range(drag_range))
+            .changed();
+    });
+    ui.add_space(6.0);
 }

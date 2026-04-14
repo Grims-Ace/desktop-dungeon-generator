@@ -331,27 +331,13 @@ fn export_composite_masks(
         WHITE,
     );
 
-    let mut doors = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate doors mask canvas".to_string())?;
-    let mut archways = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate archways mask canvas".to_string())?;
-    let mut locked_doors = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate locked doors mask canvas".to_string())?;
-    let mut secret_doors = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate secret doors mask canvas".to_string())?;
-    let mut windows = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate windows mask canvas".to_string())?;
-    let mut start_markers = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate start markers mask canvas".to_string())?;
-    let mut end_markers = Pixmap::new(g.width, g.height)
-        .ok_or_else(|| "Failed to allocate end markers mask canvas".to_string())?;
-    fill_bg(&mut doors, BLACK);
-    fill_bg(&mut archways, BLACK);
-    fill_bg(&mut locked_doors, BLACK);
-    fill_bg(&mut secret_doors, BLACK);
-    fill_bg(&mut windows, BLACK);
-    fill_bg(&mut start_markers, BLACK);
-    fill_bg(&mut end_markers, BLACK);
+    let mut doors = blank_mask(&g, "doors")?;
+    let mut archways = blank_mask(&g, "archways")?;
+    let mut locked_doors = blank_mask(&g, "locked doors")?;
+    let mut secret_doors = blank_mask(&g, "secret doors")?;
+    let mut windows = blank_mask(&g, "windows")?;
+    let mut start_markers = blank_mask(&g, "start markers")?;
+    let mut end_markers = blank_mask(&g, "end markers")?;
     for door in &layout.doors {
         if door.secret {
             draw_door(&mut secret_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
@@ -399,6 +385,13 @@ fn export_composite_masks(
     }
 
     Ok(())
+}
+
+fn blank_mask(g: &ExportGeometry, name: &str) -> Result<Pixmap, String> {
+    let mut pixmap = Pixmap::new(g.width, g.height)
+        .ok_or_else(|| format!("Failed to allocate {name} mask canvas"))?;
+    fill_bg(&mut pixmap, BLACK);
+    Ok(pixmap)
 }
 
 // Write a single mask image to disk.

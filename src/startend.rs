@@ -2,6 +2,16 @@ use crate::layout::{self, DungeonLayout};
 use crate::seed;
 use crate::ui::UiSettings;
 
+const START_COUNT_STREAM: u64 = 10_001;
+const END_COUNT_STREAM: u64 = 10_002;
+const START_ROOM_STREAM_BASE: u64 = 11_000;
+const END_ROOM_STREAM_BASE: u64 = 12_000;
+const EXTRA_START_ROOM_STREAM_BASE: u64 = 13_000;
+const EXTRA_START_MARKER_STREAM_BASE: u64 = 14_000;
+const EXTRA_END_ROOM_STREAM_BASE: u64 = 15_000;
+const EXTRA_END_MARKER_STREAM_BASE: u64 = 16_000;
+
+// Populate generated start/end markers after the core dungeon layout exists.
 pub fn populate_random_markers(
     mut layout: DungeonLayout,
     settings: &UiSettings,
@@ -16,12 +26,12 @@ pub fn populate_random_markers(
     let start_count = random_range_inclusive(
         settings.min_start_marker_count,
         settings.max_start_marker_count,
-        seed::derive_seed(settings.seed, 10_001),
+        seed::derive_seed(settings.seed, START_COUNT_STREAM),
     );
     let end_count = random_range_inclusive(
         settings.min_end_marker_count,
         settings.max_end_marker_count,
-        seed::derive_seed(settings.seed, 10_002),
+        seed::derive_seed(settings.seed, END_COUNT_STREAM),
     );
     let pair_count = start_count.min(end_count);
 
@@ -37,13 +47,13 @@ pub fn populate_random_markers(
             start_room,
             settings.min_start_marker_size,
             settings.max_start_marker_size,
-            seed::derive_seed(settings.seed, 11_000 + pair_idx as u64),
+            seed::derive_seed(settings.seed, START_ROOM_STREAM_BASE + pair_idx as u64),
         ));
         layout.end_markers.push(marker_in_room(
             end_room,
             settings.min_end_marker_size,
             settings.max_end_marker_size,
-            seed::derive_seed(settings.seed, 12_000 + pair_idx as u64),
+            seed::derive_seed(settings.seed, END_ROOM_STREAM_BASE + pair_idx as u64),
         ));
         consume_room(&mut available_start_rooms, start_room_idx);
         consume_room(&mut available_end_rooms, end_room_idx);
@@ -53,14 +63,14 @@ pub fn populate_random_markers(
         let room_idx = pick_room_index(
             &available_start_rooms,
             layout.rooms.len(),
-            seed::derive_seed(settings.seed, 13_000 + idx as u64),
+            seed::derive_seed(settings.seed, EXTRA_START_ROOM_STREAM_BASE + idx as u64),
         );
         let room = &layout.rooms[room_idx];
         layout.start_markers.push(marker_in_room(
             room,
             settings.min_start_marker_size,
             settings.max_start_marker_size,
-            seed::derive_seed(settings.seed, 14_000 + idx as u64),
+            seed::derive_seed(settings.seed, EXTRA_START_MARKER_STREAM_BASE + idx as u64),
         ));
         consume_room(&mut available_start_rooms, room_idx);
     }
@@ -69,14 +79,14 @@ pub fn populate_random_markers(
         let room_idx = pick_room_index(
             &available_end_rooms,
             layout.rooms.len(),
-            seed::derive_seed(settings.seed, 15_000 + idx as u64),
+            seed::derive_seed(settings.seed, EXTRA_END_ROOM_STREAM_BASE + idx as u64),
         );
         let room = &layout.rooms[room_idx];
         layout.end_markers.push(marker_in_room(
             room,
             settings.min_end_marker_size,
             settings.max_end_marker_size,
-            seed::derive_seed(settings.seed, 16_000 + idx as u64),
+            seed::derive_seed(settings.seed, EXTRA_END_MARKER_STREAM_BASE + idx as u64),
         ));
         consume_room(&mut available_end_rooms, room_idx);
     }
@@ -84,6 +94,7 @@ pub fn populate_random_markers(
     layout
 }
 
+// Manual marker placement uses the configured minimum size for the chosen marker type.
 pub fn manual_marker_size(settings: &UiSettings, is_start: bool) -> usize {
     if is_start {
         settings
@@ -95,6 +106,7 @@ pub fn manual_marker_size(settings: &UiSettings, is_start: bool) -> usize {
     .clamp(1, 10)
 }
 
+// Pick a deterministic inclusive random value from a seed-derived stream.
 fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
     let min = min.max(1);
     let max = max.max(min);
@@ -102,6 +114,7 @@ fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
     min + (seed_value as usize % span)
 }
 
+// Fit a marker inside a room and choose a deterministic offset within that room.
 fn marker_in_room(
     room: &layout::Room,
     min_size: usize,
@@ -129,6 +142,7 @@ fn marker_in_room(
     layout::AreaMarker { cell: (x, y), size }
 }
 
+// Match each start/end pair to the farthest available room combination.
 fn farthest_room_pair(
     rooms: &[layout::Room],
     available_start_rooms: &[usize],
@@ -170,12 +184,14 @@ fn room_distance_sq(a: &layout::Room, b: &layout::Room) -> usize {
     dx * dx + dy * dy
 }
 
+// Remove a room from the available set once it has been consumed by a marker assignment.
 fn consume_room(available_rooms: &mut Vec<usize>, room_idx: usize) {
     if let Some(pos) = available_rooms.iter().position(|&idx| idx == room_idx) {
         available_rooms.remove(pos);
     }
 }
 
+// Fall back to any room when all candidates for a side have been exhausted.
 fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value: u64) -> usize {
     if !available_rooms.is_empty() {
         available_rooms[seed_value as usize % available_rooms.len()]
