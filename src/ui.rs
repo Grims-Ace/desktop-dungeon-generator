@@ -471,7 +471,8 @@ fn draw_generate_tab(
     }
 
     ui.add_space(6.0);
-    if ui.button("Export Image").clicked() {
+    let export_button = ui.add_enabled(!export_in_progress, egui::Button::new("Export Image"));
+    if export_button.clicked() {
         result.export_clicked = true;
     }
 
