@@ -211,7 +211,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
     fill_bg(&mut pixmap, BG);
 
-    let wall_w = snap_even_width((g.cell / 5.0).max(1.0));
+    let wall_w = snap_even_width((g.cell / 2.5).max(1.0));
     let door_w = (g.cell / 10.0).max(1.0).round();
 
     if settings.export_show_grid {
@@ -331,7 +331,7 @@ fn export_composite_masks(
 
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let scene = collect_scene_data(layout, settings);
-    let wall_w = (g.cell / 5.0).max(1.0);
+    let wall_w = (g.cell / 2.5).max(1.0);
     let door_w = (g.cell / 10.0).max(1.0);
 
     let mut floors = Pixmap::new(g.width, g.height)
@@ -538,7 +538,7 @@ fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
 // Build an SVG document for the current layout.
 pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     let g = ExportGeometry::new(settings.cols, settings.rows);
-    let wall_w = (g.cell / 5.0).max(1.0);
+    let wall_w = (g.cell / 2.5).max(1.0);
     let door_w = (g.cell / 10.0).max(1.0);
 
     let mut s = String::new();
