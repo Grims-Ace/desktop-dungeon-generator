@@ -54,9 +54,9 @@ impl ExportGeometry {
     // Build export geometry with a fixed cell size and padding.
     fn new(cols: usize, rows: usize) -> Self {
         let cell = 64.0;
-        let pad = 40.0;
-        let width = (pad * 2.0 + cols as f32 * cell).round() as u32;
-        let height = (pad * 2.0 + rows as f32 * cell).round() as u32;
+        let pad = 0.0;
+        let width = (cols as f32 * cell).round() as u32;
+        let height = (rows as f32 * cell).round() as u32;
         Self {
             cols,
             rows,
@@ -513,10 +513,8 @@ fn raster_mask_image_from_pixmap(
 }
 
 // Compute the mask target size based on export width scaling.
-fn raster_mask_target_size(settings: &UiSettings, src_w: u32, src_h: u32) -> (u32, u32) {
-    let (target_w, _target_h) = raster_target_size(settings);
-    let scale = ((target_w as f32) / (src_w as f32)).round().max(1.0) as u32;
-    (src_w.saturating_mul(scale), src_h.saturating_mul(scale))
+fn raster_mask_target_size(settings: &UiSettings, _src_w: u32, _src_h: u32) -> (u32, u32) {
+    raster_target_size(settings)
 }
 
 // Compute the output raster size while honoring aspect settings.
