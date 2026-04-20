@@ -356,7 +356,12 @@ fn draw_generate_tab(
         }
     });
 
+    ui.add_space(12.0);
+    ui.separator();
     ui.add_space(8.0);
+    ui.label(RichText::new("Dungeon Files").strong());
+    ui.add_space(8.0);
+
     ui.horizontal(|ui| {
         if ui.button("Save State").clicked() {
             result.save_clicked = true;
