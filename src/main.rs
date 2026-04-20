@@ -15,7 +15,10 @@ use layout::{
     DoorSettings, DungeonLayout, WindowSettings, blocked_room_cells, corridor_cells,
     shortest_path_cells,
 };
-use startend::{manual_marker_size, populate_random_markers};
+use startend::{
+    manual_marker_size, manual_monster_marker_size, manual_trap_marker_size,
+    populate_random_markers,
+};
 use ui::{AddTool, UiSettings, draw_side_panel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +202,8 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
                     draw_legend_entry_colorblind(ui, "Start Marker", LegendStyle::SolidLine);
                     draw_legend_entry_colorblind(ui, "End Marker", LegendStyle::SolidLine);
+                    draw_legend_entry_colorblind(ui, "Trap", LegendStyle::SolidLine);
+                    draw_legend_entry_colorblind(ui, "Monster", LegendStyle::SolidLine);
                 } else {
                     draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
                     draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
@@ -210,13 +215,17 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
                     draw_legend_entry(ui, Color32::from_rgb(60, 220, 200), "Start Marker");
                     draw_legend_entry(ui, Color32::from_rgb(240, 90, 90), "End Marker");
+                    draw_legend_entry(ui, Color32::from_rgb(150, 80, 230), "Trap");
+                    draw_legend_entry(ui, Color32::from_rgb(200, 50, 50), "Monster");
                 }
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(8.0);
                 ui.heading("Keybinds");
                 ui.add_space(6.0);
-                ui.label("• Delete / Backspace: Remove hovered room, corridor, door, text, or marker");
+                ui.label(
+                    "• Delete / Backspace: Remove hovered room, corridor, door, text, or marker",
+                );
                 ui.label("• Ctrl+Z: Undo");
                 ui.label("• Ctrl+Y: Redo");
                 ui.label("• Left click + drag: Move hovered room");
@@ -281,6 +290,12 @@ fn clamp_dependent_settings(settings: &mut UiSettings) {
     }
     if settings.min_end_marker_count > settings.max_end_marker_count {
         settings.max_end_marker_count = settings.min_end_marker_count;
+    }
+    if settings.min_traps_per_area > settings.max_traps_per_area {
+        settings.max_traps_per_area = settings.min_traps_per_area;
+    }
+    if settings.min_monsters_per_area > settings.max_monsters_per_area {
+        settings.max_monsters_per_area = settings.min_monsters_per_area;
     }
 }
 
@@ -706,7 +721,7 @@ impl DungeonApp {
                     self.settings.add_tool = AddTool::None;
                 }
             }
-            AddTool::StartMarker | AddTool::EndMarker => {
+            AddTool::StartMarker | AddTool::EndMarker | AddTool::TrapMarker => {
                 self.add_corridor_drag = None;
                 if response.clicked()
                     && let Some(pointer_pos) = response.interact_pointer_pos()
@@ -716,6 +731,7 @@ impl DungeonApp {
                     let kind = match self.settings.add_tool {
                         AddTool::StartMarker => MarkerKind::Start,
                         AddTool::EndMarker => MarkerKind::End,
+                        AddTool::TrapMarker => MarkerKind::Trap,
                         _ => unreachable!(),
                     };
                     self.add_marker_at_cell(cell, kind);
@@ -854,7 +870,12 @@ impl DungeonApp {
             return;
         }
 
-        let size = manual_marker_size(&self.settings, matches!(kind, MarkerKind::Start));
+        let size = match kind {
+            MarkerKind::Start => manual_marker_size(&self.settings, true),
+            MarkerKind::End => manual_marker_size(&self.settings, false),
+            MarkerKind::Trap => manual_trap_marker_size(&self.settings),
+            MarkerKind::Monster => manual_monster_marker_size(&self.settings),
+        };
         let origin = centered_marker_origin(cell, size, self.settings.cols, self.settings.rows);
         let marker = layout::AreaMarker { cell: origin, size };
 
@@ -862,6 +883,8 @@ impl DungeonApp {
         match kind {
             MarkerKind::Start => self.layout.start_markers.push(marker),
             MarkerKind::End => self.layout.end_markers.push(marker),
+            MarkerKind::Trap => self.layout.trap_markers.push(marker),
+            MarkerKind::Monster => self.layout.monster_markers.push(marker),
         }
     }
 
@@ -953,6 +976,22 @@ impl DungeonApp {
                     .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
                     .map(|(idx, _)| HoverMarker::End(idx))
             })
+            .or_else(|| {
+                self.layout
+                    .trap_markers
+                    .iter()
+                    .enumerate()
+                    .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
+                    .map(|(idx, _)| HoverMarker::Trap(idx))
+            })
+            .or_else(|| {
+                self.layout
+                    .monster_markers
+                    .iter()
+                    .enumerate()
+                    .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
+                    .map(|(idx, _)| HoverMarker::Monster(idx))
+            })
     }
 
     fn marker_drag_at_pointer(
@@ -980,6 +1019,24 @@ impl DungeonApp {
                     offset_y: grid_y - marker.cell.1 as f32,
                 })
             }
+            HoverMarker::Trap(marker_idx) => {
+                let marker = self.layout.trap_markers.get(marker_idx)?;
+                Some(MarkerDragState {
+                    kind: MarkerKind::Trap,
+                    marker_idx,
+                    offset_x: grid_x - marker.cell.0 as f32,
+                    offset_y: grid_y - marker.cell.1 as f32,
+                })
+            }
+            HoverMarker::Monster(marker_idx) => {
+                let marker = self.layout.monster_markers.get(marker_idx)?;
+                Some(MarkerDragState {
+                    kind: MarkerKind::Monster,
+                    marker_idx,
+                    offset_x: grid_x - marker.cell.0 as f32,
+                    offset_y: grid_y - marker.cell.1 as f32,
+                })
+            }
         }
     }
 
@@ -996,6 +1053,8 @@ impl DungeonApp {
         let markers = match drag.kind {
             MarkerKind::Start => &mut self.layout.start_markers,
             MarkerKind::End => &mut self.layout.end_markers,
+            MarkerKind::Trap => &mut self.layout.trap_markers,
+            MarkerKind::Monster => &mut self.layout.monster_markers,
         };
         let Some(marker) = markers.get_mut(drag.marker_idx) else {
             self.drag_state = None;
@@ -1336,6 +1395,16 @@ impl DungeonApp {
                         self.layout.end_markers.remove(idx);
                     }
                 }
+                HoverMarker::Trap(idx) => {
+                    if idx < self.layout.trap_markers.len() {
+                        self.layout.trap_markers.remove(idx);
+                    }
+                }
+                HoverMarker::Monster(idx) => {
+                    if idx < self.layout.monster_markers.len() {
+                        self.layout.monster_markers.remove(idx);
+                    }
+                }
             }
             return;
         }
@@ -1584,12 +1653,16 @@ enum ResizeCorner {
 enum MarkerKind {
     Start,
     End,
+    Trap,
+    Monster,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HoverMarker {
     Start(usize),
     End(usize),
+    Trap(usize),
+    Monster(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -1957,6 +2030,26 @@ fn draw_layout(
         hover_marker,
         MarkerKind::End,
     );
+    draw_area_marker_group(
+        painter,
+        geometry,
+        &layout.trap_markers,
+        "T",
+        Color32::from_rgb(150, 80, 230), // Purple
+        colorblind_mode,
+        hover_marker,
+        MarkerKind::Trap,
+    );
+    draw_area_marker_group(
+        painter,
+        geometry,
+        &layout.monster_markers,
+        "M",
+        Color32::from_rgb(200, 50, 50), // Red
+        colorblind_mode,
+        hover_marker,
+        MarkerKind::Monster,
+    );
 }
 
 // Compute the rectangle for a given grid cell.
@@ -2001,7 +2094,10 @@ fn centered_marker_origin(
     let half = size / 2;
     let max_x = cols.saturating_sub(size);
     let max_y = rows.saturating_sub(size);
-    (cell.0.saturating_sub(half).min(max_x), cell.1.saturating_sub(half).min(max_y))
+    (
+        cell.0.saturating_sub(half).min(max_x),
+        cell.1.saturating_sub(half).min(max_y),
+    )
 }
 
 fn draw_area_marker(
@@ -2059,6 +2155,8 @@ fn draw_area_marker_group(
         let hovered = match (kind, hover_marker) {
             (MarkerKind::Start, Some(HoverMarker::Start(hover_idx))) => hover_idx == idx,
             (MarkerKind::End, Some(HoverMarker::End(hover_idx))) => hover_idx == idx,
+            (MarkerKind::Trap, Some(HoverMarker::Trap(hover_idx))) => hover_idx == idx,
+            (MarkerKind::Monster, Some(HoverMarker::Monster(hover_idx))) => hover_idx == idx,
             _ => false,
         };
         draw_area_marker(

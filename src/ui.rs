@@ -8,6 +8,7 @@ enum Tab {
     Generate,
     Layout,
     StartAndEnd,
+    MonstersAndTraps,
     Add,
 }
 
@@ -140,6 +141,12 @@ pub struct UiSettings {
     pub max_start_marker_count: usize,
     pub min_end_marker_count: usize,
     pub max_end_marker_count: usize,
+    pub trap_frequency_percent: usize,
+    pub min_traps_per_area: usize,
+    pub max_traps_per_area: usize,
+    pub monster_frequency_percent: usize,
+    pub min_monsters_per_area: usize,
+    pub max_monsters_per_area: usize,
     active_tab: Tab,
 }
 
@@ -187,6 +194,12 @@ impl Default for UiSettings {
             max_start_marker_count: 1,
             min_end_marker_count: 1,
             max_end_marker_count: 1,
+            trap_frequency_percent: 20,
+            min_traps_per_area: 1,
+            max_traps_per_area: 3,
+            monster_frequency_percent: 15,
+            min_monsters_per_area: 1,
+            max_monsters_per_area: 2,
             active_tab: Tab::Generate,
         }
     }
@@ -204,6 +217,7 @@ pub enum AddTool {
     Text,
     StartMarker,
     EndMarker,
+    TrapMarker,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -231,8 +245,6 @@ pub fn draw_side_panel(
             ui.horizontal(|ui| {
                 let is_generate = settings.active_tab == Tab::Generate;
                 let is_layout = settings.active_tab == Tab::Layout;
-                let is_start_and_end = settings.active_tab == Tab::StartAndEnd;
-                let is_add = settings.active_tab == Tab::Add;
 
                 if ui.selectable_label(is_generate, "Generate").clicked() {
                     settings.active_tab = Tab::Generate;
@@ -240,10 +252,25 @@ pub fn draw_side_panel(
                 if ui.selectable_label(is_layout, "Layout").clicked() {
                     settings.active_tab = Tab::Layout;
                 }
-                if ui.selectable_label(is_start_and_end, "Start & End").clicked() {
+                if ui
+                    .selectable_label(settings.active_tab == Tab::StartAndEnd, "Start & End")
+                    .clicked()
+                {
                     settings.active_tab = Tab::StartAndEnd;
                 }
-                if ui.selectable_label(is_add, "Add").clicked() {
+                if ui
+                    .selectable_label(
+                        settings.active_tab == Tab::MonstersAndTraps,
+                        "Monsters/Traps",
+                    )
+                    .clicked()
+                {
+                    settings.active_tab = Tab::MonstersAndTraps;
+                }
+                if ui
+                    .selectable_label(settings.active_tab == Tab::Add, "Add")
+                    .clicked()
+                {
                     settings.active_tab = Tab::Add;
                 }
             });
@@ -253,6 +280,7 @@ pub fn draw_side_panel(
                 Tab::Generate => draw_generate_tab(ui, settings, &mut result, export_in_progress),
                 Tab::Layout => draw_layout_tab(ui, settings, &mut result),
                 Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
+                Tab::MonstersAndTraps => draw_monsters_and_traps_tab(ui, settings, &mut result),
                 Tab::Add => draw_add_tab(ui, settings),
             }
         });
@@ -751,6 +779,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
         ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
         ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Place Start");
         ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
+        ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Place Trap");
     });
 
     ui.add_space(6.0);
@@ -772,6 +801,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
         }
         AddTool::StartMarker => ui.label("Click the grid to place the start marker."),
         AddTool::EndMarker => ui.label("Click the grid to place the end marker."),
+        AddTool::TrapMarker => ui.label("Click the grid to place a trap marker."),
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
 }
@@ -856,6 +886,69 @@ fn draw_start_and_end_tab(
 
     ui.add_space(8.0);
     ui.label("Markers are generated inside rooms. Matching start/end indices are paired as far apart as possible.");
+}
+
+fn draw_monsters_and_traps_tab(
+    ui: &mut egui::Ui,
+    settings: &mut UiSettings,
+    result: &mut SidePanelResult,
+) {
+    ui.label(RichText::new("Trap Settings").strong());
+    ui.add_space(8.0);
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Trap Frequency (%)",
+        &mut settings.trap_frequency_percent,
+        0..=100,
+        0..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min Traps Per Room/Corridor",
+        &mut settings.min_traps_per_area,
+        0..=20,
+        0..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max Traps Per Room/Corridor",
+        &mut settings.max_traps_per_area,
+        0..=20,
+        0..=100,
+    );
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Monster Settings").strong());
+    ui.add_space(8.0);
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Monster Frequency (%)",
+        &mut settings.monster_frequency_percent,
+        0..=100,
+        0..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Min Monsters Per Room/Corridor",
+        &mut settings.min_monsters_per_area,
+        0..=20,
+        0..=100,
+    );
+    draw_usize_slider_row(
+        ui,
+        result,
+        "Max Monsters Per Room/Corridor",
+        &mut settings.max_monsters_per_area,
+        0..=20,
+        0..=100,
+    );
 }
 
 fn draw_usize_slider_row(

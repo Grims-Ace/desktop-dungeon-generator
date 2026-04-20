@@ -96,6 +96,8 @@ pub struct DungeonLayout {
     pub text_labels: Vec<TextLabel>,
     pub start_markers: Vec<AreaMarker>,
     pub end_markers: Vec<AreaMarker>,
+    pub trap_markers: Vec<AreaMarker>,
+    pub monster_markers: Vec<AreaMarker>,
     pub packed_rooms: bool,
 }
 
@@ -109,6 +111,8 @@ impl Default for DungeonLayout {
             text_labels: Vec::new(),
             start_markers: Vec::new(),
             end_markers: Vec::new(),
+            trap_markers: Vec::new(),
+            monster_markers: Vec::new(),
             packed_rooms: false,
         }
     }
@@ -178,6 +182,8 @@ pub fn generate_layout(
             text_labels: Vec::new(),
             start_markers: Vec::new(),
             end_markers: Vec::new(),
+            trap_markers: Vec::new(),
+            monster_markers: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -203,6 +209,8 @@ pub fn generate_layout(
             text_labels: Vec::new(),
             start_markers: Vec::new(),
             end_markers: Vec::new(),
+            trap_markers: Vec::new(),
+            monster_markers: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
         };
     }
@@ -233,6 +241,8 @@ pub fn generate_layout(
             text_labels: Vec::new(),
             start_markers: Vec::new(),
             end_markers: Vec::new(),
+            trap_markers: Vec::new(),
+            monster_markers: Vec::new(),
             packed_rooms: true,
         };
         apply_doors(&mut layout, seed, door_settings, cols, rows);
@@ -292,6 +302,8 @@ pub fn generate_layout(
             text_labels: Vec::new(),
             start_markers: Vec::new(),
             end_markers: Vec::new(),
+            trap_markers: Vec::new(),
+            monster_markers: Vec::new(),
             packed_rooms: false,
         };
     }
@@ -348,6 +360,8 @@ pub fn generate_layout(
         text_labels: Vec::new(),
         start_markers: Vec::new(),
         end_markers: Vec::new(),
+        trap_markers: Vec::new(),
+        monster_markers: Vec::new(),
         packed_rooms: false,
     };
     apply_doors(&mut layout, seed, door_settings, cols, rows);

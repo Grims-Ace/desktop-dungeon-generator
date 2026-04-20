@@ -10,14 +10,17 @@ const EXTRA_START_ROOM_STREAM_BASE: u64 = 13_000;
 const EXTRA_START_MARKER_STREAM_BASE: u64 = 14_000;
 const EXTRA_END_ROOM_STREAM_BASE: u64 = 15_000;
 const EXTRA_END_MARKER_STREAM_BASE: u64 = 16_000;
+const TRAP_ROOM_STREAM_BASE: u64 = 17_000;
+const TRAP_CORRIDOR_STREAM_BASE: u64 = 18_000;
+const MONSTER_ROOM_STREAM_BASE: u64 = 19_000;
+const MONSTER_CORRIDOR_STREAM_BASE: u64 = 20_000;
 
 // Populate generated start/end markers after the core dungeon layout exists.
-pub fn populate_random_markers(
-    mut layout: DungeonLayout,
-    settings: &UiSettings,
-) -> DungeonLayout {
+pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
     layout.start_markers.clear();
     layout.end_markers.clear();
+    layout.trap_markers.clear();
+    layout.monster_markers.clear();
 
     if layout.rooms.is_empty() {
         return layout;
@@ -84,6 +87,9 @@ pub fn populate_random_markers(
         EXTRA_END_MARKER_STREAM_BASE,
     );
 
+    layout = populate_random_traps(layout, settings);
+    layout = populate_random_monsters(layout, settings);
+
     layout
 }
 
@@ -94,9 +100,19 @@ pub fn manual_marker_size(settings: &UiSettings, is_start: bool) -> usize {
             .min_start_marker_size
             .min(settings.max_start_marker_size)
     } else {
-        settings.min_end_marker_size.min(settings.max_end_marker_size)
+        settings
+            .min_end_marker_size
+            .min(settings.max_end_marker_size)
     }
     .clamp(1, 10)
+}
+
+pub fn manual_trap_marker_size(_settings: &UiSettings) -> usize {
+    1
+}
+
+pub fn manual_monster_marker_size(_settings: &UiSettings) -> usize {
+    1
 }
 
 // Pick a deterministic inclusive random value from a seed-derived stream.
@@ -219,4 +235,113 @@ fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value: u64
     } else {
         seed_value as usize % room_count.max(1)
     }
+}
+
+pub fn populate_random_traps(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
+    if settings.trap_frequency_percent == 0 {
+        return layout;
+    }
+
+    let mut trap_markers = Vec::new();
+
+    // Rooms
+    for (idx, room) in layout.rooms.iter().enumerate() {
+        let seed = seed::derive_seed(settings.seed, TRAP_ROOM_STREAM_BASE + idx as u64);
+        if (seed % 100) < settings.trap_frequency_percent as u64 {
+            let count = random_range_inclusive(
+                settings.min_traps_per_area,
+                settings.max_traps_per_area,
+                seed.rotate_left(13),
+            );
+            for i in 0..count {
+                trap_markers.push(marker_in_room(
+                    room,
+                    1,
+                    1,
+                    seed.wrapping_add(i as u64).rotate_right(7),
+                ));
+            }
+        }
+    }
+
+    // Corridors
+    for (idx, corridor) in layout.corridors.iter().enumerate() {
+        let seed = seed::derive_seed(settings.seed, TRAP_CORRIDOR_STREAM_BASE + idx as u64);
+        if (seed % 100) < settings.trap_frequency_percent as u64 {
+            let count = random_range_inclusive(
+                settings.min_traps_per_area,
+                settings.max_traps_per_area,
+                seed.rotate_left(13),
+            );
+            for i in 0..count {
+                if let Some(cell) = pick_random_corridor_cell(corridor, seed.wrapping_add(i as u64))
+                {
+                    trap_markers.push(layout::AreaMarker { cell, size: 1 });
+                }
+            }
+        }
+    }
+
+    layout.trap_markers = trap_markers;
+    layout
+}
+
+pub fn populate_random_monsters(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
+    if settings.monster_frequency_percent == 0 {
+        return layout;
+    }
+
+    let mut monster_markers = Vec::new();
+
+    // Rooms
+    for (idx, room) in layout.rooms.iter().enumerate() {
+        let seed = seed::derive_seed(settings.seed, MONSTER_ROOM_STREAM_BASE + idx as u64);
+        if (seed % 100) < settings.monster_frequency_percent as u64 {
+            let count = random_range_inclusive(
+                settings.min_monsters_per_area,
+                settings.max_monsters_per_area,
+                seed.rotate_left(13),
+            );
+            for i in 0..count {
+                monster_markers.push(marker_in_room(
+                    room,
+                    1,
+                    1,
+                    seed.wrapping_add(i as u64).rotate_right(7),
+                ));
+            }
+        }
+    }
+
+    // Corridors
+    for (idx, corridor) in layout.corridors.iter().enumerate() {
+        let seed = seed::derive_seed(settings.seed, MONSTER_CORRIDOR_STREAM_BASE + idx as u64);
+        if (seed % 100) < settings.monster_frequency_percent as u64 {
+            let count = random_range_inclusive(
+                settings.min_monsters_per_area,
+                settings.max_monsters_per_area,
+                seed.rotate_left(13),
+            );
+            for i in 0..count {
+                if let Some(cell) = pick_random_corridor_cell(corridor, seed.wrapping_add(i as u64))
+                {
+                    monster_markers.push(layout::AreaMarker { cell, size: 1 });
+                }
+            }
+        }
+    }
+
+    layout.monster_markers = monster_markers;
+    layout
+}
+
+fn pick_random_corridor_cell(
+    corridor: &layout::Corridor,
+    seed_value: u64,
+) -> Option<(usize, usize)> {
+    if corridor.path.is_empty() {
+        return None;
+    }
+    let idx = (seed_value as usize) % corridor.path.len();
+    Some(corridor.path[idx])
 }

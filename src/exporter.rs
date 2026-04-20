@@ -22,6 +22,8 @@ const WINDOW: (u8, u8, u8, u8) = (70, 130, 220, 255);
 const WHITE: (u8, u8, u8, u8) = (255, 255, 255, 255);
 const START_MARKER: (u8, u8, u8, u8) = (60, 220, 200, 255);
 const END_MARKER: (u8, u8, u8, u8) = (240, 90, 90, 255);
+const TRAP_MARKER: (u8, u8, u8, u8) = (150, 80, 230, 255);
+const MONSTER_MARKER: (u8, u8, u8, u8) = (200, 50, 50, 255);
 
 pub enum ExportTarget {
     File(PathBuf),
@@ -292,6 +294,22 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         END_MARKER,
         settings.colorblind_mode,
     );
+    draw_area_marker_group(
+        &mut pixmap,
+        &g,
+        &layout.trap_markers,
+        "T",
+        TRAP_MARKER,
+        settings.colorblind_mode,
+    );
+    draw_area_marker_group(
+        &mut pixmap,
+        &g,
+        &layout.monster_markers,
+        "M",
+        MONSTER_MARKER,
+        settings.colorblind_mode,
+    );
 
     Ok(pixmap)
 }
@@ -348,6 +366,8 @@ fn export_composite_masks(
     let mut windows = blank_mask(&g, "windows")?;
     let mut start_markers = blank_mask(&g, "start markers")?;
     let mut end_markers = blank_mask(&g, "end markers")?;
+    let mut trap_markers = blank_mask(&g, "trap markers")?;
+    let mut monster_markers = blank_mask(&g, "monster markers")?;
     for door in &layout.doors {
         if door.secret {
             draw_door(&mut secret_doors, &g, door, door_w, WHITE, DoorStyle::Solid);
@@ -364,6 +384,8 @@ fn export_composite_masks(
     }
     fill_marker_mask(&mut start_markers, &g, &layout.start_markers);
     fill_marker_mask(&mut end_markers, &g, &layout.end_markers);
+    fill_marker_mask(&mut trap_markers, &g, &layout.trap_markers);
+    fill_marker_mask(&mut monster_markers, &g, &layout.monster_markers);
 
     let composite = render_pixmap(layout, settings)?;
     let composite_img = raster_image_from_pixmap(&composite, settings)?;
@@ -382,6 +404,8 @@ fn export_composite_masks(
     save_mask_image(folder, "windows_mask", &windows, settings)?;
     save_mask_image(folder, "start_markers_mask", &start_markers, settings)?;
     save_mask_image(folder, "end_markers_mask", &end_markers, settings)?;
+    save_mask_image(folder, "trap_markers_mask", &trap_markers, settings)?;
+    save_mask_image(folder, "monster_markers_mask", &monster_markers, settings)?;
     if settings.export_show_grid {
         let mut grid = Pixmap::new(g.width, g.height)
             .ok_or_else(|| "Failed to allocate grid mask canvas".to_string())?;
@@ -712,6 +736,22 @@ fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         END_MARKER,
         settings.colorblind_mode,
     );
+    append_svg_area_marker_group(
+        &mut s,
+        &g,
+        &layout.trap_markers,
+        "T",
+        TRAP_MARKER,
+        settings.colorblind_mode,
+    );
+    append_svg_area_marker_group(
+        &mut s,
+        &g,
+        &layout.monster_markers,
+        "M",
+        MONSTER_MARKER,
+        settings.colorblind_mode,
+    );
 
     s.push_str("</svg>\n");
     s
@@ -818,7 +858,12 @@ fn draw_area_marker(
     color: (u8, u8, u8, u8),
     colorblind_mode: bool,
 ) {
-    let overlay = (color.0, color.1, color.2, if colorblind_mode { 56 } else { 90 });
+    let overlay = (
+        color.0,
+        color.1,
+        color.2,
+        if colorblind_mode { 56 } else { 90 },
+    );
     fill_rect_marker(pixmap, g, marker, overlay);
 
     let x = g.left() + marker.cell.0 as f32 * g.cell;
@@ -852,7 +897,7 @@ fn draw_area_marker(
             symbol,
             DoorStyle::Solid,
         );
-    } else {
+    } else if label == "E" {
         draw_line(
             pixmap,
             x + w * 0.25,
@@ -868,6 +913,70 @@ fn draw_area_marker(
             x + w * 0.75,
             y + h * 0.25,
             x + w * 0.25,
+            y + h * 0.75,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+    } else if label == "T" {
+        // Horizontal bar
+        draw_line(
+            pixmap,
+            x + w * 0.2,
+            y + h * 0.25,
+            x + w * 0.8,
+            y + h * 0.25,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        // Vertical bar
+        draw_line(
+            pixmap,
+            x + w * 0.5,
+            y + h * 0.25,
+            x + w * 0.5,
+            y + h * 0.75,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+    } else if label == "M" {
+        draw_line(
+            pixmap,
+            x + w * 0.2,
+            y + h * 0.75,
+            x + w * 0.2,
+            y + h * 0.25,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        draw_line(
+            pixmap,
+            x + w * 0.2,
+            y + h * 0.25,
+            x + w * 0.5,
+            y + h * 0.5,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        draw_line(
+            pixmap,
+            x + w * 0.5,
+            y + h * 0.5,
+            x + w * 0.8,
+            y + h * 0.25,
+            4.0,
+            symbol,
+            DoorStyle::Solid,
+        );
+        draw_line(
+            pixmap,
+            x + w * 0.8,
+            y + h * 0.25,
+            x + w * 0.8,
             y + h * 0.75,
             4.0,
             symbol,
@@ -1172,30 +1281,70 @@ fn append_svg_area_marker(
     if label == "S" {
         let _ = writeln!(
             out,
-            "<polyline points='{},{} {},{} {},{}' fill='none' stroke='{symbol}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>",
+            "<polyline points='{},{} {},{} {},{}' fill='none' stroke='{}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>",
             x + w * 0.25,
             y + h * 0.75,
             x + w * 0.5,
             y + h * 0.25,
             x + w * 0.75,
-            y + h * 0.75
+            y + h * 0.75,
+            symbol
         );
-    } else {
+    } else if label == "E" {
         let _ = writeln!(
             out,
-            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{symbol}' stroke-width='4' stroke-linecap='round'/>",
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{}' stroke-width='4' stroke-linecap='round'/>",
             x + w * 0.25,
             y + h * 0.25,
             x + w * 0.75,
-            y + h * 0.75
+            y + h * 0.75,
+            symbol
         );
         let _ = writeln!(
             out,
-            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{symbol}' stroke-width='4' stroke-linecap='round'/>",
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{}' stroke-width='4' stroke-linecap='round'/>",
             x + w * 0.75,
             y + h * 0.25,
             x + w * 0.25,
-            y + h * 0.75
+            y + h * 0.75,
+            symbol
+        );
+    } else if label == "T" {
+        // Horizontal bar
+        let _ = writeln!(
+            out,
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{}' stroke-width='4' stroke-linecap='round'/>",
+            x + w * 0.2,
+            y + h * 0.25,
+            x + w * 0.8,
+            y + h * 0.25,
+            symbol
+        );
+        // Vertical bar
+        let _ = writeln!(
+            out,
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='{}' stroke-width='4' stroke-linecap='round'/>",
+            x + w * 0.5,
+            y + h * 0.25,
+            x + w * 0.5,
+            y + h * 0.75,
+            symbol
+        );
+    } else if label == "M" {
+        let _ = writeln!(
+            out,
+            "<polyline points='{},{} {},{} {},{} {},{} {},{}' fill='none' stroke='{}' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>",
+            x + w * 0.2,
+            y + h * 0.75,
+            x + w * 0.2,
+            y + h * 0.25,
+            x + w * 0.5,
+            y + h * 0.5,
+            x + w * 0.8,
+            y + h * 0.25,
+            x + w * 0.8,
+            y + h * 0.75,
+            symbol
         );
     }
 }
