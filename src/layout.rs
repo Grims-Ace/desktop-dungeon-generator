@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 
 use crate::seed;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Room {
     pub x: usize,
     pub y: usize,
@@ -17,7 +18,7 @@ impl Room {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Corridor {
     #[allow(dead_code)]
     pub id: u64,
@@ -27,7 +28,7 @@ pub struct Corridor {
     pub width: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Door {
     pub from: (usize, usize),
     pub to: (usize, usize),
@@ -39,7 +40,7 @@ pub struct Door {
     pub manual: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
     pub cell: (usize, usize),
     pub side: WindowSide,
@@ -47,20 +48,20 @@ pub struct Window {
     pub span_width: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextLabel {
     pub cell: (usize, usize),
     pub text: String,
     pub font_size: u16,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AreaMarker {
     pub cell: (usize, usize),
     pub size: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowSide {
     Left,
     Right,
@@ -68,7 +69,7 @@ pub enum WindowSide {
     Bottom,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DoorSettings {
     pub frequency_percent: usize,
     pub room_hallway_percent: usize,
@@ -77,7 +78,7 @@ pub struct DoorSettings {
     pub allow_middle_corridor_doors: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct WindowSettings {
     pub enabled: bool,
     pub min_width: usize,
@@ -87,7 +88,7 @@ pub struct WindowSettings {
     pub allow_internal_windows: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,

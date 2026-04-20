@@ -226,6 +226,8 @@ pub struct SidePanelResult {
     pub reset_clicked: bool,
     pub clear_clicked: bool,
     pub export_clicked: bool,
+    pub save_clicked: bool,
+    pub load_clicked: bool,
 }
 
 pub fn draw_side_panel(
@@ -351,6 +353,16 @@ fn draw_generate_tab(
         }
         if ui.button("Clear").clicked() {
             result.clear_clicked = true;
+        }
+    });
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        if ui.button("Save State").clicked() {
+            result.save_clicked = true;
+        }
+        if ui.button("Load State").clicked() {
+            result.load_clicked = true;
         }
     });
 

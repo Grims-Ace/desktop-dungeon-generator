@@ -529,7 +529,7 @@ fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
 }
 
 // Build an SVG document for the current layout.
-fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
+pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let wall_w = (g.cell / 5.0).max(1.0);
     let door_w = (g.cell / 10.0).max(1.0);

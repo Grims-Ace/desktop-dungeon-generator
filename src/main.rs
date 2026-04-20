@@ -1,5 +1,6 @@
 mod exporter;
 mod layout;
+mod saveandload;
 mod seed;
 mod settings;
 mod startend;
@@ -139,6 +140,23 @@ impl eframe::App for DungeonApp {
         } else if panel_result.reset_clicked || panel_result.settings_changed {
             self.push_undo_snapshot();
             self.regenerate_layout();
+        } else if panel_result.save_clicked {
+            let svg = exporter::build_svg(&self.layout, &self.settings);
+            if let Err(err) = saveandload::save_dungeon(&self.settings, &self.layout, svg) {
+                eprintln!("{err}");
+            }
+        } else if panel_result.load_clicked {
+            match saveandload::load_dungeon() {
+                Ok(data) => {
+                    self.push_undo_snapshot();
+                    self.settings = data.settings;
+                    self.layout = data.layout;
+                    // Don't regenerate_layout() here to preserve the exact loaded state.
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                }
+            }
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             self.pending_delete = true;
