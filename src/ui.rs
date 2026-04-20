@@ -798,6 +798,8 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
         ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
         ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Place Trap");
     });
+    ui.add_space(4.0);
+    ui.label("Left click to place, Right click/Escape to cancel");
 
     ui.add_space(6.0);
     match settings.add_tool {
