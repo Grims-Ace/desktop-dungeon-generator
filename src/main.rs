@@ -125,6 +125,11 @@ impl eframe::App for DungeonApp {
             (i.modifiers.command && i.key_pressed(egui::Key::Y))
                 || (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z))
         });
+        let escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+
+        if escape_pressed || panel_result.settings_changed {
+            self.settings.add_tool = AddTool::None;
+        }
 
         clamp_dependent_settings(&mut self.settings);
 
@@ -682,7 +687,6 @@ impl DungeonApp {
                 {
                     let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
                     self.add_room_at_cell(cell);
-                    self.settings.add_tool = AddTool::None;
                 }
             }
             AddTool::Corridor => {
@@ -709,7 +713,6 @@ impl DungeonApp {
                     if let Some(drag) = self.add_corridor_drag.take() {
                         self.add_corridor_between(drag.start_cell, drag.current_cell);
                     }
-                    self.settings.add_tool = AddTool::None;
                 }
             }
             AddTool::Archway | AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
@@ -725,7 +728,6 @@ impl DungeonApp {
                         _ => unreachable!(),
                     };
                     self.add_door_at_pointer(pointer_pos, geometry, kind);
-                    self.settings.add_tool = AddTool::None;
                 }
             }
             AddTool::Text => {
@@ -736,7 +738,6 @@ impl DungeonApp {
                 {
                     let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
                     self.add_text_at_cell(cell);
-                    self.settings.add_tool = AddTool::None;
                 }
             }
             AddTool::StartMarker | AddTool::EndMarker | AddTool::TrapMarker => {
@@ -753,7 +754,6 @@ impl DungeonApp {
                         _ => unreachable!(),
                     };
                     self.add_marker_at_cell(cell, kind);
-                    self.settings.add_tool = AddTool::None;
                 }
             }
             AddTool::None => {
