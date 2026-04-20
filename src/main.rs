@@ -174,6 +174,19 @@ impl eframe::App for DungeonApp {
                     return;
                 }
             };
+
+            // Update the last export path in settings to remember the directory.
+            match &target {
+                exporter::ExportTarget::File(path) => {
+                    if let Some(parent) = path.parent() {
+                        self.settings.last_export_path = Some(parent.to_string_lossy().to_string());
+                    }
+                }
+                exporter::ExportTarget::Folder(path) => {
+                    self.settings.last_export_path = Some(path.to_string_lossy().to_string());
+                }
+            }
+
             let layout = self.layout.clone();
             let settings = self.settings.clone();
             let (tx, rx) = mpsc::channel();

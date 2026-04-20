@@ -133,8 +133,11 @@ fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneDat
 // Open a dialog to select an export destination.
 pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, String> {
     if settings.export_format == ExportFormat::Folder {
-        let folder = FileDialog::new()
-            .set_title("Export composite masks folder")
+        let mut dialog = FileDialog::new().set_title("Export composite masks folder");
+        if let Some(ref last_path) = settings.last_export_path {
+            dialog = dialog.set_directory(last_path);
+        }
+        let folder = dialog
             .pick_folder()
             .ok_or_else(|| "Export canceled".to_string())?;
         return Ok(ExportTarget::Folder(folder));
@@ -148,6 +151,10 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
         .set_title("Export image")
         .set_file_name(&default_name)
         .add_filter(settings.export_format.label(), &[ext]);
+
+    if let Some(ref last_path) = settings.last_export_path {
+        dialog = dialog.set_directory(last_path);
+    }
 
     let mut path = dialog
         .save_file()
