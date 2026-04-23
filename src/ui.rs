@@ -490,9 +490,6 @@ fn draw_generate_tab(
 
 // Render the Layout tab controls.
 fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
-    ui.add_space(12.0);
-    ui.separator();
-    ui.add_space(8.0);
     ui.label(RichText::new("Levels").strong());
     ui.add_space(8.0);
 
