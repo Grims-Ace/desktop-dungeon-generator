@@ -142,6 +142,9 @@ pub struct UiSettings {
     pub max_start_marker_count: usize,
     pub min_end_marker_count: usize,
     pub max_end_marker_count: usize,
+    pub min_levels: usize,
+    pub max_levels: usize,
+    pub active_level_index: usize,
     pub trap_frequency_percent: usize,
     pub min_traps_per_area: usize,
     pub max_traps_per_area: usize,
@@ -196,6 +199,9 @@ impl Default for UiSettings {
             max_start_marker_count: 1,
             min_end_marker_count: 1,
             max_end_marker_count: 1,
+            min_levels: 1,
+            max_levels: 1,
+            active_level_index: 0,
             trap_frequency_percent: 20,
             min_traps_per_area: 1,
             max_traps_per_area: 3,
@@ -484,6 +490,44 @@ fn draw_generate_tab(
 
 // Render the Layout tab controls.
 fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Levels").strong());
+    ui.add_space(8.0);
+
+    ui.label("Min Levels");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_levels, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.min_levels)
+                    .speed(1.0)
+                    .range(1..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Max Levels");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_levels, 1..=20).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.max_levels)
+                    .speed(1.0)
+                    .range(1..=100),
+            )
+            .changed();
+    });
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
     ui.label(RichText::new("Room Settings").strong());
     ui.add_space(8.0);
 

@@ -33,7 +33,7 @@ enum ManualDoorKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AppSnapshot {
     settings: UiSettings,
-    layout: DungeonLayout,
+    levels: Vec<DungeonLayout>,
     suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
 }
 
@@ -50,7 +50,7 @@ fn main() -> eframe::Result<()> {
 
 struct DungeonApp {
     settings: UiSettings,
-    layout: DungeonLayout,
+    levels: Vec<DungeonLayout>,
     suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
     undo_stack: Vec<AppSnapshot>,
     redo_stack: Vec<AppSnapshot>,
@@ -70,26 +70,10 @@ impl Default for DungeonApp {
     // Build the app with persisted settings and a generated layout.
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
-        let layout = layout::generate_layout(
-            settings.cols,
-            settings.rows,
-            settings.room_count,
-            settings.seed,
-            settings.min_room_size,
-            settings.max_room_size,
-            settings.square_rooms_only,
-            settings.min_corridor_width,
-            settings.max_corridor_width,
-            settings.corridor_randomness,
-            settings.dead_end_rooms_percent,
-            settings.pack_rooms_without_corridors,
-            door_settings_from_ui(&settings),
-            window_settings_from_ui(&settings),
-        );
-        let layout = populate_random_markers(layout, &settings);
+        let levels = generate_all_levels(&settings);
         Self {
             settings,
-            layout,
+            levels,
             suppressed_auto_door_edges: HashSet::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -146,16 +130,20 @@ impl eframe::App for DungeonApp {
             self.push_undo_snapshot();
             self.regenerate_layout();
         } else if panel_result.save_clicked {
-            let svg = exporter::build_svg(&self.layout, &self.settings);
-            if let Err(err) = saveandload::save_dungeon(&self.settings, &self.layout, svg) {
-                eprintln!("{err}");
+            if self.settings.active_level_index < self.levels.len() {
+                let layout = &self.levels[self.settings.active_level_index];
+                let svg = exporter::build_svg(layout, &self.settings);
+                if let Err(err) = saveandload::save_dungeon(&self.settings, layout, svg) {
+                    eprintln!("{err}");
+                }
             }
         } else if panel_result.load_clicked {
             match saveandload::load_dungeon() {
                 Ok(data) => {
                     self.push_undo_snapshot();
                     self.settings = data.settings;
-                    self.layout = data.layout;
+                    self.levels = vec![data.layout];
+                    self.settings.active_level_index = 0;
                     // Don't regenerate_layout() here to preserve the exact loaded state.
                 }
                 Err(err) => {
@@ -187,14 +175,16 @@ impl eframe::App for DungeonApp {
                 }
             }
 
-            let layout = self.layout.clone();
-            let settings = self.settings.clone();
-            let (tx, rx) = mpsc::channel();
-            thread::spawn(move || {
-                let result = exporter::export_to_target(&layout, &settings, target);
-                let _ = tx.send(result);
-            });
-            self.export_rx = Some(rx);
+            if self.settings.active_level_index < self.levels.len() {
+                let layout = self.levels[self.settings.active_level_index].clone();
+                let settings = self.settings.clone();
+                let (tx, rx) = mpsc::channel();
+                thread::spawn(move || {
+                    let result = exporter::export_to_target(&layout, &settings, target);
+                    let _ = tx.send(result);
+                });
+                self.export_rx = Some(rx);
+            }
         }
 
         if let Some(rx) = &self.export_rx {
@@ -270,6 +260,19 @@ impl eframe::App for DungeonApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                for i in 0..self.levels.len() {
+                    let label = format!("Level {}", i + 1);
+                    if ui
+                        .selectable_label(self.settings.active_level_index == i, label)
+                        .clicked()
+                    {
+                        self.settings.active_level_index = i;
+                    }
+                }
+            });
+            ui.separator();
+
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
             let canvas = response.rect.shrink(12.0);
@@ -286,20 +289,57 @@ impl eframe::App for DungeonApp {
                 }
                 self.pending_delete = false;
             }
-            draw_layout(
-                &painter,
-                &geometry,
-                &self.layout,
-                self.settings.colorblind_mode,
-                self.hover_text_idx,
-                self.hover_marker,
-            );
+
+            if self.settings.active_level_index < self.levels.len() {
+                draw_layout(
+                    &painter,
+                    &geometry,
+                    &self.levels[self.settings.active_level_index],
+                    self.settings.colorblind_mode,
+                    self.hover_text_idx,
+                    self.hover_marker,
+                );
+            }
             self.draw_add_overlay(&painter, &geometry);
             self.draw_resize_overlay(&painter, &geometry);
             self.draw_corridor_hover_overlay(&painter, &geometry);
             self.draw_door_hover_overlay(&painter, &geometry);
         });
     }
+}
+
+fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
+    let level_count = if settings.min_levels == settings.max_levels {
+        settings.min_levels
+    } else {
+        let range_seed = seed::derive_seed(settings.seed, 0x1E_7E_1_u64);
+        (range_seed as usize % (settings.max_levels - settings.min_levels + 1))
+            + settings.min_levels
+    };
+
+    let mut levels = Vec::with_capacity(level_count);
+    for i in 0..level_count {
+        let level_seed = seed::derive_seed(settings.seed, i as u64);
+        let layout = layout::generate_layout(
+            settings.cols,
+            settings.rows,
+            settings.room_count,
+            level_seed,
+            settings.min_room_size,
+            settings.max_room_size,
+            settings.square_rooms_only,
+            settings.min_corridor_width,
+            settings.max_corridor_width,
+            settings.corridor_randomness,
+            settings.dead_end_rooms_percent,
+            settings.pack_rooms_without_corridors,
+            door_settings_from_ui(settings),
+            window_settings_from_ui(settings),
+        );
+        let layout = populate_random_markers(layout, settings);
+        levels.push(layout);
+    }
+    levels
 }
 
 fn clamp_dependent_settings(settings: &mut UiSettings) {
@@ -333,6 +373,12 @@ fn clamp_dependent_settings(settings: &mut UiSettings) {
     if settings.min_monsters_per_area > settings.max_monsters_per_area {
         settings.max_monsters_per_area = settings.min_monsters_per_area;
     }
+    if settings.min_levels == 0 {
+        settings.min_levels = 1;
+    }
+    if settings.min_levels > settings.max_levels {
+        settings.max_levels = settings.min_levels;
+    }
 }
 
 impl DungeonApp {
@@ -355,7 +401,7 @@ impl DungeonApp {
     fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             settings: self.settings.clone(),
-            layout: self.layout.clone(),
+            levels: self.levels.clone(),
             suppressed_auto_door_edges: self.suppressed_auto_door_edges.clone(),
         }
     }
@@ -374,7 +420,7 @@ impl DungeonApp {
 
     fn restore_snapshot(&mut self, snapshot: AppSnapshot) {
         self.settings = snapshot.settings;
-        self.layout = snapshot.layout;
+        self.levels = snapshot.levels;
         self.suppressed_auto_door_edges = snapshot.suppressed_auto_door_edges;
         self.reset_transient_state();
     }
@@ -397,7 +443,10 @@ impl DungeonApp {
 
     // Clear the current layout and reset transient interaction state.
     fn clear_layout(&mut self) {
-        self.layout = DungeonLayout {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        self.levels[self.settings.active_level_index] = DungeonLayout {
             packed_rooms: self.settings.pack_rooms_without_corridors,
             ..DungeonLayout::default()
         };
@@ -409,23 +458,10 @@ impl DungeonApp {
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.suppressed_auto_door_edges.clear();
-        let layout = layout::generate_layout(
-            self.settings.cols,
-            self.settings.rows,
-            self.settings.room_count,
-            self.settings.seed,
-            self.settings.min_room_size,
-            self.settings.max_room_size,
-            self.settings.square_rooms_only,
-            self.settings.min_corridor_width,
-            self.settings.max_corridor_width,
-            self.settings.corridor_randomness,
-            self.settings.dead_end_rooms_percent,
-            self.settings.pack_rooms_without_corridors,
-            door_settings_from_ui(&self.settings),
-            window_settings_from_ui(&self.settings),
-        );
-        self.layout = populate_random_markers(layout, &self.settings);
+        self.levels = generate_all_levels(&self.settings);
+        if self.settings.active_level_index >= self.levels.len() {
+            self.settings.active_level_index = 0;
+        }
     }
 
     // Handle dragging rooms or corridors with the primary mouse button.
@@ -499,7 +535,12 @@ impl DungeonApp {
     ) -> Option<(usize, f32, f32)> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
 
-        for (room_idx, room) in self.layout.rooms.iter().enumerate().rev() {
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        for (room_idx, room) in layout.rooms.iter().enumerate().rev() {
             let room_x = room.x as f32;
             let room_y = room.y as f32;
             let room_right = room_x + room.width as f32;
@@ -524,13 +565,17 @@ impl DungeonApp {
             return;
         };
 
-        if drag.room_idx >= self.layout.rooms.len() {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        if drag.room_idx >= self.levels[self.settings.active_level_index].rooms.len() {
             self.drag_state = None;
             return;
         }
 
         let (width, height, old_x, old_y) = {
-            let room = &self.layout.rooms[drag.room_idx];
+            let room = &self.levels[self.settings.active_level_index].rooms[drag.room_idx];
             (room.width, room.height, room.x, room.y)
         };
         let max_x = self.settings.cols.saturating_sub(width);
@@ -545,8 +590,8 @@ impl DungeonApp {
             return;
         }
 
-        self.layout.rooms[drag.room_idx].x = new_x;
-        self.layout.rooms[drag.room_idx].y = new_y;
+        self.levels[self.settings.active_level_index].rooms[drag.room_idx].x = new_x;
+        self.levels[self.settings.active_level_index].rooms[drag.room_idx].y = new_y;
         self.reroute_corridors_for_room(drag.room_idx);
         self.refresh_doors();
     }
@@ -561,7 +606,15 @@ impl DungeonApp {
             return;
         };
 
-        if drag.text_idx >= self.layout.text_labels.len() {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        if drag.text_idx
+            >= self.levels[self.settings.active_level_index]
+                .text_labels
+                .len()
+        {
             self.drag_state = None;
             return;
         }
@@ -571,24 +624,29 @@ impl DungeonApp {
             (grid_y.floor().max(0.0) as usize).min(self.settings.rows.saturating_sub(1)),
         );
 
-        self.layout.text_labels[drag.text_idx].cell = target;
+        self.levels[self.settings.active_level_index].text_labels[drag.text_idx].cell = target;
     }
 
     // Recalculate corridor paths connected to a moved room.
     fn reroute_corridors_for_room(&mut self, room_idx: usize) {
-        if self.layout.packed_rooms {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
+        if layout.packed_rooms {
             return;
         }
 
-        for corridor in &mut self.layout.corridors {
+        for corridor in &mut layout.corridors {
             if corridor.start_room_id != room_idx && corridor.end_room_id != room_idx {
                 continue;
             }
 
-            let start = self.layout.rooms[corridor.start_room_id].center_cell();
-            let end = self.layout.rooms[corridor.end_room_id].center_cell();
+            let start = layout.rooms[corridor.start_room_id].center_cell();
+            let end = layout.rooms[corridor.end_room_id].center_cell();
             let blocked = blocked_room_cells(
-                &self.layout.rooms,
+                &layout.rooms,
                 &[corridor.start_room_id, corridor.end_room_id],
             );
             if let Some(path) =
@@ -607,15 +665,19 @@ impl DungeonApp {
     ) -> Option<CorridorDragState> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
         let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
-        let corridor_index = self
-            .layout
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let corridor_index = layout
             .corridors
             .iter()
             .position(|corridor| corridor.path.contains(&clicked))?;
 
         Some(CorridorDragState {
             corridor_index,
-            original_path: self.layout.corridors[corridor_index].path.clone(),
+            original_path: layout.corridors[corridor_index].path.clone(),
             original_cell: clicked,
         })
     }
@@ -631,11 +693,16 @@ impl DungeonApp {
             return;
         };
 
-        if drag.corridor_index >= self.layout.corridors.len() {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
+        if drag.corridor_index >= layout.corridors.len() {
             self.drag_state = None;
             return;
         }
-        let corridor = &self.layout.corridors[drag.corridor_index];
+        let corridor = &layout.corridors[drag.corridor_index];
 
         let target = (
             (grid_x.floor().max(0.0) as usize).min(self.settings.cols.saturating_sub(1)),
@@ -649,33 +716,38 @@ impl DungeonApp {
             self.settings.cols,
             self.settings.rows,
             &blocked_room_cells(
-                &self.layout.rooms,
+                &layout.rooms,
                 &[corridor.start_room_id, corridor.end_room_id],
             ),
         ) else {
             return;
         };
 
-        self.layout.corridors[drag.corridor_index].path = new_path;
+        layout.corridors[drag.corridor_index].path = new_path;
         self.refresh_doors();
     }
 
     // Rebuild doors based on the current layout and settings.
     fn refresh_doors(&mut self) {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         layout::apply_doors(
-            &mut self.layout,
+            layout,
             self.settings.seed,
             door_settings_from_ui(&self.settings),
             self.settings.cols,
             self.settings.rows,
         );
-        self.layout.doors.retain(|door| {
+        layout.doors.retain(|door| {
             !door_edges_for(door, self.settings.cols, self.settings.rows)
                 .iter()
                 .any(|edge| self.suppressed_auto_door_edges.contains(edge))
         });
         layout::apply_windows(
-            &mut self.layout,
+            layout,
             self.settings.seed,
             window_settings_from_ui(&self.settings),
             self.settings.cols,
@@ -794,6 +866,11 @@ impl DungeonApp {
     // Add a room anchored to the given grid cell if space allows.
     fn add_room_at_cell(&mut self, cell: (usize, usize)) {
         self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         let width = self.settings.min_room_size.max(1);
         let height = self.settings.min_room_size.max(1);
         if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
@@ -814,8 +891,7 @@ impl DungeonApp {
             height,
         };
 
-        if self
-            .layout
+        if layout
             .rooms
             .iter()
             .any(|room| rooms_overlap(&new_room, room))
@@ -823,24 +899,29 @@ impl DungeonApp {
             return;
         }
 
-        self.layout.rooms.push(new_room);
+        layout.rooms.push(new_room);
         self.refresh_doors();
     }
 
     // Add a corridor between two room cells using a shortest path.
     fn add_corridor_between(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         if start == end {
             return;
         }
 
-        let start_room = room_index_at_cell(&self.layout.rooms, start);
-        let end_room = room_index_at_cell(&self.layout.rooms, end);
+        let start_room = room_index_at_cell(&layout.rooms, start);
+        let end_room = room_index_at_cell(&layout.rooms, end);
         let (Some(start_room), Some(end_room)) = (start_room, end_room) else {
             return;
         };
 
-        let blocked = blocked_room_cells(&self.layout.rooms, &[start_room, end_room]);
+        let blocked = blocked_room_cells(&layout.rooms, &[start_room, end_room]);
 
         let Some(path) =
             shortest_path_cells(start, end, self.settings.cols, self.settings.rows, &blocked)
@@ -848,8 +929,7 @@ impl DungeonApp {
             return;
         };
 
-        let next_id = self
-            .layout
+        let next_id = layout
             .corridors
             .iter()
             .map(|c| c.id)
@@ -858,7 +938,7 @@ impl DungeonApp {
             .wrapping_add(1);
         let width = self.settings.min_corridor_width.max(1);
 
-        self.layout.corridors.push(layout::Corridor {
+        layout.corridors.push(layout::Corridor {
             id: next_id,
             start_room_id: start_room,
             end_room_id: end_room,
@@ -869,6 +949,12 @@ impl DungeonApp {
     }
 
     fn add_text_at_cell(&mut self, cell: (usize, usize)) {
+        self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
             return;
         }
@@ -878,9 +964,7 @@ impl DungeonApp {
             return;
         }
 
-        self.push_undo_snapshot();
-        if let Some(existing) = self
-            .layout
+        if let Some(existing) = layout
             .text_labels
             .iter_mut()
             .find(|label| label.cell == cell)
@@ -889,7 +973,7 @@ impl DungeonApp {
             return;
         }
 
-        self.layout.text_labels.push(layout::TextLabel {
+        layout.text_labels.push(layout::TextLabel {
             cell,
             text,
             font_size: 18,
@@ -897,6 +981,12 @@ impl DungeonApp {
     }
 
     fn add_marker_at_cell(&mut self, cell: (usize, usize), kind: MarkerKind) {
+        self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
             return;
         }
@@ -910,12 +1000,11 @@ impl DungeonApp {
         let origin = centered_marker_origin(cell, size, self.settings.cols, self.settings.rows);
         let marker = layout::AreaMarker { cell: origin, size };
 
-        self.push_undo_snapshot();
         match kind {
-            MarkerKind::Start => self.layout.start_markers.push(marker),
-            MarkerKind::End => self.layout.end_markers.push(marker),
-            MarkerKind::Trap => self.layout.trap_markers.push(marker),
-            MarkerKind::Monster => self.layout.monster_markers.push(marker),
+            MarkerKind::Start => layout.start_markers.push(marker),
+            MarkerKind::End => layout.end_markers.push(marker),
+            MarkerKind::Trap => layout.trap_markers.push(marker),
+            MarkerKind::Monster => layout.monster_markers.push(marker),
         }
     }
 
@@ -925,9 +1014,14 @@ impl DungeonApp {
             self.clear_hover_targets();
             return;
         };
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
             let target = normalized_edge(edge.0, edge.1);
-            self.hover_door_idx = self.layout.doors.iter().position(|d| {
+            self.hover_door_idx = layout.doors.iter().position(|d| {
                 door_edges_for(d, self.settings.cols, self.settings.rows)
                     .iter()
                     .any(|e| normalized_edge(e.0, e.1) == target)
@@ -980,7 +1074,12 @@ impl DungeonApp {
     fn text_at_pointer(&self, pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<usize> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
         let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
-        self.layout
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        layout
             .text_labels
             .iter()
             .position(|label| label.cell == clicked)
@@ -993,14 +1092,19 @@ impl DungeonApp {
     ) -> Option<HoverMarker> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
         let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
-        self.layout
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        layout
             .start_markers
             .iter()
             .enumerate()
             .find(|(_, marker)| marker_contains_cell(Some(marker), clicked))
             .map(|(idx, _)| HoverMarker::Start(idx))
             .or_else(|| {
-                self.layout
+                layout
                     .end_markers
                     .iter()
                     .enumerate()
@@ -1008,7 +1112,7 @@ impl DungeonApp {
                     .map(|(idx, _)| HoverMarker::End(idx))
             })
             .or_else(|| {
-                self.layout
+                layout
                     .trap_markers
                     .iter()
                     .enumerate()
@@ -1016,7 +1120,7 @@ impl DungeonApp {
                     .map(|(idx, _)| HoverMarker::Trap(idx))
             })
             .or_else(|| {
-                self.layout
+                layout
                     .monster_markers
                     .iter()
                     .enumerate()
@@ -1031,9 +1135,14 @@ impl DungeonApp {
         geometry: &GridGeometry,
     ) -> Option<MarkerDragState> {
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
         match self.marker_at_pointer(pointer_pos, geometry)? {
             HoverMarker::Start(marker_idx) => {
-                let marker = self.layout.start_markers.get(marker_idx)?;
+                let marker = layout.start_markers.get(marker_idx)?;
                 Some(MarkerDragState {
                     kind: MarkerKind::Start,
                     marker_idx,
@@ -1042,7 +1151,7 @@ impl DungeonApp {
                 })
             }
             HoverMarker::End(marker_idx) => {
-                let marker = self.layout.end_markers.get(marker_idx)?;
+                let marker = layout.end_markers.get(marker_idx)?;
                 Some(MarkerDragState {
                     kind: MarkerKind::End,
                     marker_idx,
@@ -1051,7 +1160,7 @@ impl DungeonApp {
                 })
             }
             HoverMarker::Trap(marker_idx) => {
-                let marker = self.layout.trap_markers.get(marker_idx)?;
+                let marker = layout.trap_markers.get(marker_idx)?;
                 Some(MarkerDragState {
                     kind: MarkerKind::Trap,
                     marker_idx,
@@ -1060,7 +1169,7 @@ impl DungeonApp {
                 })
             }
             HoverMarker::Monster(marker_idx) => {
-                let marker = self.layout.monster_markers.get(marker_idx)?;
+                let marker = layout.monster_markers.get(marker_idx)?;
                 Some(MarkerDragState {
                     kind: MarkerKind::Monster,
                     marker_idx,
@@ -1081,11 +1190,16 @@ impl DungeonApp {
             return;
         };
 
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         let markers = match drag.kind {
-            MarkerKind::Start => &mut self.layout.start_markers,
-            MarkerKind::End => &mut self.layout.end_markers,
-            MarkerKind::Trap => &mut self.layout.trap_markers,
-            MarkerKind::Monster => &mut self.layout.monster_markers,
+            MarkerKind::Start => &mut layout.start_markers,
+            MarkerKind::End => &mut layout.end_markers,
+            MarkerKind::Trap => &mut layout.trap_markers,
+            MarkerKind::Monster => &mut layout.monster_markers,
         };
         let Some(marker) = markers.get_mut(drag.marker_idx) else {
             self.drag_state = None;
@@ -1152,7 +1266,12 @@ impl DungeonApp {
     }
 
     fn start_text_resize(&self, text_idx: usize) -> Option<TextResizeState> {
-        let label = self.layout.text_labels.get(text_idx)?;
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let label = layout.text_labels.get(text_idx)?;
         Some(TextResizeState {
             text_idx,
             origin_cell: label.cell,
@@ -1176,15 +1295,14 @@ impl DungeonApp {
             grid_y.floor().max(0.0) as usize,
         );
 
-        for (room_idx, room) in self.layout.rooms.iter().enumerate().rev() {
-            if resize_hit_cells(
-                room,
-                room_idx,
-                &self.layout.rooms,
-                geometry.cols,
-                geometry.rows,
-            )
-            .contains(&clicked)
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        for (room_idx, room) in layout.rooms.iter().enumerate().rev() {
+            if resize_hit_cells(room, room_idx, &layout.rooms, geometry.cols, geometry.rows)
+                .contains(&clicked)
             {
                 return Some(room_idx);
             }
@@ -1200,7 +1318,12 @@ impl DungeonApp {
         pointer_pos: egui::Pos2,
         geometry: &GridGeometry,
     ) -> Option<RoomResizeState> {
-        let original_room = self.layout.rooms.get(room_idx)?.clone();
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let original_room = layout.rooms.get(room_idx)?.clone();
         let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
         let center_x = original_room.x as f32 + original_room.width as f32 * 0.5;
         let center_y = original_room.y as f32 + original_room.height as f32 * 0.5;
@@ -1223,6 +1346,11 @@ impl DungeonApp {
 
     // Resize only the corner chosen at drag start while keeping the opposite corner fixed.
     fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         let cols = self.settings.cols.max(1);
         let rows = self.settings.rows.max(1);
 
@@ -1256,8 +1384,7 @@ impl DungeonApp {
             return;
         }
 
-        if self
-            .layout
+        if layout
             .rooms
             .iter()
             .enumerate()
@@ -1266,7 +1393,7 @@ impl DungeonApp {
             return;
         }
 
-        if let Some(room) = self.layout.rooms.get_mut(state.room_idx) {
+        if let Some(room) = layout.rooms.get_mut(state.room_idx) {
             room.x = new_room.x;
             room.y = new_room.y;
             room.width = new_room.width;
@@ -1277,7 +1404,12 @@ impl DungeonApp {
     }
 
     fn resize_text(&mut self, state: &TextResizeState, target_cell: (usize, usize)) {
-        let Some(label) = self.layout.text_labels.get_mut(state.text_idx) else {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &mut self.levels[self.settings.active_level_index];
+
+        let Some(label) = layout.text_labels.get_mut(state.text_idx) else {
             self.resize_state = None;
             return;
         };
@@ -1291,6 +1423,11 @@ impl DungeonApp {
 
     // Draw dashed overlays for room resizing interactions.
     fn draw_resize_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
         if let Some(text_idx) = self
             .resize_state
             .as_ref()
@@ -1300,7 +1437,7 @@ impl DungeonApp {
             })
             .or(self.hover_text_idx)
         {
-            if let Some(label) = self.layout.text_labels.get(text_idx) {
+            if let Some(label) = layout.text_labels.get(text_idx) {
                 let rect = text_label_rect(geometry, label).expand(3.0);
                 painter.rect_stroke(
                     rect,
@@ -1323,7 +1460,7 @@ impl DungeonApp {
         let Some(room_idx) = room_idx else {
             return;
         };
-        let Some(room) = self.layout.rooms.get(room_idx) else {
+        let Some(room) = layout.rooms.get(room_idx) else {
             return;
         };
         let color = Color32::from_gray(170);
@@ -1369,7 +1506,12 @@ impl DungeonApp {
         let Some(idx) = self.hover_corridor_idx else {
             return;
         };
-        let Some(corridor) = self.layout.corridors.get(idx) else {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let Some(corridor) = layout.corridors.get(idx) else {
             return;
         };
 
@@ -1387,7 +1529,12 @@ impl DungeonApp {
         let Some(idx) = self.hover_door_idx else {
             return;
         };
-        let Some(door) = self.layout.doors.get(idx) else {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let Some(door) = layout.doors.get(idx) else {
             return;
         };
         let color = Color32::from_gray(200);
@@ -1405,35 +1552,41 @@ impl DungeonApp {
 
     // Delete the door, room, or corridor at the pointer position.
     fn delete_at_pointer(&mut self, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
         if let Some(idx) = self.text_at_pointer(pointer_pos, geometry) {
             self.push_undo_snapshot();
-            if idx < self.layout.text_labels.len() {
-                self.layout.text_labels.remove(idx);
+            let layout = &mut self.levels[self.settings.active_level_index];
+            if idx < layout.text_labels.len() {
+                layout.text_labels.remove(idx);
             }
             return;
         }
 
         if let Some(marker) = self.marker_at_pointer(pointer_pos, geometry) {
             self.push_undo_snapshot();
+            let layout = &mut self.levels[self.settings.active_level_index];
             match marker {
                 HoverMarker::Start(idx) => {
-                    if idx < self.layout.start_markers.len() {
-                        self.layout.start_markers.remove(idx);
+                    if idx < layout.start_markers.len() {
+                        layout.start_markers.remove(idx);
                     }
                 }
                 HoverMarker::End(idx) => {
-                    if idx < self.layout.end_markers.len() {
-                        self.layout.end_markers.remove(idx);
+                    if idx < layout.end_markers.len() {
+                        layout.end_markers.remove(idx);
                     }
                 }
                 HoverMarker::Trap(idx) => {
-                    if idx < self.layout.trap_markers.len() {
-                        self.layout.trap_markers.remove(idx);
+                    if idx < layout.trap_markers.len() {
+                        layout.trap_markers.remove(idx);
                     }
                 }
                 HoverMarker::Monster(idx) => {
-                    if idx < self.layout.monster_markers.len() {
-                        self.layout.monster_markers.remove(idx);
+                    if idx < layout.monster_markers.len() {
+                        layout.monster_markers.remove(idx);
                     }
                 }
             }
@@ -1442,25 +1595,25 @@ impl DungeonApp {
 
         if let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) {
             let target = normalized_edge(edge.0, edge.1);
-            if let Some(idx) = self.layout.doors.iter().position(|d| {
+            let active_index = self.settings.active_level_index;
+            if let Some(idx) = self.levels[active_index].doors.iter().position(|d| {
                 door_edges_for(d, self.settings.cols, self.settings.rows)
                     .iter()
                     .any(|e| normalized_edge(e.0, e.1) == target)
             }) {
                 self.push_undo_snapshot();
-                if !self.layout.doors[idx].manual {
-                    for edge in door_edges_for(
-                        &self.layout.doors[idx],
-                        self.settings.cols,
-                        self.settings.rows,
-                    ) {
+                let layout = &mut self.levels[self.settings.active_level_index];
+                if !layout.doors[idx].manual {
+                    for edge in
+                        door_edges_for(&layout.doors[idx], self.settings.cols, self.settings.rows)
+                    {
                         self.suppressed_auto_door_edges.insert(edge);
                     }
-                    self.layout.doors.remove(idx);
+                    layout.doors.remove(idx);
                     return;
                 }
 
-                self.layout.doors.remove(idx);
+                layout.doors.remove(idx);
                 return;
             }
         }
@@ -1472,9 +1625,11 @@ impl DungeonApp {
         }
 
         if let Some(corridor_drag) = self.corridor_drag_at_pointer(pointer_pos, geometry) {
-            if corridor_drag.corridor_index < self.layout.corridors.len() {
+            let active_index = self.settings.active_level_index;
+            if corridor_drag.corridor_index < self.levels[active_index].corridors.len() {
                 self.push_undo_snapshot();
-                self.layout.corridors.remove(corridor_drag.corridor_index);
+                let layout = &mut self.levels[self.settings.active_level_index];
+                layout.corridors.remove(corridor_drag.corridor_index);
                 self.drag_state = None;
                 self.refresh_doors();
             }
@@ -1483,14 +1638,19 @@ impl DungeonApp {
 
     // Remove a room and update corridors/doors to match.
     fn delete_room(&mut self, room_idx: usize) {
-        if room_idx >= self.layout.rooms.len() {
+        if self.settings.active_level_index >= self.levels.len() {
             return;
         }
-        self.layout.rooms.remove(room_idx);
-        self.layout
+        let layout = &mut self.levels[self.settings.active_level_index];
+
+        if room_idx >= layout.rooms.len() {
+            return;
+        }
+        layout.rooms.remove(room_idx);
+        layout
             .corridors
             .retain(|c| c.start_room_id != room_idx && c.end_room_id != room_idx);
-        for corridor in &mut self.layout.corridors {
+        for corridor in &mut layout.corridors {
             if corridor.start_room_id > room_idx {
                 corridor.start_room_id -= 1;
             }
@@ -1509,28 +1669,30 @@ impl DungeonApp {
         geometry: &GridGeometry,
         kind: ManualDoorKind,
     ) {
-        self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
         let Some(edge) = self.door_edge_at_pointer(pointer_pos, geometry) else {
             return;
         };
+
+        self.push_undo_snapshot();
+        let layout = &mut self.levels[self.settings.active_level_index];
+
         let target = normalized_edge(edge.0, edge.1);
-        if let Some(idx) = self.layout.doors.iter().position(|d| {
+        if let Some(idx) = layout.doors.iter().position(|d| {
             door_edges_for(d, self.settings.cols, self.settings.rows)
                 .iter()
                 .any(|e| normalized_edge(e.0, e.1) == target)
         }) {
-            let edges = door_edges_for(
-                &self.layout.doors[idx],
-                self.settings.cols,
-                self.settings.rows,
-            );
+            let edges = door_edges_for(&layout.doors[idx], self.settings.cols, self.settings.rows);
             let mut spawned = Vec::new();
             for edge in edges {
                 if normalized_edge(edge.0, edge.1) == target {
                     continue;
                 }
-                if self
-                    .layout
+                if layout
                     .doors
                     .iter()
                     .any(|d| normalized_edge(d.from, d.to) == normalized_edge(edge.0, edge.1))
@@ -1548,7 +1710,7 @@ impl DungeonApp {
                     manual: true,
                 });
             }
-            let door = &mut self.layout.doors[idx];
+            let door = &mut layout.doors[idx];
             door.locked = kind == ManualDoorKind::Locked;
             door.archway = kind == ManualDoorKind::Archway;
             door.secret = kind == ManualDoorKind::Secret;
@@ -1558,13 +1720,13 @@ impl DungeonApp {
             for edge in door_edges_for(door, self.settings.cols, self.settings.rows) {
                 self.suppressed_auto_door_edges.remove(&edge);
             }
-            self.layout.doors.extend(spawned);
+            layout.doors.extend(spawned);
             return;
         }
 
-        let corridor_cells = corridor_cells(&self.layout, self.settings.cols, self.settings.rows);
-        let a_room = room_index_at_cell(&self.layout.rooms, edge.0);
-        let b_room = room_index_at_cell(&self.layout.rooms, edge.1);
+        let corridor_cells = corridor_cells(layout, self.settings.cols, self.settings.rows);
+        let a_room = room_index_at_cell(&layout.rooms, edge.0);
+        let b_room = room_index_at_cell(&layout.rooms, edge.1);
         let a_in_corridor = corridor_cells.contains(&edge.0);
         let b_in_corridor = corridor_cells.contains(&edge.1);
 
@@ -1572,7 +1734,7 @@ impl DungeonApp {
             return;
         }
 
-        self.layout.doors.push(layout::Door {
+        layout.doors.push(layout::Door {
             from: edge.0,
             to: edge.1,
             width: 1,
