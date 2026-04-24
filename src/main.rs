@@ -150,6 +150,11 @@ impl eframe::App for DungeonApp {
                     eprintln!("{err}");
                 }
             }
+        } else if panel_result.new_level_clicked {
+            self.push_undo_snapshot();
+            let blank_layout = DungeonLayout::default();
+            self.levels.push(blank_layout);
+            self.settings.active_level_index = self.levels.len() - 1;
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             self.pending_delete = true;

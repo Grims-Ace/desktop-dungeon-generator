@@ -236,6 +236,7 @@ pub struct SidePanelResult {
     pub export_clicked: bool,
     pub save_clicked: bool,
     pub load_clicked: bool,
+    pub new_level_clicked: bool,
 }
 
 pub fn draw_side_panel(
@@ -291,7 +292,7 @@ pub fn draw_side_panel(
                 Tab::Layout => draw_layout_tab(ui, settings, &mut result),
                 Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
                 Tab::MonstersAndTraps => draw_monsters_and_traps_tab(ui, settings, &mut result),
-                Tab::Add => draw_add_tab(ui, settings),
+                Tab::Add => draw_add_tab(ui, settings, &mut result),
             }
         });
 
@@ -812,7 +813,7 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
 }
 
 // Render the Add tab controls.
-fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
+fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SidePanelResult) {
     ui.label(RichText::new("Add Tools").strong());
     ui.add_space(8.0);
 
@@ -844,6 +845,11 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings) {
     });
     ui.add_space(4.0);
     ui.label("Left click to place, Right click/Escape to cancel");
+
+    ui.add_space(8.0);
+    if ui.button("Add New Level").clicked() {
+        result.new_level_clicked = true;
+    }
 
     ui.add_space(6.0);
     match settings.add_tool {
