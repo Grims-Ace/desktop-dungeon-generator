@@ -152,8 +152,26 @@ impl eframe::App for DungeonApp {
             }
         } else if panel_result.new_level_clicked {
             self.push_undo_snapshot();
-            let blank_layout = DungeonLayout::default();
-            self.levels.push(blank_layout);
+            let level_index = self.levels.len();
+            let level_seed = seed::derive_seed(self.settings.seed, level_index as u64);
+            let layout = layout::generate_layout(
+                self.settings.cols,
+                self.settings.rows,
+                self.settings.room_count,
+                level_seed,
+                self.settings.min_room_size,
+                self.settings.max_room_size,
+                self.settings.square_rooms_only,
+                self.settings.min_corridor_width,
+                self.settings.max_corridor_width,
+                self.settings.corridor_randomness,
+                self.settings.dead_end_rooms_percent,
+                self.settings.pack_rooms_without_corridors,
+                door_settings_from_ui(&self.settings),
+                window_settings_from_ui(&self.settings),
+            );
+            let layout = populate_random_markers(layout, &self.settings);
+            self.levels.push(layout);
             self.settings.active_level_index = self.levels.len() - 1;
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
