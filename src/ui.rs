@@ -221,7 +221,7 @@ impl Default for UiSettings {
             max_stair_height: 3,
             min_stairs_per_level: 1,
             max_stairs_per_level: 1,
-            sync_stairs_across_levels: false,
+            sync_stairs_across_levels: true,
             active_tab: Tab::Generate,
         }
     }
@@ -267,47 +267,51 @@ pub fn draw_side_panel(
         .default_width(280.0)
         .show_separator_line(true)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let is_generate = settings.active_tab == Tab::Generate;
-                let is_layout = settings.active_tab == Tab::Layout;
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let is_generate = settings.active_tab == Tab::Generate;
+                    let is_layout = settings.active_tab == Tab::Layout;
 
-                if ui.selectable_label(is_generate, "Generate").clicked() {
-                    settings.active_tab = Tab::Generate;
-                }
-                if ui.selectable_label(is_layout, "Layout").clicked() {
-                    settings.active_tab = Tab::Layout;
-                }
-                if ui
-                    .selectable_label(settings.active_tab == Tab::StartAndEnd, "Start & End")
-                    .clicked()
-                {
-                    settings.active_tab = Tab::StartAndEnd;
-                }
-                if ui
-                    .selectable_label(
-                        settings.active_tab == Tab::MonstersAndTraps,
-                        "Monsters/Traps",
-                    )
-                    .clicked()
-                {
-                    settings.active_tab = Tab::MonstersAndTraps;
-                }
-                if ui
-                    .selectable_label(settings.active_tab == Tab::Add, "Add")
-                    .clicked()
-                {
-                    settings.active_tab = Tab::Add;
+                    if ui.selectable_label(is_generate, "Generate").clicked() {
+                        settings.active_tab = Tab::Generate;
+                    }
+                    if ui.selectable_label(is_layout, "Layout").clicked() {
+                        settings.active_tab = Tab::Layout;
+                    }
+                    if ui
+                        .selectable_label(settings.active_tab == Tab::StartAndEnd, "Start & End")
+                        .clicked()
+                    {
+                        settings.active_tab = Tab::StartAndEnd;
+                    }
+                    if ui
+                        .selectable_label(
+                            settings.active_tab == Tab::MonstersAndTraps,
+                            "Monsters/Traps",
+                        )
+                        .clicked()
+                    {
+                        settings.active_tab = Tab::MonstersAndTraps;
+                    }
+                    if ui
+                        .selectable_label(settings.active_tab == Tab::Add, "Add")
+                        .clicked()
+                    {
+                        settings.active_tab = Tab::Add;
+                    }
+                });
+                ui.separator();
+
+                match settings.active_tab {
+                    Tab::Generate => {
+                        draw_generate_tab(ui, settings, &mut result, export_in_progress)
+                    }
+                    Tab::Layout => draw_layout_tab(ui, settings, &mut result),
+                    Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
+                    Tab::MonstersAndTraps => draw_monsters_and_traps_tab(ui, settings, &mut result),
+                    Tab::Add => draw_add_tab(ui, settings, &mut result),
                 }
             });
-            ui.separator();
-
-            match settings.active_tab {
-                Tab::Generate => draw_generate_tab(ui, settings, &mut result, export_in_progress),
-                Tab::Layout => draw_layout_tab(ui, settings, &mut result),
-                Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
-                Tab::MonstersAndTraps => draw_monsters_and_traps_tab(ui, settings, &mut result),
-                Tab::Add => draw_add_tab(ui, settings, &mut result),
-            }
         });
 
     result
@@ -927,11 +931,6 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
             )
             .changed();
     });
-
-    ui.add_space(8.0);
-    result.settings_changed |= ui
-        .checkbox(&mut settings.windows_enabled, "Enable Elevators")
-        .changed();
 }
 
 // Render the Add tab controls.

@@ -65,7 +65,6 @@ pub struct AreaMarker {
 pub struct Staircase {
     pub cell: (usize, usize),
     pub size: usize,
-    pub is_elevator: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

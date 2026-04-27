@@ -2323,11 +2323,9 @@ fn draw_staircase(
     let bottom = top + stair.size as f32 * geometry.cell_size;
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
-    // Fill with a distinctive color for stairs/elevators.
+    // Fill with a distinctive color for stairs.
     let fill = if colorblind_mode {
         Color32::from_rgb(180, 180, 180).gamma_multiply(0.4)
-    } else if stair.is_elevator {
-        Color32::from_rgb(100, 150, 200).gamma_multiply(0.35)
     } else {
         Color32::from_rgb(200, 150, 50).gamma_multiply(0.35)
     };
@@ -2336,8 +2334,6 @@ fn draw_staircase(
     // Draw border.
     let stroke_color = if colorblind_mode {
         Color32::BLACK
-    } else if stair.is_elevator {
-        Color32::from_rgb(100, 150, 200)
     } else {
         Color32::from_rgb(200, 150, 50)
     };
@@ -2348,42 +2344,23 @@ fn draw_staircase(
         egui::StrokeKind::Middle,
     );
 
-    // Draw stair lines or elevator symbol.
-    if stair.is_elevator {
-        // Draw elevator symbol: a rectangle with arrows.
-        let center = rect.center();
-        let text = "E";
-        let font_size = (geometry.cell_size * stair.size as f32 * 0.4).clamp(14.0, 48.0);
-        painter.text(
-            center,
-            egui::Align2::CENTER_CENTER,
-            text,
-            egui::FontId::proportional(font_size),
-            if colorblind_mode {
-                Color32::BLACK
-            } else {
-                Color32::WHITE
-            },
-        );
+    // Draw stair lines (horizontal steps).
+    let steps = (stair.size as f32 * 2.0).round() as usize;
+    let step_height = (rect.height() / (steps as f32)).max(1.0);
+    let line_color = if colorblind_mode {
+        Color32::BLACK
     } else {
-        // Draw stair lines (horizontal steps).
-        let steps = (stair.size as f32 * 2.0).round() as usize;
-        let step_height = (rect.height() / (steps as f32)).max(1.0);
-        let line_color = if colorblind_mode {
-            Color32::BLACK
-        } else {
-            Color32::from_rgb(150, 100, 30)
-        };
-        for i in 0..steps {
-            let y = rect.top() + (i as f32 * step_height) + step_height * 0.5;
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left() + 2.0, y),
-                    egui::pos2(rect.right() - 2.0, y),
-                ],
-                Stroke::new(1.5, line_color),
-            );
-        }
+        Color32::from_rgb(150, 100, 30)
+    };
+    for i in 0..steps {
+        let y = rect.top() + (i as f32 * step_height) + step_height * 0.5;
+        painter.line_segment(
+            [
+                egui::pos2(rect.left() + 2.0, y),
+                egui::pos2(rect.right() - 2.0, y),
+            ],
+            Stroke::new(1.5, line_color),
+        );
     }
 }
 
