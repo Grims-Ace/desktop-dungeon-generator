@@ -72,10 +72,11 @@ impl Default for DungeonApp {
     // Build the app with persisted settings and a generated layout.
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
-        let levels = generate_all_levels(&settings);
-        Self {
+        let layouts = generate_all_levels(&settings);
+        let results = populate_stairs(layouts, &settings);
+        let mut app = Self {
             settings,
-            levels,
+            levels: results.iter().map(|(l, _)| l.clone()).collect(),
             suppressed_auto_door_edges: HashSet::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -91,7 +92,13 @@ impl Default for DungeonApp {
             hover_marker: None,
             hover_level_idx: None,
             hover_stair_idx: None,
+        };
+        for (i, (_, modified)) in results.into_iter().enumerate() {
+            if modified {
+                app.refresh_level(i);
+            }
         }
+        app
     }
 }
 
@@ -176,22 +183,17 @@ impl eframe::App for DungeonApp {
             );
             let layout = populate_random_markers(layout, &self.settings);
             self.levels.push(layout);
+            let results = populate_stairs(self.levels.clone(), &self.settings);
+            self.levels = results.iter().map(|(l, _)| l.clone()).collect();
+            for (i, (_, modified)) in results.into_iter().enumerate() {
+                if modified {
+                    self.refresh_level(i);
+                }
+            }
             self.settings.active_level_index = self.levels.len() - 1;
         }
-        // Check for level deletion keybind when hovering over a level tab.
-        let level_delete_requested = ctx.input(|i| {
-            (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
-                && self.hover_level_idx.is_some()
-        });
-
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             self.pending_delete = true;
-        }
-
-        if level_delete_requested {
-            if let Some(level_idx) = self.hover_level_idx {
-                self.delete_level(level_idx);
-            }
         }
         if panel_result.export_clicked && self.export_rx.is_none() {
             let target = match exporter::select_export_target(&self.settings) {
@@ -320,6 +322,18 @@ impl eframe::App for DungeonApp {
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             self.update_hover_targets(ctx, &geometry);
+
+            // Check for level deletion keybind when hovering over a level tab.
+            let level_delete_requested = ctx.input(|i| {
+                (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+                    && self.hover_level_idx.is_some()
+            });
+            if level_delete_requested {
+                if let Some(level_idx) = self.hover_level_idx {
+                    self.delete_level(level_idx);
+                }
+            }
+
             let resizing = self.handle_resize(ctx, &response, &geometry);
             if !resizing {
                 self.handle_drag(ctx, &response, &geometry);
@@ -382,7 +396,6 @@ fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
         let layout = populate_random_markers(layout, settings);
         levels.push(layout);
     }
-    let levels = populate_stairs(levels, settings);
     levels
 }
 
@@ -504,7 +517,14 @@ impl DungeonApp {
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.suppressed_auto_door_edges.clear();
-        self.levels = generate_all_levels(&self.settings);
+        let layouts = generate_all_levels(&self.settings);
+        let results = populate_stairs(layouts, &self.settings);
+        self.levels = results.iter().map(|(l, _)| l.clone()).collect();
+        for (i, (_, modified)) in results.into_iter().enumerate() {
+            if modified {
+                self.refresh_level(i);
+            }
+        }
         if self.settings.active_level_index >= self.levels.len() {
             self.settings.active_level_index = 0;
         }
@@ -801,6 +821,58 @@ impl DungeonApp {
     }
 
     // Rebuild doors based on the current layout and settings.
+    fn refresh_level(&mut self, level_idx: usize) {
+        if level_idx >= self.levels.len() {
+            return;
+        }
+
+        // Reroute all corridors to match resized/moved rooms.
+        let layout = &mut self.levels[level_idx];
+        if !layout.packed_rooms {
+            let rooms = layout.rooms.clone();
+            for corridor in &mut layout.corridors {
+                let start = rooms[corridor.start_room_id].center_cell();
+                let end = rooms[corridor.end_room_id].center_cell();
+                let blocked =
+                    blocked_room_cells(&rooms, &[corridor.start_room_id, corridor.end_room_id]);
+                if let Some(path) = shortest_path_cells(
+                    start,
+                    end,
+                    self.settings.cols,
+                    self.settings.rows,
+                    &blocked,
+                ) {
+                    corridor.path = path;
+                }
+            }
+        }
+
+        // Rebuild doors.
+        let door_settings = door_settings_from_ui(&self.settings);
+        layout::apply_doors(
+            layout,
+            self.settings.seed,
+            door_settings,
+            self.settings.cols,
+            self.settings.rows,
+        );
+        layout.doors.retain(|door| {
+            !door_edges_for(door, self.settings.cols, self.settings.rows)
+                .iter()
+                .any(|edge| self.suppressed_auto_door_edges.contains(edge))
+        });
+
+        // Rebuild windows.
+        let window_settings = window_settings_from_ui(&self.settings);
+        layout::apply_windows(
+            layout,
+            self.settings.seed,
+            window_settings,
+            self.settings.cols,
+            self.settings.rows,
+        );
+    }
+
     fn refresh_doors(&mut self) {
         if self.settings.active_level_index >= self.levels.len() {
             return;
@@ -1369,13 +1441,6 @@ impl DungeonApp {
                         stair.cell = new_cell;
                     }
                 }
-                // Ensure room coverage for each stair moved.
-                let stairs_to_check = layout.stairs.clone();
-                for stair in &stairs_to_check {
-                    if stair.cell == new_cell {
-                        startend::ensure_stair_in_room(layout, stair);
-                    }
-                }
             }
         } else {
             // Move only the linked stairs (current level and adjacent levels if positions match).
@@ -1395,13 +1460,6 @@ impl DungeonApp {
                 for stair in &mut layout.stairs {
                     if stair.cell == drag.original_cell {
                         stair.cell = new_cell;
-                    }
-                }
-                // Ensure room coverage for each stair moved.
-                let stairs_to_check = layout.stairs.clone();
-                for stair in &stairs_to_check {
-                    if stair.cell == new_cell {
-                        startend::ensure_stair_in_room(layout, stair);
                     }
                 }
             }

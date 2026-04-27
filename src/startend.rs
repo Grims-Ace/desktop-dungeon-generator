@@ -354,12 +354,13 @@ fn pick_random_corridor_cell(
 const STAIR_MARKER_STREAM_BASE: u64 = 21_000;
 
 // Populate stairs across all levels after markers are placed.
+// Returns a vector of tuples: (DungeonLayout, room_modified)
 pub fn populate_stairs(
     mut layouts: Vec<DungeonLayout>,
     settings: &UiSettings,
-) -> Vec<DungeonLayout> {
+) -> Vec<(DungeonLayout, bool)> {
     if layouts.is_empty() {
-        return layouts;
+        return Vec::new();
     }
 
     // Clear existing stairs.
@@ -368,7 +369,7 @@ pub fn populate_stairs(
     }
 
     if settings.min_stairs_per_level == 0 && settings.max_stairs_per_level == 0 {
-        return layouts;
+        return layouts.into_iter().map(|l| (l, false)).collect();
     }
 
     let num_levels = layouts.len();
@@ -416,15 +417,20 @@ pub fn populate_stairs(
         layout.stairs.retain(|s| seen.insert(s.cell));
     }
 
+    let mut result = Vec::new();
     // Ensure every stair is inside a room on its level.
-    for layout in &mut layouts {
+    for mut layout in layouts {
+        let mut modified = false;
         let stairs_clone = layout.stairs.clone();
         for stair in &stairs_clone {
-            ensure_stair_in_room(layout, stair);
+            if ensure_stair_in_room(&mut layout, stair) {
+                modified = true;
+            }
         }
+        result.push((layout, modified));
     }
 
-    layouts
+    result
 }
 
 fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
@@ -438,7 +444,8 @@ fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
 }
 
 // Ensure a staircase is fully contained within a room. If not, extend the nearest existing room or create a new one.
-pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircase) {
+// Returns true if a room was modified or created.
+pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircase) -> bool {
     let stair_x = stair.cell.0;
     let stair_y = stair.cell.1;
     let stair_size = stair.size;
@@ -450,7 +457,7 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
             && (stair_x + stair_size) <= (room.x + room.width)
             && (stair_y + stair_size) <= (room.y + room.height)
         {
-            return;
+            return false;
         }
     }
 
@@ -480,6 +487,7 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
         room.y = new_y;
         room.width = new_right - new_x;
         room.height = new_bottom - new_y;
+        true
     } else {
         // Otherwise, create a new room for the staircase.
         layout.rooms.push(layout::Room {
@@ -488,6 +496,7 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
             width: stair_size,
             height: stair_size,
         });
+        true
     }
 }
 
