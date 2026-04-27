@@ -947,6 +947,16 @@ impl DungeonApp {
                     }
                 }
             }
+            AddTool::Staircase => {
+                self.add_corridor_drag = None;
+                if response.clicked()
+                    && let Some(pointer_pos) = response.interact_pointer_pos()
+                    && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
+                {
+                    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+                    self.add_staircase_at_cell(cell);
+                }
+            }
             AddTool::Archway | AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
                 self.add_corridor_drag = None;
                 if response.clicked()
@@ -972,7 +982,10 @@ impl DungeonApp {
                     self.add_text_at_cell(cell);
                 }
             }
-            AddTool::StartMarker | AddTool::EndMarker | AddTool::TrapMarker => {
+            AddTool::StartMarker
+            | AddTool::EndMarker
+            | AddTool::TrapMarker
+            | AddTool::MonsterMarker => {
                 self.add_corridor_drag = None;
                 if response.clicked()
                     && let Some(pointer_pos) = response.interact_pointer_pos()
@@ -983,6 +996,7 @@ impl DungeonApp {
                         AddTool::StartMarker => MarkerKind::Start,
                         AddTool::EndMarker => MarkerKind::End,
                         AddTool::TrapMarker => MarkerKind::Trap,
+                        AddTool::MonsterMarker => MarkerKind::Monster,
                         _ => unreachable!(),
                     };
                     self.add_marker_at_cell(cell, kind);
@@ -1152,6 +1166,39 @@ impl DungeonApp {
             MarkerKind::End => layout.end_markers.push(marker),
             MarkerKind::Trap => layout.trap_markers.push(marker),
             MarkerKind::Monster => layout.monster_markers.push(marker),
+        }
+    }
+
+    fn add_staircase_at_cell(&mut self, cell: (usize, usize)) {
+        self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
+            return;
+        }
+
+        let size = self.settings.manual_stair_size.max(1);
+        let max_x = self.settings.cols.saturating_sub(size);
+        let max_y = self.settings.rows.saturating_sub(size);
+        let origin_x = cell.0.min(max_x);
+        let origin_y = cell.1.min(max_y);
+
+        let stair = layout::Staircase {
+            cell: (origin_x, origin_y),
+            size,
+        };
+
+        if self.settings.sync_stairs_across_levels {
+            // Add stairs to ALL levels at the same position.
+            for layout in &mut self.levels {
+                layout.stairs.push(stair.clone());
+            }
+        } else {
+            // Add stairs only to the active level.
+            let layout = &mut self.levels[self.settings.active_level_index];
+            layout.stairs.push(stair);
         }
     }
 

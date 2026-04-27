@@ -158,70 +158,71 @@ pub struct UiSettings {
     pub min_stairs_per_level: usize,
     pub max_stairs_per_level: usize,
     pub sync_stairs_across_levels: bool,
+    pub manual_stair_size: usize,
     active_tab: Tab,
 }
 
 impl Default for UiSettings {
-    // Provide initial UI settings for a fresh session.
     fn default() -> Self {
-        Self {
-            seed: 1,
-            cols: 24,
-            rows: 18,
+        UiSettings {
+            seed: 0,
+            cols: 32,
+            rows: 32,
             room_count: 8,
-            min_room_size: 2,
-            max_room_size: 6,
-            square_rooms_only: false,
+            min_room_size: 3,
+            max_room_size: 8,
+            square_rooms_only: true,
             min_corridor_width: 1,
-            max_corridor_width: 2,
-            corridor_randomness: 0,
-            dead_end_rooms_percent: 0,
+            max_corridor_width: 3,
+            corridor_randomness: 50,
+            dead_end_rooms_percent: 20,
             pack_rooms_without_corridors: false,
-            door_frequency_percent: 30,
-            room_hallway_door_percent: 70,
-            locked_door_percent: 25,
-            secret_door_percent: 10,
+            door_frequency_percent: 50,
+            room_hallway_door_percent: 20,
+            locked_door_percent: 10,
+            secret_door_percent: 5,
             allow_middle_corridor_doors: false,
             windows_enabled: false,
-            min_window_width: 1,
-            max_window_width: 2,
+            min_window_width: 2,
+            max_window_width: 4,
             window_frequency_percent: 30,
-            room_hallway_window_percent: 40,
+            room_hallway_window_percent: 10,
             allow_internal_windows: false,
             colorblind_mode: false,
             export_format: ExportFormat::Png,
             mask_format: MaskFormat::Png,
-            export_width: 1920,
-            export_height: 1080,
-            allow_export_aspect_change: false,
-            export_show_grid: true,
+            export_width: 0,
+            export_height: 0,
+            allow_export_aspect_change: true,
+            export_show_grid: false,
             last_export_path: None,
             add_tool: AddTool::None,
-            add_text_value: "Text".to_string(),
+            add_text_value: String::from("Text"),
             min_start_marker_size: 1,
-            max_start_marker_size: 1,
+            max_start_marker_size: 3,
             min_end_marker_size: 1,
-            max_end_marker_size: 1,
+            max_end_marker_size: 3,
             min_start_marker_count: 1,
-            max_start_marker_count: 1,
+            max_start_marker_count: 3,
             min_end_marker_count: 1,
-            max_end_marker_count: 1,
+            max_end_marker_count: 3,
             min_levels: 1,
             max_levels: 1,
             active_level_index: 0,
-            trap_frequency_percent: 20,
+            trap_frequency_percent: 30,
             min_traps_per_area: 1,
             max_traps_per_area: 3,
-            monster_frequency_percent: 15,
+            monster_frequency_percent: 30,
             min_monsters_per_area: 1,
-            max_monsters_per_area: 2,
-            min_stair_width: 1,
-            max_stair_width: 2,
+            max_monsters_per_area: 3,
+            min_stair_width: 2,
+            max_stair_width: 3,
             min_stair_height: 2,
             max_stair_height: 3,
             min_stairs_per_level: 1,
-            max_stairs_per_level: 1,
-            sync_stairs_across_levels: true,
+            max_stairs_per_level: 2,
+            sync_stairs_across_levels: false,
+            manual_stair_size: 2,
             active_tab: Tab::Generate,
         }
     }
@@ -240,6 +241,8 @@ pub enum AddTool {
     StartMarker,
     EndMarker,
     TrapMarker,
+    MonsterMarker,
+    Staircase,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -938,14 +941,30 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
     ui.label(RichText::new("Add Tools").strong());
     ui.add_space(8.0);
 
+    ui.label(RichText::new("Layout").strong());
+    ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Room, "Add Room");
         ui.selectable_value(&mut settings.add_tool, AddTool::Corridor, "Add Corridor");
     });
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::Staircase, "Add Stairs");
+    });
+    ui.add_space(4.0);
+    if ui.button("Add New Level").clicked() {
+        result.new_level_clicked = true;
+    }
+
+    ui.add_space(8.0);
+    ui.label(RichText::new("Doors").strong());
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Archway, "Add Archway");
         ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Add Door");
+    });
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
         ui.selectable_value(
             &mut settings.add_tool,
             AddTool::LockedDoor,
@@ -957,25 +976,38 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
             "Add Secret Door",
         );
     });
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
-        ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Place Start");
-        ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
-        ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Place Trap");
-    });
-    ui.add_space(4.0);
-    ui.label("Left click to place, Right click/Escape to cancel");
 
     ui.add_space(8.0);
-    if ui.button("Add New Level").clicked() {
-        result.new_level_clicked = true;
-    }
+    ui.label(RichText::new("Features").strong());
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Place Start");
+        ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
+    });
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Place Trap");
+        ui.selectable_value(
+            &mut settings.add_tool,
+            AddTool::MonsterMarker,
+            "Place Monster",
+        );
+    });
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
+    });
+
+    ui.add_space(8.0);
+    ui.label("Left click to place, Right click/Escape to cancel");
 
     ui.add_space(6.0);
     match settings.add_tool {
         AddTool::Room => ui.label("Click to place a room at the grid cell."),
         AddTool::Corridor => ui.label("Click-drag to place a corridor between two cells."),
+        AddTool::Staircase => {
+            ui.label("Click the grid to place stairs (visible on current and adjacent levels).")
+        }
         AddTool::Archway => ui.label("Click a valid room or corridor edge to place an archway."),
         AddTool::Door => ui.label("Click a room/corridor edge to place a door."),
         AddTool::LockedDoor => ui.label("Click a room/corridor edge to place a locked door."),
@@ -992,6 +1024,7 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
         AddTool::StartMarker => ui.label("Click the grid to place the start marker."),
         AddTool::EndMarker => ui.label("Click the grid to place the end marker."),
         AddTool::TrapMarker => ui.label("Click the grid to place a trap marker."),
+        AddTool::MonsterMarker => ui.label("Click the grid to place a monster marker."),
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
 }
