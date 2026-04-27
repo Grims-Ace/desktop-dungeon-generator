@@ -18,7 +18,7 @@ use layout::{
 };
 use startend::{
     manual_marker_size, manual_monster_marker_size, manual_trap_marker_size,
-    populate_random_markers,
+    populate_random_markers, populate_stairs,
 };
 use ui::{AddTool, UiSettings, draw_side_panel};
 
@@ -379,6 +379,7 @@ fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
         let layout = populate_random_markers(layout, settings);
         levels.push(layout);
     }
+    let levels = populate_stairs(levels, settings);
     levels
 }
 
@@ -2302,6 +2303,88 @@ fn draw_layout(
         hover_marker,
         MarkerKind::Monster,
     );
+
+    // Draw stairs and elevators.
+    for stair in &layout.stairs {
+        draw_staircase(painter, geometry, stair, colorblind_mode);
+    }
+}
+
+// Draw a staircase or elevator within a room.
+fn draw_staircase(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    stair: &layout::Staircase,
+    colorblind_mode: bool,
+) {
+    let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
+    let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
+    let right = left + stair.size as f32 * geometry.cell_size;
+    let bottom = top + stair.size as f32 * geometry.cell_size;
+    let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+
+    // Fill with a distinctive color for stairs/elevators.
+    let fill = if colorblind_mode {
+        Color32::from_rgb(180, 180, 180).gamma_multiply(0.4)
+    } else if stair.is_elevator {
+        Color32::from_rgb(100, 150, 200).gamma_multiply(0.35)
+    } else {
+        Color32::from_rgb(200, 150, 50).gamma_multiply(0.35)
+    };
+    painter.rect_filled(rect, 4.0, fill);
+
+    // Draw border.
+    let stroke_color = if colorblind_mode {
+        Color32::BLACK
+    } else if stair.is_elevator {
+        Color32::from_rgb(100, 150, 200)
+    } else {
+        Color32::from_rgb(200, 150, 50)
+    };
+    painter.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(2.0, stroke_color),
+        egui::StrokeKind::Middle,
+    );
+
+    // Draw stair lines or elevator symbol.
+    if stair.is_elevator {
+        // Draw elevator symbol: a rectangle with arrows.
+        let center = rect.center();
+        let text = "E";
+        let font_size = (geometry.cell_size * stair.size as f32 * 0.4).clamp(14.0, 48.0);
+        painter.text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            text,
+            egui::FontId::proportional(font_size),
+            if colorblind_mode {
+                Color32::BLACK
+            } else {
+                Color32::WHITE
+            },
+        );
+    } else {
+        // Draw stair lines (horizontal steps).
+        let steps = (stair.size as f32 * 2.0).round() as usize;
+        let step_height = (rect.height() / (steps as f32)).max(1.0);
+        let line_color = if colorblind_mode {
+            Color32::BLACK
+        } else {
+            Color32::from_rgb(150, 100, 30)
+        };
+        for i in 0..steps {
+            let y = rect.top() + (i as f32 * step_height) + step_height * 0.5;
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left() + 2.0, y),
+                    egui::pos2(rect.right() - 2.0, y),
+                ],
+                Stroke::new(1.5, line_color),
+            );
+        }
+    }
 }
 
 // Compute the rectangle for a given grid cell.

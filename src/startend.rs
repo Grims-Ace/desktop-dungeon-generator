@@ -1,6 +1,10 @@
 use crate::layout::{self, DungeonLayout};
 use crate::seed;
 use crate::ui::UiSettings;
+use std::collections::HashSet;
+
+// Import room_index_at_cell from layout module.
+use crate::layout::room_index_at_cell;
 
 const START_COUNT_STREAM: u64 = 10_001;
 const END_COUNT_STREAM: u64 = 10_002;
@@ -344,4 +348,201 @@ fn pick_random_corridor_cell(
     }
     let idx = (seed_value as usize) % corridor.path.len();
     Some(corridor.path[idx])
+}
+
+// Constant for stair marker stream base
+const STAIR_MARKER_STREAM_BASE: u64 = 21_000;
+
+// Populate stairs (and optionally elevators) across all levels after markers are placed.
+pub fn populate_stairs(
+    mut layouts: Vec<DungeonLayout>,
+    settings: &UiSettings,
+) -> Vec<DungeonLayout> {
+    if settings.min_stairs_per_level == 0 && settings.max_stairs_per_level == 0 {
+        return layouts;
+    }
+
+    let stair_count = if settings.min_stairs_per_level == settings.max_stairs_per_level {
+        settings.min_stairs_per_level
+    } else {
+        let range_seed = seed::derive_seed(settings.seed, 0x2A_3B_4_u64);
+        (range_seed as usize % (settings.max_stairs_per_level - settings.min_stairs_per_level + 1))
+            + settings.min_stairs_per_level
+    };
+
+    if stair_count == 0 {
+        return layouts;
+    }
+
+    let is_elevator = settings.windows_enabled;
+
+    // If syncing stairs, pick the same stair positions for all levels.
+    let mut sync_stair_cells: Vec<layout::Staircase> = Vec::new();
+    if settings.sync_stairs_across_levels && !layouts.is_empty() {
+        let base_settings = settings.clone();
+        let base_layout = layouts[0].clone();
+        sync_stair_cells =
+            pick_stair_positions(&base_layout, &base_settings, stair_count, is_elevator);
+    }
+
+    for (level_idx, layout) in layouts.iter_mut().enumerate() {
+        if settings.sync_stairs_across_levels && !sync_stair_cells.is_empty() {
+            // Use the synced stair positions.
+            layout.stairs = sync_stair_cells
+                .iter()
+                .map(|stair| layout::Staircase {
+                    cell: stair.cell,
+                    size: random_stair_size(
+                        settings,
+                        seed::derive_seed(
+                            settings.seed,
+                            STAIR_MARKER_STREAM_BASE + level_idx as u64,
+                        ),
+                    ),
+                    is_elevator,
+                })
+                .collect();
+        } else {
+            // Generate independent stair positions for this level.
+            layout.stairs = pick_stair_positions(layout, settings, stair_count, is_elevator);
+        }
+    }
+
+    layouts
+}
+
+// Pick random cells within rooms that are valid for stair placement and return Staircase objects.
+fn pick_stair_positions(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+    count: usize,
+    is_elevator: bool,
+) -> Vec<layout::Staircase> {
+    if layout.rooms.is_empty() || count == 0 {
+        return Vec::new();
+    }
+
+    // Collect valid room cells (rooms without start/end markers on bottom row).
+    let mut valid_cells: Vec<(usize, usize)> = Vec::new();
+    for room in &layout.rooms {
+        let has_start_end_bottom =
+            has_start_or_end_on_bottom_row(room, &layout.start_markers, &layout.end_markers);
+        if !has_start_end_bottom {
+            for x in room.x..(room.x + room.width) {
+                for y in room.y..(room.y + room.height) {
+                    valid_cells.push((x, y));
+                }
+            }
+        }
+    }
+
+    if valid_cells.is_empty() {
+        return Vec::new();
+    }
+
+    // Shuffle valid cells deterministically based on seed.
+    let mut shuffled = valid_cells.clone();
+    shuffle_with_seed(
+        &mut shuffled,
+        settings.seed.wrapping_add(STAIR_MARKER_STREAM_BASE),
+    );
+
+    let max_size = settings.max_stair_width.max(settings.max_stair_height);
+    let mut stair_cells: Vec<(usize, usize)> = Vec::new();
+    let mut used_cells: HashSet<(usize, usize)> = HashSet::new();
+
+    for cell in shuffled {
+        if stair_cells.len() >= count {
+            break;
+        }
+        if used_cells.contains(&cell) {
+            continue;
+        }
+        // Check if this cell can accommodate a stair of at least min size.
+        let min_w = settings.min_stair_width;
+        let min_h = settings.min_stair_height;
+        let room_idx = room_index_at_cell(&layout.rooms, cell);
+        if let Some(ri) = room_idx {
+            let room = &layout.rooms[ri];
+            let available_w = room.x + room.width - cell.0;
+            let available_h = room.y + room.height - cell.1;
+            if available_w >= min_w && available_h >= min_h {
+                stair_cells.push(cell);
+                // Mark occupied cells to avoid overlap.
+                for dx in 0..max_size {
+                    for dy in 0..max_size {
+                        used_cells.insert((cell.0 + dx, cell.1 + dy));
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert cells to Staircase objects with random sizes.
+    stair_cells
+        .into_iter()
+        .enumerate()
+        .map(|(i, cell)| layout::Staircase {
+            cell,
+            size: random_stair_size(
+                settings,
+                seed::derive_seed(settings.seed, STAIR_MARKER_STREAM_BASE + i as u64),
+            ),
+            is_elevator,
+        })
+        .collect()
+}
+
+// Check if a room has a start or end marker on its bottom row.
+fn has_start_or_end_on_bottom_row(
+    room: &layout::Room,
+    start_markers: &[layout::AreaMarker],
+    end_markers: &[layout::AreaMarker],
+) -> bool {
+    let bottom_row = room.y + room.height - 1;
+    for marker in start_markers.iter().chain(end_markers.iter()) {
+        let marker_bottom = marker.cell.1 + marker.size;
+        if marker.cell.1 <= bottom_row && marker_bottom > bottom_row {
+            // Marker overlaps with bottom row.
+            return true;
+        }
+    }
+    false
+}
+
+// Pick a random stair size within settings range.
+fn random_stair_size(settings: &UiSettings, seed_value: u64) -> usize {
+    let min_size = settings.min_stair_width.min(settings.min_stair_height);
+    let max_size = settings.max_stair_width.max(settings.max_stair_height);
+    let span = max_size - min_size + 1;
+    min_size + (seed_value as usize % span)
+}
+
+// Shuffle a vector deterministically using a seed.
+fn shuffle_with_seed<T: Clone>(vec: &mut [T], seed: u64) {
+    let mut rng = SimpleRng::new(seed);
+    for i in (1..vec.len()).rev() {
+        let j = (rng.next_u32() as usize) % (i + 1);
+        vec.swap(i, j);
+    }
+}
+
+// Simple RNG for deterministic shuffling.
+struct SimpleRng {
+    state: u64,
+}
+
+impl SimpleRng {
+    fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        // Simple LCG for deterministic shuffling.
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (self.state >> 32) as u32
+    }
 }

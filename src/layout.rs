@@ -61,6 +61,13 @@ pub struct AreaMarker {
     pub size: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Staircase {
+    pub cell: (usize, usize),
+    pub size: usize,
+    pub is_elevator: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowSide {
     Left,
@@ -100,6 +107,7 @@ pub struct DungeonLayout {
     pub trap_markers: Vec<AreaMarker>,
     pub monster_markers: Vec<AreaMarker>,
     pub packed_rooms: bool,
+    pub stairs: Vec<Staircase>,
 }
 
 impl Default for DungeonLayout {
@@ -115,6 +123,7 @@ impl Default for DungeonLayout {
             trap_markers: Vec::new(),
             monster_markers: Vec::new(),
             packed_rooms: false,
+            stairs: Vec::new(),
         }
     }
 }
@@ -186,6 +195,7 @@ pub fn generate_layout(
             trap_markers: Vec::new(),
             monster_markers: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
+            stairs: Vec::new(),
         };
     }
 
@@ -213,6 +223,7 @@ pub fn generate_layout(
             trap_markers: Vec::new(),
             monster_markers: Vec::new(),
             packed_rooms: pack_rooms_without_corridors,
+            stairs: Vec::new(),
         };
     }
 
@@ -235,6 +246,7 @@ pub fn generate_layout(
     if pack_rooms_without_corridors {
         rooms = place_packed_rooms(&room_sizes, &room_edges, cols, rows, &mut room_rng);
         let mut layout = DungeonLayout {
+            stairs: Vec::new(),
             rooms,
             corridors,
             doors: Vec::new(),
@@ -306,6 +318,7 @@ pub fn generate_layout(
             trap_markers: Vec::new(),
             monster_markers: Vec::new(),
             packed_rooms: false,
+            stairs: Vec::new(),
         };
     }
 
@@ -354,6 +367,7 @@ pub fn generate_layout(
     }
 
     let mut layout = DungeonLayout {
+        stairs: Vec::new(),
         rooms,
         corridors,
         doors: Vec::new(),
@@ -983,7 +997,7 @@ fn shared_boundary_edges(a: &Room, b: &Room) -> Vec<((usize, usize), (usize, usi
     edges
 }
 
-fn room_index_at_cell(rooms: &[Room], cell: (usize, usize)) -> Option<usize> {
+pub fn room_index_at_cell(rooms: &[Room], cell: (usize, usize)) -> Option<usize> {
     rooms.iter().position(|room| {
         cell.0 >= room.x
             && cell.0 < room.x + room.width

@@ -151,6 +151,13 @@ pub struct UiSettings {
     pub monster_frequency_percent: usize,
     pub min_monsters_per_area: usize,
     pub max_monsters_per_area: usize,
+    pub min_stair_width: usize,
+    pub max_stair_width: usize,
+    pub min_stair_height: usize,
+    pub max_stair_height: usize,
+    pub min_stairs_per_level: usize,
+    pub max_stairs_per_level: usize,
+    pub sync_stairs_across_levels: bool,
     active_tab: Tab,
 }
 
@@ -208,6 +215,13 @@ impl Default for UiSettings {
             monster_frequency_percent: 15,
             min_monsters_per_area: 1,
             max_monsters_per_area: 2,
+            min_stair_width: 1,
+            max_stair_width: 2,
+            min_stair_height: 2,
+            max_stair_height: 3,
+            min_stairs_per_level: 1,
+            max_stairs_per_level: 1,
+            sync_stairs_across_levels: false,
             active_tab: Tab::Generate,
         }
     }
@@ -810,6 +824,114 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
             )
             .changed();
     }
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.label(RichText::new("Staircase Settings").strong());
+    ui.add_space(8.0);
+
+    result.settings_changed |= ui
+        .checkbox(
+            &mut settings.sync_stairs_across_levels,
+            "Sync Stairs Across All Levels",
+        )
+        .changed();
+
+    ui.add_space(8.0);
+    ui.label("Min Stair Width");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_stair_width, 1..=5).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.min_stair_width)
+                    .speed(1.0)
+                    .range(1..=10),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Max Stair Width");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_stair_width, 1..=5).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.max_stair_width)
+                    .speed(1.0)
+                    .range(1..=10),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Min Stair Height");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_stair_height, 1..=5).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.min_stair_height)
+                    .speed(1.0)
+                    .range(1..=10),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Max Stair Height");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_stair_height, 1..=5).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.max_stair_height)
+                    .speed(1.0)
+                    .range(1..=10),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Min Stairs Per Level");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.min_stairs_per_level, 0..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.min_stairs_per_level)
+                    .speed(1.0)
+                    .range(0..=20),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    ui.label("Max Stairs Per Level");
+    ui.horizontal(|ui| {
+        result.settings_changed |= ui
+            .add(egui::Slider::new(&mut settings.max_stairs_per_level, 0..=10).show_value(false))
+            .changed();
+        result.settings_changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.max_stairs_per_level)
+                    .speed(1.0)
+                    .range(0..=20),
+            )
+            .changed();
+    });
+
+    ui.add_space(8.0);
+    result.settings_changed |= ui
+        .checkbox(&mut settings.windows_enabled, "Enable Elevators")
+        .changed();
 }
 
 // Render the Add tab controls.
