@@ -438,7 +438,7 @@ fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
 }
 
 // Ensure a staircase is fully contained within a room. If not, extend the nearest existing room or create a new one.
-fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircase) {
+pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircase) {
     let stair_x = stair.cell.0;
     let stair_y = stair.cell.1;
     let stair_size = stair.size;

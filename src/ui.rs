@@ -832,7 +832,7 @@ fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut Si
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(RichText::new("Staircase Settings").strong());
+    ui.label(RichText::new("Staircase/Elevator Settings").strong());
     ui.add_space(8.0);
 
     result.settings_changed |= ui

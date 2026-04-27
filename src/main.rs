@@ -65,6 +65,7 @@ struct DungeonApp {
     hover_text_idx: Option<usize>,
     hover_marker: Option<HoverMarker>,
     hover_level_idx: Option<usize>,
+    hover_stair_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -89,6 +90,7 @@ impl Default for DungeonApp {
             hover_text_idx: None,
             hover_marker: None,
             hover_level_idx: None,
+            hover_stair_idx: None,
         }
     }
 }
@@ -338,6 +340,7 @@ impl eframe::App for DungeonApp {
                     self.settings.colorblind_mode,
                     self.hover_text_idx,
                     self.hover_marker,
+                    self.hover_stair_idx,
                 );
             }
             self.draw_add_overlay(&painter, &geometry);
@@ -430,6 +433,7 @@ impl DungeonApp {
         self.hover_text_idx = None;
         self.hover_marker = None;
         self.hover_level_idx = None;
+        self.hover_stair_idx = None;
     }
 
     fn reset_transient_state(&mut self) {
@@ -551,6 +555,12 @@ impl DungeonApp {
             self.drag_state = Some(DragState::Marker(marker_drag));
         } else if response.drag_started()
             && let Some(pointer_pos) = response.interact_pointer_pos()
+            && let Some(stair_drag) = self.stair_drag_at_pointer(pointer_pos, geometry)
+        {
+            self.push_undo_snapshot();
+            self.drag_state = Some(DragState::Staircase(stair_drag));
+        } else if response.drag_started()
+            && let Some(pointer_pos) = response.interact_pointer_pos()
             && let Some((room_idx, offset_x, offset_y)) =
                 self.room_at_pointer(pointer_pos, geometry)
         {
@@ -578,6 +588,9 @@ impl DungeonApp {
                 DragState::Marker(drag) => self.drag_marker_to_pointer(drag, pointer_pos, geometry),
                 DragState::Corridor(drag) => {
                     self.drag_corridor_to_pointer(drag, pointer_pos, geometry)
+                }
+                DragState::Staircase(drag) => {
+                    self.drag_stair_to_pointer(drag, pointer_pos, geometry)
                 }
             }
         }
@@ -1109,6 +1122,16 @@ impl DungeonApp {
             self.hover_room_idx = None;
             self.hover_corridor_idx = None;
             self.hover_door_idx = None;
+            self.hover_stair_idx = None;
+            return;
+        }
+
+        self.hover_stair_idx = self.stair_at_pointer(pointer_pos, geometry);
+        if self.hover_stair_idx.is_some() {
+            self.hover_room_idx = None;
+            self.hover_corridor_idx = None;
+            self.hover_door_idx = None;
+            self.hover_marker = None;
             return;
         }
 
@@ -1240,6 +1263,43 @@ impl DungeonApp {
         }
     }
 
+    fn stair_at_pointer(&self, pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<usize> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        layout.stairs.iter().position(|stair| {
+            clicked.0 >= stair.cell.0
+                && clicked.0 < stair.cell.0 + stair.size
+                && clicked.1 >= stair.cell.1
+                && clicked.1 < stair.cell.1 + stair.size
+        })
+    }
+
+    fn stair_drag_at_pointer(
+        &self,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<StaircaseDragState> {
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let stair_idx = self.stair_at_pointer(pointer_pos, geometry)?;
+        let layout = &self.levels[self.settings.active_level_index];
+        let stair = layout.stairs.get(stair_idx)?;
+
+        Some(StaircaseDragState {
+            stair_idx,
+            offset_x: grid_x - stair.cell.0 as f32,
+            offset_y: grid_y - stair.cell.1 as f32,
+            original_cell: stair.cell,
+        })
+    }
+
     fn drag_marker_to_pointer(
         &mut self,
         drag: MarkerDragState,
@@ -1271,6 +1331,86 @@ impl DungeonApp {
         let target_x = (grid_x - drag.offset_x).floor().max(0.0) as usize;
         let target_y = (grid_y - drag.offset_y).floor().max(0.0) as usize;
         marker.cell = (target_x.min(max_x), target_y.min(max_y));
+    }
+
+    fn drag_stair_to_pointer(
+        &mut self,
+        drag: StaircaseDragState,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) {
+        let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) else {
+            return;
+        };
+
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        let stair_size = {
+            let layout = &self.levels[self.settings.active_level_index];
+            let Some(stair) = layout.stairs.get(drag.stair_idx) else {
+                return;
+            };
+            stair.size
+        };
+
+        let max_x = self.settings.cols.saturating_sub(stair_size);
+        let max_y = self.settings.rows.saturating_sub(stair_size);
+        let target_x = (grid_x - drag.offset_x).floor().max(0.0) as usize;
+        let target_y = (grid_y - drag.offset_y).floor().max(0.0) as usize;
+        let new_cell = (target_x.min(max_x), target_y.min(max_y));
+
+        if self.settings.sync_stairs_across_levels {
+            // Move ALL stairs that were at the original location across ALL levels.
+            for layout in &mut self.levels {
+                for stair in &mut layout.stairs {
+                    if stair.cell == drag.original_cell {
+                        stair.cell = new_cell;
+                    }
+                }
+                // Ensure room coverage for each stair moved.
+                let stairs_to_check = layout.stairs.clone();
+                for stair in &stairs_to_check {
+                    if stair.cell == new_cell {
+                        startend::ensure_stair_in_room(layout, stair);
+                    }
+                }
+            }
+        } else {
+            // Move only the linked stairs (current level and adjacent levels if positions match).
+            let current_idx = self.settings.active_level_index;
+            let level_indices = vec![
+                Some(current_idx),
+                current_idx.checked_sub(1),
+                if current_idx + 1 < self.levels.len() {
+                    Some(current_idx + 1)
+                } else {
+                    None
+                },
+            ];
+
+            for idx in level_indices.into_iter().flatten() {
+                let layout = &mut self.levels[idx];
+                for stair in &mut layout.stairs {
+                    if stair.cell == drag.original_cell {
+                        stair.cell = new_cell;
+                    }
+                }
+                // Ensure room coverage for each stair moved.
+                let stairs_to_check = layout.stairs.clone();
+                for stair in &stairs_to_check {
+                    if stair.cell == new_cell {
+                        startend::ensure_stair_in_room(layout, stair);
+                    }
+                }
+            }
+        }
+
+        // Update the drag state with the new position to allow continuous dragging.
+        if let Some(DragState::Staircase(ref mut d)) = self.drag_state {
+            d.original_cell = new_cell;
+        }
     }
 
     // Handle right-click resizing of rooms and return whether resizing is active.
@@ -1678,6 +1818,38 @@ impl DungeonApp {
             }
         }
 
+        if let Some(stair_idx) = self.stair_at_pointer(pointer_pos, geometry) {
+            let original_cell = {
+                let layout = &self.levels[self.settings.active_level_index];
+                layout.stairs[stair_idx].cell
+            };
+
+            self.push_undo_snapshot();
+            if self.settings.sync_stairs_across_levels {
+                // Remove ALL stairs at this location across ALL levels.
+                for layout in &mut self.levels {
+                    layout.stairs.retain(|s| s.cell != original_cell);
+                }
+            } else {
+                // Remove linked stairs on current and adjacent levels.
+                let current_idx = self.settings.active_level_index;
+                let level_indices = vec![
+                    Some(current_idx),
+                    current_idx.checked_sub(1),
+                    if current_idx + 1 < self.levels.len() {
+                        Some(current_idx + 1)
+                    } else {
+                        None
+                    },
+                ];
+
+                for idx in level_indices.into_iter().flatten() {
+                    self.levels[idx].stairs.retain(|s| s.cell != original_cell);
+                }
+            }
+            return;
+        }
+
         if let Some((room_idx, _, _)) = self.room_at_pointer(pointer_pos, geometry) {
             self.push_undo_snapshot();
             self.delete_room(room_idx);
@@ -1931,6 +2103,15 @@ enum DragState {
     Text(TextDragState),
     Marker(MarkerDragState),
     Corridor(CorridorDragState),
+    Staircase(StaircaseDragState),
+}
+
+#[derive(Debug, Clone)]
+struct StaircaseDragState {
+    stair_idx: usize,
+    offset_x: f32,
+    offset_y: f32,
+    original_cell: (usize, usize),
 }
 
 #[derive(Debug, Clone)]
@@ -2011,6 +2192,7 @@ fn draw_layout(
     colorblind_mode: bool,
     hover_text_idx: Option<usize>,
     hover_marker: Option<HoverMarker>,
+    hover_stair_idx: Option<usize>,
 ) {
     let wall_width_px = (geometry.cell_size / 2.5).max(1.0);
     let door_width_px = (geometry.cell_size / 10.0).max(1.0);
@@ -2305,8 +2487,14 @@ fn draw_layout(
     );
 
     // Draw stairs and elevators.
-    for stair in &layout.stairs {
-        draw_staircase(painter, geometry, stair, colorblind_mode);
+    for (idx, stair) in layout.stairs.iter().enumerate() {
+        draw_staircase(
+            painter,
+            geometry,
+            stair,
+            colorblind_mode,
+            hover_stair_idx == Some(idx),
+        );
     }
 }
 
@@ -2316,6 +2504,7 @@ fn draw_staircase(
     geometry: &GridGeometry,
     stair: &layout::Staircase,
     colorblind_mode: bool,
+    is_hovered: bool,
 ) {
     let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
     let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
@@ -2324,7 +2513,9 @@ fn draw_staircase(
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
     // Fill with a distinctive color for stairs.
-    let fill = if colorblind_mode {
+    let fill = if is_hovered {
+        Color32::from_rgb(220, 180, 80).gamma_multiply(0.5)
+    } else if colorblind_mode {
         Color32::from_rgb(180, 180, 180).gamma_multiply(0.4)
     } else {
         Color32::from_rgb(200, 150, 50).gamma_multiply(0.35)
@@ -2332,7 +2523,9 @@ fn draw_staircase(
     painter.rect_filled(rect, 4.0, fill);
 
     // Draw border.
-    let stroke_color = if colorblind_mode {
+    let stroke_color = if is_hovered {
+        Color32::WHITE
+    } else if colorblind_mode {
         Color32::BLACK
     } else {
         Color32::from_rgb(200, 150, 50)
@@ -2340,7 +2533,7 @@ fn draw_staircase(
     painter.rect_stroke(
         rect,
         4.0,
-        Stroke::new(2.0, stroke_color),
+        Stroke::new(if is_hovered { 3.0 } else { 2.0 }, stroke_color),
         egui::StrokeKind::Middle,
     );
 
