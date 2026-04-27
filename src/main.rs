@@ -64,6 +64,7 @@ struct DungeonApp {
     hover_door_idx: Option<usize>,
     hover_text_idx: Option<usize>,
     hover_marker: Option<HoverMarker>,
+    hover_level_idx: Option<usize>,
 }
 
 impl Default for DungeonApp {
@@ -87,6 +88,7 @@ impl Default for DungeonApp {
             hover_door_idx: None,
             hover_text_idx: None,
             hover_marker: None,
+            hover_level_idx: None,
         }
     }
 }
@@ -174,8 +176,20 @@ impl eframe::App for DungeonApp {
             self.levels.push(layout);
             self.settings.active_level_index = self.levels.len() - 1;
         }
+        // Check for level deletion keybind when hovering over a level tab.
+        let level_delete_requested = ctx.input(|i| {
+            (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+                && self.hover_level_idx.is_some()
+        });
+
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             self.pending_delete = true;
+        }
+
+        if level_delete_requested {
+            if let Some(level_idx) = self.hover_level_idx {
+                self.delete_level(level_idx);
+            }
         }
         if panel_result.export_clicked && self.export_rx.is_none() {
             let target = match exporter::select_export_target(&self.settings) {
@@ -286,10 +300,13 @@ impl eframe::App for DungeonApp {
             ui.horizontal(|ui| {
                 for i in 0..self.levels.len() {
                     let label = format!("Level {}", i + 1);
-                    if ui
-                        .selectable_label(self.settings.active_level_index == i, label)
-                        .clicked()
-                    {
+                    let is_active = self.settings.active_level_index == i;
+                    let response = ui.selectable_label(is_active, label);
+                    // Track hover on level tabs.
+                    if response.hovered() {
+                        self.hover_level_idx = Some(i);
+                    }
+                    if response.clicked() {
                         self.settings.active_level_index = i;
                     }
                 }
@@ -411,6 +428,7 @@ impl DungeonApp {
         self.hover_door_idx = None;
         self.hover_text_idx = None;
         self.hover_marker = None;
+        self.hover_level_idx = None;
     }
 
     fn reset_transient_state(&mut self) {
@@ -485,6 +503,24 @@ impl DungeonApp {
         if self.settings.active_level_index >= self.levels.len() {
             self.settings.active_level_index = 0;
         }
+    }
+
+    // Delete a level by index, with undo support and safeguards.
+    fn delete_level(&mut self, level_idx: usize) {
+        // Don't delete if there's only one level remaining.
+        if self.levels.len() <= 1 {
+            return;
+        }
+        if level_idx >= self.levels.len() {
+            return;
+        }
+        self.push_undo_snapshot();
+        self.levels.remove(level_idx);
+        // Adjust active level index to stay within bounds.
+        if self.settings.active_level_index >= self.levels.len() {
+            self.settings.active_level_index = self.levels.len() - 1;
+        }
+        self.reset_transient_state();
     }
 
     // Handle dragging rooms or corridors with the primary mouse button.
