@@ -301,6 +301,8 @@ impl eframe::App for DungeonApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Clear level hover state so it only reflects current frame.
+            self.hover_level_idx = None;
             ui.horizontal(|ui| {
                 for i in 0..self.levels.len() {
                     let label = format!("Level {}", i + 1);
