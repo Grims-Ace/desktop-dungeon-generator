@@ -267,6 +267,7 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry_colorblind(ui, "Secret Doors", LegendStyle::DashDotDotLine);
                     draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
                     draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
+                    draw_legend_entry_colorblind(ui, "Stairs", LegendStyle::LabelChar('\u{1F5CF}'));
                     draw_legend_entry_colorblind(ui, "Start Marker", LegendStyle::Label("S"));
                     draw_legend_entry_colorblind(ui, "End Marker", LegendStyle::Label("E"));
                     draw_legend_entry_colorblind(ui, "Trap", LegendStyle::Label("T"));
@@ -280,6 +281,7 @@ impl eframe::App for DungeonApp {
                     draw_legend_entry(ui, Color32::from_rgb(170, 80, 170), "Secret Doors");
                     draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
                     draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
+                    draw_legend_entry(ui, Color32::from_rgb(200, 150, 50), "Stairs");
                     draw_legend_entry(ui, Color32::from_rgb(60, 220, 200), "Start Marker");
                     draw_legend_entry(ui, Color32::from_rgb(240, 90, 90), "End Marker");
                     draw_legend_entry(ui, Color32::from_rgb(150, 80, 230), "Trap");
@@ -3479,6 +3481,7 @@ enum LegendStyle {
     DashDotLine,
     DashDotDotLine,
     Label(&'static str),
+    LabelChar(char),
 }
 
 // Draw a patterned legend entry for colorblind mode.
@@ -3549,6 +3552,24 @@ fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendSty
                     font_id,
                     Color32::BLACK,
                 );
+            }
+            LegendStyle::LabelChar(c) => {
+                // Draw a small circle background for the label
+                ui.painter()
+                    .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
+                ui.painter()
+                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
+                // Draw the character in the center
+                let font_size = 10.0;
+                let font_id = egui::FontId::monospace(font_size);
+                let text_width = 1.0 as f32 * font_size * 0.6;
+                let text_height = font_size * 0.8;
+                let text_pos = egui::pos2(
+                    rect.center().x - text_width / 2.0,
+                    rect.center().y - text_height / 2.0 + font_size / 5.0,
+                );
+                ui.painter()
+                    .text(text_pos, egui::Align2::LEFT_TOP, c, font_id, Color32::BLACK);
             }
             LegendStyle::LongDash => draw_dashed_line(
                 ui.painter(),
