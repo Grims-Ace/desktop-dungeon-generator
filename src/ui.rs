@@ -950,11 +950,13 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
     ui.add_space(2.0);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut settings.add_tool, AddTool::Staircase, "Add Stairs");
+        if ui
+            .add(egui::Button::new("Add Level").frame(false))
+            .clicked()
+        {
+            result.new_level_clicked = true;
+        }
     });
-    ui.add_space(4.0);
-    if ui.button("Add New Level").clicked() {
-        result.new_level_clicked = true;
-    }
 
     ui.add_space(8.0);
     ui.label(RichText::new("Doors").strong());
