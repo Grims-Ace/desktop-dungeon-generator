@@ -448,14 +448,15 @@ fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
 pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircase) -> bool {
     let stair_x = stair.cell.0;
     let stair_y = stair.cell.1;
-    let stair_size = stair.size;
+    let stair_width = stair.width;
+    let stair_height = stair.height;
 
     // Check if any room already contains the staircase.
     for room in &layout.rooms {
         if stair_x >= room.x
             && stair_y >= room.y
-            && (stair_x + stair_size) <= (room.x + room.width)
-            && (stair_y + stair_size) <= (room.y + room.height)
+            && (stair_x + stair_width) <= (room.x + room.width)
+            && (stair_y + stair_height) <= (room.y + room.height)
         {
             return false;
         }
@@ -480,8 +481,8 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
         let room = &mut layout.rooms[idx];
         let new_x = room.x.min(stair_x);
         let new_y = room.y.min(stair_y);
-        let new_right = (room.x + room.width).max(stair_x + stair_size);
-        let new_bottom = (room.y + room.height).max(stair_y + stair_size);
+        let new_right = (room.x + room.width).max(stair_x + stair_width);
+        let new_bottom = (room.y + room.height).max(stair_y + stair_height);
 
         room.x = new_x;
         room.y = new_y;
@@ -493,8 +494,8 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
         layout.rooms.push(layout::Room {
             x: stair_x,
             y: stair_y,
-            width: stair_size,
-            height: stair_size,
+            width: stair_width,
+            height: stair_height,
         });
         true
     }
@@ -502,16 +503,16 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &layout::Staircas
 
 // Compute the minimum Manhattan distance between a room and a staircase.
 fn room_to_stair_min_dist(room: &layout::Room, stair: &layout::Staircase) -> usize {
-    let dx = if stair.cell.0 + stair.size <= room.x {
-        room.x - (stair.cell.0 + stair.size)
+    let dx = if stair.cell.0 + stair.width <= room.x {
+        room.x - (stair.cell.0 + stair.width)
     } else if stair.cell.0 >= room.x + room.width {
         stair.cell.0 - (room.x + room.width)
     } else {
         0
     };
 
-    let dy = if stair.cell.1 + stair.size <= room.y {
-        room.y - (stair.cell.1 + stair.size)
+    let dy = if stair.cell.1 + stair.height <= room.y {
+        room.y - (stair.cell.1 + stair.height)
     } else if stair.cell.1 >= room.y + room.height {
         stair.cell.1 - (room.y + room.height)
     } else {
@@ -595,15 +596,19 @@ fn pick_stair_positions(
     stair_cells
         .into_iter()
         .enumerate()
-        .map(|(i, cell)| layout::Staircase {
-            cell,
-            size: random_stair_size(
+        .map(|(i, cell)| {
+            let (width, height) = random_stair_size(
                 settings,
                 seed::derive_seed(
                     settings.seed,
                     STAIR_MARKER_STREAM_BASE + i as u64 + seed_offset * 1000,
                 ),
-            ),
+            );
+            layout::Staircase {
+                cell,
+                width,
+                height,
+            }
         })
         .collect()
 }
@@ -626,11 +631,18 @@ fn has_start_or_end_on_bottom_row(
 }
 
 // Pick a random stair size within settings range.
-fn random_stair_size(settings: &UiSettings, seed_value: u64) -> usize {
-    let min_size = settings.min_stair_width.min(settings.min_stair_height);
-    let max_size = settings.max_stair_width.max(settings.max_stair_height);
-    let span = max_size - min_size + 1;
-    min_size + (seed_value as usize % span)
+fn random_stair_size(settings: &UiSettings, seed_value: u64) -> (usize, usize) {
+    let w_span = settings
+        .max_stair_width
+        .saturating_sub(settings.min_stair_width)
+        + 1;
+    let h_span = settings
+        .max_stair_height
+        .saturating_sub(settings.min_stair_height)
+        + 1;
+    let width = settings.min_stair_width + (seed_value as usize % w_span);
+    let height = settings.min_stair_height + (seed_value.rotate_left(17) as usize % h_span);
+    (width, height)
 }
 
 // Shuffle a vector deterministically using a seed.

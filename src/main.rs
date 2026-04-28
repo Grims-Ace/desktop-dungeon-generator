@@ -1194,7 +1194,8 @@ impl DungeonApp {
 
         let stair = layout::Staircase {
             cell: (origin_x, origin_y),
-            size,
+            width: size,
+            height: size,
         };
 
         if self.settings.sync_stairs_across_levels {
@@ -1414,9 +1415,9 @@ impl DungeonApp {
 
         layout.stairs.iter().position(|stair| {
             clicked.0 >= stair.cell.0
-                && clicked.0 < stair.cell.0 + stair.size
+                && clicked.0 < stair.cell.0 + stair.width
                 && clicked.1 >= stair.cell.1
-                && clicked.1 < stair.cell.1 + stair.size
+                && clicked.1 < stair.cell.1 + stair.height
         })
     }
 
@@ -1488,16 +1489,16 @@ impl DungeonApp {
             return;
         }
 
-        let stair_size = {
+        let (stair_width, stair_height) = {
             let layout = &self.levels[self.settings.active_level_index];
             let Some(stair) = layout.stairs.get(drag.stair_idx) else {
                 return;
             };
-            stair.size
+            (stair.width, stair.height)
         };
 
-        let max_x = self.settings.cols.saturating_sub(stair_size);
-        let max_y = self.settings.rows.saturating_sub(stair_size);
+        let max_x = self.settings.cols.saturating_sub(stair_width);
+        let max_y = self.settings.rows.saturating_sub(stair_height);
         let target_x = (grid_x - drag.offset_x).floor().max(0.0) as usize;
         let target_y = (grid_y - drag.offset_y).floor().max(0.0) as usize;
         let new_cell = (target_x.min(max_x), target_y.min(max_y));
@@ -1565,6 +1566,14 @@ impl DungeonApp {
                         self.resize_state = Some(ResizeState::Room(state));
                         return true;
                     }
+                } else if let Some(stair_idx) = self.stair_at_pointer(pointer_pos, geometry) {
+                    if let Some(state) =
+                        self.start_staircase_resize(stair_idx, pointer_pos, geometry)
+                    {
+                        self.push_undo_snapshot();
+                        self.resize_state = Some(ResizeState::Staircase(state));
+                        return true;
+                    }
                 }
             }
         }
@@ -1579,6 +1588,7 @@ impl DungeonApp {
                     match state {
                         ResizeState::Room(state) => self.resize_room(&state, cell),
                         ResizeState::Text(state) => self.resize_text(&state, cell),
+                        ResizeState::Staircase(state) => self.resize_staircase(&state, cell),
                     }
                 }
             }
@@ -1671,6 +1681,38 @@ impl DungeonApp {
         })
     }
 
+    fn start_staircase_resize(
+        &self,
+        stair_idx: usize,
+        pointer_pos: egui::Pos2,
+        geometry: &GridGeometry,
+    ) -> Option<StaircaseResizeState> {
+        if self.settings.active_level_index >= self.levels.len() {
+            return None;
+        }
+        let layout = &self.levels[self.settings.active_level_index];
+
+        let original_stair = layout.stairs.get(stair_idx)?.clone();
+        let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
+        let center_x = original_stair.cell.0 as f32 + original_stair.width as f32 * 0.5;
+        let center_y = original_stair.cell.1 as f32 + original_stair.height as f32 * 0.5;
+        let pointer_x = grid_x;
+        let pointer_y = grid_y;
+
+        let resize_corner = match (pointer_x >= center_x, pointer_y >= center_y) {
+            (false, false) => ResizeCorner::TopLeft,
+            (true, false) => ResizeCorner::TopRight,
+            (false, true) => ResizeCorner::BottomLeft,
+            (true, true) => ResizeCorner::BottomRight,
+        };
+
+        Some(StaircaseResizeState {
+            stair_idx,
+            original_stair,
+            resize_corner,
+        })
+    }
+
     // Resize only the corner chosen at drag start while keeping the opposite corner fixed.
     fn resize_room(&mut self, state: &RoomResizeState, target_cell: (usize, usize)) {
         if self.settings.active_level_index >= self.levels.len() {
@@ -1748,6 +1790,112 @@ impl DungeonApp {
         label.font_size = new_size as u16;
     }
 
+    fn resize_staircase(&mut self, state: &StaircaseResizeState, target_cell: (usize, usize)) {
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        let cols = self.settings.cols.max(1);
+        let rows = self.settings.rows.max(1);
+
+        let tx = target_cell.0.min(cols - 1) as isize;
+        let ty = target_cell.1.min(rows - 1) as isize;
+        let original = &state.original_stair;
+
+        let left = original.cell.0 as isize;
+        let top = original.cell.1 as isize;
+        let right = (original.cell.0 + original.width - 1) as isize;
+        let bottom = (original.cell.1 + original.height - 1) as isize;
+
+        let (x0, x1, y0, y1) = match state.resize_corner {
+            ResizeCorner::TopLeft => (tx.min(right), right, ty.min(bottom), bottom),
+            ResizeCorner::TopRight => (left, tx.max(left), ty.min(bottom), bottom),
+            ResizeCorner::BottomLeft => (tx.min(right), right, top, ty.max(top)),
+            ResizeCorner::BottomRight => (left, tx.max(left), top, ty.max(top)),
+        };
+
+        let new_stair_cell = (x0 as usize, y0 as usize);
+        let new_stair_width = (x1 - x0 + 1) as usize;
+        let new_stair_height = (y1 - y0 + 1) as usize;
+
+        if new_stair_width == 0 || new_stair_height == 0 {
+            return;
+        }
+
+        // Check for collisions with other stairs or rooms on the current level.
+        let active_layout = &self.levels[self.settings.active_level_index];
+        if active_layout.rooms.iter().any(|room| {
+            rects_overlap(
+                new_stair_cell.0,
+                new_stair_cell.1,
+                new_stair_width,
+                new_stair_height,
+                room.x,
+                room.y,
+                room.width,
+                room.height,
+            )
+        }) {
+            return;
+        }
+        if active_layout.stairs.iter().enumerate().any(|(idx, stair)| {
+            idx != state.stair_idx
+                && rects_overlap(
+                    new_stair_cell.0,
+                    new_stair_cell.1,
+                    new_stair_width,
+                    new_stair_height,
+                    stair.cell.0,
+                    stair.cell.1,
+                    stair.width,
+                    stair.height,
+                )
+        }) {
+            return;
+        }
+
+        if self.settings.sync_stairs_across_levels {
+            for layout in &mut self.levels {
+                for stair in &mut layout.stairs {
+                    if stair.cell == state.original_stair.cell {
+                        stair.cell = new_stair_cell;
+                        stair.width = new_stair_width;
+                        stair.height = new_stair_height;
+                    }
+                }
+            }
+        } else {
+            let current_idx = self.settings.active_level_index;
+            let level_indices = vec![
+                Some(current_idx),
+                current_idx.checked_sub(1),
+                if current_idx + 1 < self.levels.len() {
+                    Some(current_idx + 1)
+                } else {
+                    None
+                },
+            ];
+
+            for idx in level_indices.into_iter().flatten() {
+                let layout = &mut self.levels[idx];
+                for stair in &mut layout.stairs {
+                    if stair.cell == state.original_stair.cell {
+                        stair.cell = new_stair_cell;
+                        stair.width = new_stair_width;
+                        stair.height = new_stair_height;
+                    }
+                }
+            }
+        }
+
+        // Update the resize state with the new dimensions to allow continuous resizing.
+        if let Some(ResizeState::Staircase(ref mut s)) = self.resize_state {
+            s.original_stair.cell = new_stair_cell;
+            s.original_stair.width = new_stair_width;
+            s.original_stair.height = new_stair_height;
+        }
+    }
+
     // Draw dashed overlays for room resizing interactions.
     fn draw_resize_overlay(&self, painter: &egui::Painter, geometry: &GridGeometry) {
         if self.settings.active_level_index >= self.levels.len() {
@@ -1760,7 +1908,7 @@ impl DungeonApp {
             .as_ref()
             .and_then(|s| match s {
                 ResizeState::Text(state) => Some(state.text_idx),
-                ResizeState::Room(_) => None,
+                _ => None,
             })
             .or(self.hover_text_idx)
         {
@@ -1781,50 +1929,88 @@ impl DungeonApp {
             .as_ref()
             .and_then(|s| match s {
                 ResizeState::Room(state) => Some(state.room_idx),
-                ResizeState::Text(_) => None,
+                _ => None,
             })
             .or(self.hover_room_idx);
-        let Some(room_idx) = room_idx else {
-            return;
-        };
-        let Some(room) = layout.rooms.get(room_idx) else {
-            return;
-        };
-        let color = Color32::from_gray(170);
-        let stroke = Stroke::new(1.5, color);
 
-        let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
-        let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
-        let right = left + room.width as f32 * geometry.cell_size;
-        let bottom = top + room.height as f32 * geometry.cell_size;
+        if let Some(room_idx) = room_idx {
+            if let Some(room) = layout.rooms.get(room_idx) {
+                let color = Color32::from_gray(170);
+                let stroke = Stroke::new(1.5, color);
 
-        let tl = egui::pos2(left, top);
-        let tr = egui::pos2(right, top);
-        let br = egui::pos2(right, bottom);
-        let bl = egui::pos2(left, bottom);
+                let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
+                let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
+                let right = left + room.width as f32 * geometry.cell_size;
+                let bottom = top + room.height as f32 * geometry.cell_size;
 
-        draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
-        draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
-        draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
-        draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
+                let tl = egui::pos2(left, top);
+                let tr = egui::pos2(right, top);
+                let br = egui::pos2(right, bottom);
+                let bl = egui::pos2(left, bottom);
 
-        let font = egui::FontId::proportional(12.0);
-        let center_top = egui::pos2((left + right) * 0.5, top - 10.0);
-        let center_left = egui::pos2(left - 12.0, (top + bottom) * 0.5);
-        painter.text(
-            center_top,
-            egui::Align2::CENTER_CENTER,
-            "<->",
-            font.clone(),
-            color,
-        );
-        painter.text(center_left, egui::Align2::CENTER_CENTER, "^v", font, color);
+                draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
 
-        if matches!(self.resize_state, Some(ResizeState::Room(_))) {
-            draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
-            draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
-            draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
-            draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+                let font = egui::FontId::proportional(12.0);
+                let center_top = egui::pos2((left + right) * 0.5, top - 10.0);
+                let center_left = egui::pos2(left - 12.0, (top + bottom) * 0.5);
+                painter.text(
+                    center_top,
+                    egui::Align2::CENTER_CENTER,
+                    "<->",
+                    font.clone(),
+                    color,
+                );
+                painter.text(center_left, egui::Align2::CENTER_CENTER, "^v", font, color);
+
+                if matches!(self.resize_state, Some(ResizeState::Room(_))) {
+                    draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
+                    draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
+                    draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
+                    draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+                }
+                return;
+            }
+        }
+
+        let stair_idx = self
+            .resize_state
+            .as_ref()
+            .and_then(|s| match s {
+                ResizeState::Staircase(state) => Some(state.stair_idx),
+                _ => None,
+            })
+            .or(self.hover_stair_idx);
+
+        if let Some(stair_idx) = stair_idx {
+            if let Some(stair) = layout.stairs.get(stair_idx) {
+                let color = Color32::from_gray(170);
+                let stroke = Stroke::new(1.5, color);
+
+                let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
+                let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
+                let right = left + stair.width as f32 * geometry.cell_size;
+                let bottom = top + stair.height as f32 * geometry.cell_size;
+
+                let tl = egui::pos2(left, top);
+                let tr = egui::pos2(right, top);
+                let br = egui::pos2(right, bottom);
+                let bl = egui::pos2(left, bottom);
+
+                draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
+                draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
+
+                if matches!(self.resize_state, Some(ResizeState::Staircase(_))) {
+                    draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
+                    draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
+                    draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
+                    draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+                }
+            }
         }
     }
 
@@ -2249,9 +2435,17 @@ struct TextResizeState {
 }
 
 #[derive(Debug, Clone)]
+struct StaircaseResizeState {
+    stair_idx: usize,
+    original_stair: layout::Staircase,
+    resize_corner: ResizeCorner,
+}
+
+#[derive(Debug, Clone)]
 enum ResizeState {
     Room(RoomResizeState),
     Text(TextResizeState),
+    Staircase(StaircaseResizeState),
 }
 
 struct GridGeometry {
@@ -2635,8 +2829,8 @@ fn draw_staircase(
 ) {
     let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
     let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
-    let right = left + stair.size as f32 * geometry.cell_size;
-    let bottom = top + stair.size as f32 * geometry.cell_size;
+    let right = left + stair.width as f32 * geometry.cell_size;
+    let bottom = top + stair.height as f32 * geometry.cell_size;
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
     // Fill with a distinctive color for stairs.
@@ -2665,7 +2859,7 @@ fn draw_staircase(
     );
 
     // Draw stair lines (horizontal steps).
-    let steps = (stair.size as f32 * 2.0).round() as usize;
+    let steps = (stair.height as f32 * 2.0).round() as usize;
     let step_height = (rect.height() / (steps as f32)).max(1.0);
     let line_color = if colorblind_mode {
         Color32::BLACK
@@ -2886,13 +3080,27 @@ fn room_index_at_cell(rooms: &[layout::Room], cell: (usize, usize)) -> Option<us
     })
 }
 
+// Check whether two rectangles overlap by area.
+fn rects_overlap(
+    ax: usize,
+    ay: usize,
+    aw: usize,
+    ah: usize,
+    bx: usize,
+    by: usize,
+    bw: usize,
+    bh: usize,
+) -> bool {
+    let a_right = ax + aw;
+    let a_bottom = ay + ah;
+    let b_right = bx + bw;
+    let b_bottom = by + bh;
+    ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
+}
+
 // Check whether two rooms overlap by area.
 fn rooms_overlap(a: &layout::Room, b: &layout::Room) -> bool {
-    let a_right = a.x + a.width;
-    let a_bottom = a.y + a.height;
-    let b_right = b.x + b.width;
-    let b_bottom = b.y + b.height;
-    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+    rects_overlap(a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height)
 }
 
 fn manual_door_edge_allowed(

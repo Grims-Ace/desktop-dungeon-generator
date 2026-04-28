@@ -64,7 +64,8 @@ pub struct AreaMarker {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Staircase {
     pub cell: (usize, usize),
-    pub size: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1384,13 +1385,26 @@ fn shuffle_rooms(rooms: &mut [Room], rng: &mut SimpleRng) {
     }
 }
 
-fn rooms_overlap(a: &Room, b: &Room) -> bool {
-    let a_right = a.x + a.width;
-    let a_bottom = a.y + a.height;
-    let b_right = b.x + b.width;
-    let b_bottom = b.y + b.height;
+fn rects_overlap(
+    ax: usize,
+    ay: usize,
+    aw: usize,
+    ah: usize,
+    bx: usize,
+    by: usize,
+    bw: usize,
+    bh: usize,
+) -> bool {
+    let a_right = ax + aw;
+    let a_bottom = ay + ah;
+    let b_right = bx + bw;
+    let b_bottom = by + bh;
 
-    a.x < b_right && a_right > b.x && a.y < b_bottom && a_bottom > b.y
+    ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
+}
+
+fn rooms_overlap(a: &Room, b: &Room) -> bool {
+    rects_overlap(a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height)
 }
 
 fn rooms_touch(a: &Room, b: &Room) -> bool {

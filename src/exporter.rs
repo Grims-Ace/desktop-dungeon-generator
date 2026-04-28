@@ -889,8 +889,8 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     for stair in &layout.stairs {
         let x = g.left() + stair.cell.0 as f32 * g.cell;
         let y = g.top() + stair.cell.1 as f32 * g.cell;
-        let w = stair.size as f32 * g.cell;
-        let h = stair.size as f32 * g.cell;
+        let w = stair.width as f32 * g.cell;
+        let h = stair.height as f32 * g.cell;
 
         let fill = if settings.colorblind_mode {
             "rgb(180,180,180)"
@@ -901,7 +901,7 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
             s,
             "<rect x='{x}' y='{y}' width='{w}' height='{h}' fill='{fill}' fill-opacity='0.35' stroke='rgb(150,100,30)' stroke-width='2'/>"
         );
-        let steps = (stair.size as f32 * 2.0).round() as usize;
+        let steps = (stair.height as f32 * 2.0).round() as usize;
         let step_h = h / steps as f32;
         for i in 0..steps {
             let sy = y + (i as f32 * step_h) + step_h * 0.5;
@@ -1155,8 +1155,8 @@ fn fill_rect_staircase(
     let Some(rect) = Rect::from_xywh(
         g.left() + staircase.cell.0 as f32 * g.cell,
         g.top() + staircase.cell.1 as f32 * g.cell,
-        staircase.size as f32 * g.cell,
-        staircase.size as f32 * g.cell,
+        staircase.width as f32 * g.cell,
+        staircase.height as f32 * g.cell,
     ) else {
         return;
     };
@@ -1181,8 +1181,8 @@ fn draw_staircase(
     let Some(rect) = Rect::from_xywh(
         g.left() + staircase.cell.0 as f32 * g.cell,
         g.top() + staircase.cell.1 as f32 * g.cell,
-        staircase.size as f32 * g.cell,
-        staircase.size as f32 * g.cell,
+        staircase.width as f32 * g.cell,
+        staircase.height as f32 * g.cell,
     ) else {
         return;
     };
@@ -1206,7 +1206,7 @@ fn draw_staircase(
     draw_wall_segment(pixmap, x, y, x, y + h, 2.0, stroke_color);
     draw_wall_segment(pixmap, x + w, y, x + w, y + h, 2.0, stroke_color);
 
-    let steps = (staircase.size as f32 * 2.0).round() as usize;
+    let steps = (staircase.height as f32 * 2.0).round() as usize;
     let step_h = h / steps as f32;
     for i in 0..steps {
         let sy = (y + (i as f32 * step_h) + step_h * 0.5).round();
