@@ -72,11 +72,9 @@ impl Default for DungeonApp {
     // Build the app with persisted settings and a generated layout.
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
-        let layouts = generate_all_levels(&settings);
-        let results = populate_stairs(layouts, &settings);
         let mut app = Self {
             settings,
-            levels: results.iter().map(|(l, _)| l.clone()).collect(),
+            levels: Vec::new(),
             suppressed_auto_door_edges: HashSet::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -93,11 +91,8 @@ impl Default for DungeonApp {
             hover_level_idx: None,
             hover_stair_idx: None,
         };
-        for (i, (_, modified)) in results.into_iter().enumerate() {
-            if modified {
-                app.refresh_level(i);
-            }
-        }
+        app.levels = generate_all_levels(&app.settings);
+        app.refresh_stairs();
         app
     }
 }
@@ -170,33 +165,9 @@ impl eframe::App for DungeonApp {
             }
         } else if panel_result.new_level_clicked {
             self.push_undo_snapshot();
-            let level_index = self.levels.len();
-            let level_seed = seed::derive_seed(self.settings.seed, level_index as u64);
-            let layout = layout::generate_layout(
-                self.settings.cols,
-                self.settings.rows,
-                self.settings.room_count,
-                level_seed,
-                self.settings.min_room_size,
-                self.settings.max_room_size,
-                self.settings.square_rooms_only,
-                self.settings.min_corridor_width,
-                self.settings.max_corridor_width,
-                self.settings.corridor_randomness,
-                self.settings.dead_end_rooms_percent,
-                self.settings.pack_rooms_without_corridors,
-                door_settings_from_ui(&self.settings),
-                window_settings_from_ui(&self.settings),
-            );
-            let layout = populate_random_markers(layout, &self.settings);
-            self.levels.push(layout);
-            let results = populate_stairs(self.levels.clone(), &self.settings);
-            self.levels = results.iter().map(|(l, _)| l.clone()).collect();
-            for (i, (_, modified)) in results.into_iter().enumerate() {
-                if modified {
-                    self.refresh_level(i);
-                }
-            }
+            self.levels
+                .push(generate_level(&self.settings, self.levels.len()));
+            self.refresh_stairs();
             self.settings.active_level_index = self.levels.len() - 1;
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
@@ -385,27 +356,32 @@ fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
 
     let mut levels = Vec::with_capacity(level_count);
     for i in 0..level_count {
-        let level_seed = seed::derive_seed(settings.seed, i as u64);
-        let layout = layout::generate_layout(
-            settings.cols,
-            settings.rows,
-            settings.room_count,
-            level_seed,
-            settings.min_room_size,
-            settings.max_room_size,
-            settings.square_rooms_only,
-            settings.min_corridor_width,
-            settings.max_corridor_width,
-            settings.corridor_randomness,
-            settings.dead_end_rooms_percent,
-            settings.pack_rooms_without_corridors,
-            door_settings_from_ui(settings),
-            window_settings_from_ui(settings),
-        );
-        let layout = populate_random_markers(layout, settings);
-        levels.push(layout);
+        levels.push(generate_level(settings, i));
     }
     levels
+}
+
+// Generate one dungeon level from the current settings.
+fn generate_level(settings: &UiSettings, level_index: usize) -> DungeonLayout {
+    let level_seed = seed::derive_seed(settings.seed, level_index as u64);
+    let layout = layout::generate_layout(
+        settings.cols,
+        settings.rows,
+        settings.room_count,
+        level_seed,
+        settings.min_room_size,
+        settings.max_room_size,
+        settings.square_rooms_only,
+        settings.min_corridor_width,
+        settings.max_corridor_width,
+        settings.corridor_randomness,
+        settings.dead_end_rooms_percent,
+        settings.pack_rooms_without_corridors,
+        door_settings_from_ui(settings),
+        window_settings_from_ui(settings),
+    );
+
+    populate_random_markers(layout, settings)
 }
 
 fn clamp_dependent_settings(settings: &mut UiSettings) {
@@ -514,10 +490,8 @@ impl DungeonApp {
         if self.settings.active_level_index >= self.levels.len() {
             return;
         }
-        self.levels[self.settings.active_level_index] = DungeonLayout {
-            packed_rooms: self.settings.pack_rooms_without_corridors,
-            ..DungeonLayout::default()
-        };
+        self.levels[self.settings.active_level_index] =
+            DungeonLayout::empty(self.settings.pack_rooms_without_corridors);
         self.suppressed_auto_door_edges.clear();
         self.reset_transient_state();
     }
@@ -526,14 +500,8 @@ impl DungeonApp {
     fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.suppressed_auto_door_edges.clear();
-        let layouts = generate_all_levels(&self.settings);
-        let results = populate_stairs(layouts, &self.settings);
-        self.levels = results.iter().map(|(l, _)| l.clone()).collect();
-        for (i, (_, modified)) in results.into_iter().enumerate() {
-            if modified {
-                self.refresh_level(i);
-            }
-        }
+        self.levels = generate_all_levels(&self.settings);
+        self.refresh_stairs();
         if self.settings.active_level_index >= self.levels.len() {
             self.settings.active_level_index = 0;
         }
@@ -880,6 +848,18 @@ impl DungeonApp {
             self.settings.cols,
             self.settings.rows,
         );
+    }
+
+    // Sync stair placement across all generated levels.
+    fn refresh_stairs(&mut self) {
+        let results = populate_stairs(self.levels.clone(), &self.settings);
+        self.levels = results.iter().map(|(layout, _)| layout.clone()).collect();
+
+        for (level_idx, (_, modified)) in results.into_iter().enumerate() {
+            if modified {
+                self.refresh_level(level_idx);
+            }
+        }
     }
 
     fn refresh_doors(&mut self) {

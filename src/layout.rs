@@ -128,6 +128,30 @@ impl Default for DungeonLayout {
     }
 }
 
+impl DungeonLayout {
+    // Build an empty layout for the current packing mode.
+    pub(crate) fn empty(packed_rooms: bool) -> Self {
+        Self {
+            packed_rooms,
+            ..Self::default()
+        }
+    }
+
+    // Build a layout from generated rooms and corridors.
+    fn from_generated_parts(
+        rooms: Vec<Room>,
+        corridors: Vec<Corridor>,
+        packed_rooms: bool,
+    ) -> Self {
+        Self {
+            rooms,
+            corridors,
+            packed_rooms,
+            ..Self::default()
+        }
+    }
+}
+
 // Collect all room cells except those belonging to excluded room ids.
 pub fn blocked_room_cells(rooms: &[Room], excluded_room_ids: &[usize]) -> HashSet<(usize, usize)> {
     let excluded: HashSet<usize> = excluded_room_ids.iter().copied().collect();
@@ -184,19 +208,7 @@ pub fn generate_layout(
     let mut corridors = Vec::new();
 
     if cols < 2 || rows < 2 || target_room_count == 0 {
-        return DungeonLayout {
-            rooms,
-            corridors,
-            doors: Vec::new(),
-            windows: Vec::new(),
-            text_labels: Vec::new(),
-            start_markers: Vec::new(),
-            end_markers: Vec::new(),
-            trap_markers: Vec::new(),
-            monster_markers: Vec::new(),
-            packed_rooms: pack_rooms_without_corridors,
-            stairs: Vec::new(),
-        };
+        return DungeonLayout::empty(pack_rooms_without_corridors);
     }
 
     let mut min_size = min_room_size.max(2);
@@ -212,19 +224,7 @@ pub fn generate_layout(
     }
 
     if min_size == 0 || max_size < min_size {
-        return DungeonLayout {
-            rooms,
-            corridors,
-            doors: Vec::new(),
-            windows: Vec::new(),
-            text_labels: Vec::new(),
-            start_markers: Vec::new(),
-            end_markers: Vec::new(),
-            trap_markers: Vec::new(),
-            monster_markers: Vec::new(),
-            packed_rooms: pack_rooms_without_corridors,
-            stairs: Vec::new(),
-        };
+        return DungeonLayout::empty(pack_rooms_without_corridors);
     }
 
     let room_sizes = generate_room_sizes(
@@ -245,19 +245,7 @@ pub fn generate_layout(
 
     if pack_rooms_without_corridors {
         rooms = place_packed_rooms(&room_sizes, &room_edges, cols, rows, &mut room_rng);
-        let mut layout = DungeonLayout {
-            stairs: Vec::new(),
-            rooms,
-            corridors,
-            doors: Vec::new(),
-            windows: Vec::new(),
-            text_labels: Vec::new(),
-            start_markers: Vec::new(),
-            end_markers: Vec::new(),
-            trap_markers: Vec::new(),
-            monster_markers: Vec::new(),
-            packed_rooms: true,
-        };
+        let mut layout = DungeonLayout::from_generated_parts(rooms, corridors, true);
         apply_doors(&mut layout, seed, door_settings, cols, rows);
         apply_windows(&mut layout, seed, window_settings, cols, rows);
         return layout;
@@ -307,19 +295,7 @@ pub fn generate_layout(
     }
 
     if rooms.len() < 2 {
-        return DungeonLayout {
-            rooms,
-            corridors,
-            doors: Vec::new(),
-            windows: Vec::new(),
-            text_labels: Vec::new(),
-            start_markers: Vec::new(),
-            end_markers: Vec::new(),
-            trap_markers: Vec::new(),
-            monster_markers: Vec::new(),
-            packed_rooms: false,
-            stairs: Vec::new(),
-        };
+        return DungeonLayout::from_generated_parts(rooms, corridors, false);
     }
 
     let mut min_width = min_corridor_width.max(1);
@@ -366,19 +342,7 @@ pub fn generate_layout(
         }
     }
 
-    let mut layout = DungeonLayout {
-        stairs: Vec::new(),
-        rooms,
-        corridors,
-        doors: Vec::new(),
-        windows: Vec::new(),
-        text_labels: Vec::new(),
-        start_markers: Vec::new(),
-        end_markers: Vec::new(),
-        trap_markers: Vec::new(),
-        monster_markers: Vec::new(),
-        packed_rooms: false,
-    };
+    let mut layout = DungeonLayout::from_generated_parts(rooms, corridors, false);
     apply_doors(&mut layout, seed, door_settings, cols, rows);
     apply_windows(&mut layout, seed, window_settings, cols, rows);
     layout

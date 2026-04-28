@@ -242,101 +242,124 @@ fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value: u64
 }
 
 pub fn populate_random_traps(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
-    if settings.trap_frequency_percent == 0 {
-        return layout;
-    }
-
-    let mut trap_markers = Vec::new();
-
-    // Rooms
-    for (idx, room) in layout.rooms.iter().enumerate() {
-        let seed = seed::derive_seed(settings.seed, TRAP_ROOM_STREAM_BASE + idx as u64);
-        if (seed % 100) < settings.trap_frequency_percent as u64 {
-            let count = random_range_inclusive(
-                settings.min_traps_per_area,
-                settings.max_traps_per_area,
-                seed.rotate_left(13),
-            );
-            for i in 0..count {
-                trap_markers.push(marker_in_room(
-                    room,
-                    1,
-                    1,
-                    seed.wrapping_add(i as u64).rotate_right(7),
-                ));
-            }
-        }
-    }
-
-    // Corridors
-    for (idx, corridor) in layout.corridors.iter().enumerate() {
-        let seed = seed::derive_seed(settings.seed, TRAP_CORRIDOR_STREAM_BASE + idx as u64);
-        if (seed % 100) < settings.trap_frequency_percent as u64 {
-            let count = random_range_inclusive(
-                settings.min_traps_per_area,
-                settings.max_traps_per_area,
-                seed.rotate_left(13),
-            );
-            for i in 0..count {
-                if let Some(cell) = pick_random_corridor_cell(corridor, seed.wrapping_add(i as u64))
-                {
-                    trap_markers.push(layout::AreaMarker { cell, size: 1 });
-                }
-            }
-        }
-    }
-
-    layout.trap_markers = trap_markers;
+    layout.trap_markers = populate_random_area_markers(
+        &layout,
+        settings.seed,
+        settings.trap_frequency_percent,
+        settings.min_traps_per_area,
+        settings.max_traps_per_area,
+        TRAP_ROOM_STREAM_BASE,
+        TRAP_CORRIDOR_STREAM_BASE,
+    );
     layout
 }
 
 pub fn populate_random_monsters(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
-    if settings.monster_frequency_percent == 0 {
-        return layout;
-    }
-
-    let mut monster_markers = Vec::new();
-
-    // Rooms
-    for (idx, room) in layout.rooms.iter().enumerate() {
-        let seed = seed::derive_seed(settings.seed, MONSTER_ROOM_STREAM_BASE + idx as u64);
-        if (seed % 100) < settings.monster_frequency_percent as u64 {
-            let count = random_range_inclusive(
-                settings.min_monsters_per_area,
-                settings.max_monsters_per_area,
-                seed.rotate_left(13),
-            );
-            for i in 0..count {
-                monster_markers.push(marker_in_room(
-                    room,
-                    1,
-                    1,
-                    seed.wrapping_add(i as u64).rotate_right(7),
-                ));
-            }
-        }
-    }
-
-    // Corridors
-    for (idx, corridor) in layout.corridors.iter().enumerate() {
-        let seed = seed::derive_seed(settings.seed, MONSTER_CORRIDOR_STREAM_BASE + idx as u64);
-        if (seed % 100) < settings.monster_frequency_percent as u64 {
-            let count = random_range_inclusive(
-                settings.min_monsters_per_area,
-                settings.max_monsters_per_area,
-                seed.rotate_left(13),
-            );
-            for i in 0..count {
-                if let Some(cell) = pick_random_corridor_cell(corridor, seed.wrapping_add(i as u64))
-                {
-                    monster_markers.push(layout::AreaMarker { cell, size: 1 });
-                }
-            }
-        }
-    }
-
-    layout.monster_markers = monster_markers;
+    layout.monster_markers = populate_random_area_markers(
+        &layout,
+        settings.seed,
+        settings.monster_frequency_percent,
+        settings.min_monsters_per_area,
+        settings.max_monsters_per_area,
+        MONSTER_ROOM_STREAM_BASE,
+        MONSTER_CORRIDOR_STREAM_BASE,
+    );
     layout
+}
+
+// Populate simple one-cell area markers in rooms and corridors.
+fn populate_random_area_markers(
+    layout: &DungeonLayout,
+    master_seed: u64,
+    frequency_percent: usize,
+    min_count: usize,
+    max_count: usize,
+    room_stream_base: u64,
+    corridor_stream_base: u64,
+) -> Vec<layout::AreaMarker> {
+    if frequency_percent == 0 {
+        return Vec::new();
+    }
+
+    let mut markers = Vec::new();
+
+    for (idx, room) in layout.rooms.iter().enumerate() {
+        let area_seed = seed::derive_seed(master_seed, room_stream_base + idx as u64);
+        append_room_markers(
+            &mut markers,
+            room,
+            area_seed,
+            frequency_percent,
+            min_count,
+            max_count,
+        );
+    }
+
+    for (idx, corridor) in layout.corridors.iter().enumerate() {
+        let area_seed = seed::derive_seed(master_seed, corridor_stream_base + idx as u64);
+        append_corridor_markers(
+            &mut markers,
+            corridor,
+            area_seed,
+            frequency_percent,
+            min_count,
+            max_count,
+        );
+    }
+
+    markers
+}
+
+// Add room markers when the room passes the frequency roll.
+fn append_room_markers(
+    markers: &mut Vec<layout::AreaMarker>,
+    room: &layout::Room,
+    area_seed: u64,
+    frequency_percent: usize,
+    min_count: usize,
+    max_count: usize,
+) {
+    if !passes_frequency_roll(area_seed, frequency_percent) {
+        return;
+    }
+
+    let count = random_range_inclusive(min_count, max_count, area_seed.rotate_left(13));
+    for offset in 0..count {
+        markers.push(marker_in_room(
+            room,
+            1,
+            1,
+            area_seed.wrapping_add(offset as u64).rotate_right(7),
+        ));
+    }
+}
+
+// Add corridor markers when the corridor passes the frequency roll.
+fn append_corridor_markers(
+    markers: &mut Vec<layout::AreaMarker>,
+    corridor: &layout::Corridor,
+    area_seed: u64,
+    frequency_percent: usize,
+    min_count: usize,
+    max_count: usize,
+) {
+    if !passes_frequency_roll(area_seed, frequency_percent) {
+        return;
+    }
+
+    let count = random_range_inclusive(min_count, max_count, area_seed.rotate_left(13));
+    for offset in 0..count {
+        if let Some(cell) =
+            pick_random_corridor_cell(corridor, area_seed.wrapping_add(offset as u64))
+        {
+            markers.push(layout::AreaMarker { cell, size: 1 });
+        }
+    }
+}
+
+// Check whether an area spawns markers.
+fn passes_frequency_roll(area_seed: u64, frequency_percent: usize) -> bool {
+    (area_seed % 100) < frequency_percent as u64
 }
 
 fn pick_random_corridor_cell(
