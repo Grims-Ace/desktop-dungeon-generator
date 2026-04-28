@@ -7,7 +7,9 @@ use rayon::prelude::*;
 use rfd::FileDialog;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
-use crate::layout::{AreaMarker, Door, DungeonLayout, Room, Window, WindowSide, corridor_cells};
+use crate::layout::{
+    AreaMarker, Door, DungeonLayout, Room, Staircase, Window, WindowSide, corridor_cells,
+};
 use crate::ui::{ExportFormat, MaskFormat, UiSettings};
 
 const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
@@ -25,6 +27,7 @@ const START_MARKER: (u8, u8, u8, u8) = (60, 220, 200, 255);
 const END_MARKER: (u8, u8, u8, u8) = (240, 90, 90, 255);
 const TRAP_MARKER: (u8, u8, u8, u8) = (150, 80, 230, 255);
 const MONSTER_MARKER: (u8, u8, u8, u8) = (200, 50, 50, 255);
+const STAIRS: (u8, u8, u8, u8) = (200, 150, 50, 255);
 
 pub enum ExportTarget {
     File(PathBuf),
@@ -319,6 +322,14 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         settings.colorblind_mode,
     );
 
+    draw_staircase_group(
+        &mut pixmap,
+        &g,
+        &layout.stairs,
+        STAIRS,
+        settings.colorblind_mode,
+    );
+
     Ok(pixmap)
 }
 
@@ -348,6 +359,7 @@ fn export_composite_masks(
         EndMarkers,
         TrapMarkers,
         MonsterMarkers,
+        Stairs,
         Grid,
     }
 
@@ -363,6 +375,7 @@ fn export_composite_masks(
         MaskTask::EndMarkers,
         MaskTask::TrapMarkers,
         MaskTask::MonsterMarkers,
+        MaskTask::Stairs,
     ];
 
     if settings.export_show_grid {
@@ -468,6 +481,13 @@ fn export_composite_masks(
                 let mut pixmap = blank_mask(&g, "monster markers").unwrap();
                 fill_marker_mask(&mut pixmap, &g, &layout.monster_markers);
                 ("monster_markers_mask", pixmap)
+            }
+            MaskTask::Stairs => {
+                let mut pixmap = blank_mask(&g, "stairs").unwrap();
+                for staircase in &layout.stairs {
+                    fill_rect_staircase(&mut pixmap, &g, staircase, WHITE);
+                }
+                ("stairs_mask", pixmap)
             }
             MaskTask::Grid => {
                 let mut pixmap = Pixmap::new(g.width, g.height).unwrap();
@@ -1084,6 +1104,95 @@ fn draw_area_marker(
             symbol,
             DoorStyle::Solid,
         );
+    }
+}
+
+fn fill_rect_staircase(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    staircase: &Staircase,
+    color: (u8, u8, u8, u8),
+) {
+    let Some(rect) = Rect::from_xywh(
+        g.left() + staircase.cell.0 as f32 * g.cell,
+        g.top() + staircase.cell.1 as f32 * g.cell,
+        staircase.size as f32 * g.cell,
+        staircase.size as f32 * g.cell,
+    ) else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(color.0, color.1, color.2, color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn draw_staircase(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    staircase: &Staircase,
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    let fill_color = if colorblind_mode {
+        (180, 180, 180, 90)
+    } else {
+        (color.0, color.1, color.2, 90)
+    };
+
+    let Some(rect) = Rect::from_xywh(
+        g.left() + staircase.cell.0 as f32 * g.cell,
+        g.top() + staircase.cell.1 as f32 * g.cell,
+        staircase.size as f32 * g.cell,
+        staircase.size as f32 * g.cell,
+    ) else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(fill_color.0, fill_color.1, fill_color.2, fill_color.3);
+    pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+
+    let stroke_color = if colorblind_mode {
+        BLACK
+    } else {
+        (150, 100, 30, 255)
+    };
+    let x = rect.left();
+    let y = rect.top();
+    let w = rect.width();
+    let h = rect.height();
+
+    draw_wall_segment(pixmap, x, y, x + w, y, 2.0, stroke_color);
+    draw_wall_segment(pixmap, x, y + h, x + w, y + h, 2.0, stroke_color);
+    draw_wall_segment(pixmap, x, y, x, y + h, 2.0, stroke_color);
+    draw_wall_segment(pixmap, x + w, y, x + w, y + h, 2.0, stroke_color);
+
+    let steps = (staircase.size as f32 * 2.0).round() as usize;
+    let step_h = h / steps as f32;
+    for i in 0..steps {
+        let sy = (y + (i as f32 * step_h) + step_h * 0.5).round();
+        draw_line(
+            pixmap,
+            x + 2.0,
+            sy,
+            x + w - 2.0,
+            sy,
+            1.5,
+            stroke_color,
+            DoorStyle::Solid,
+        );
+    }
+}
+
+fn draw_staircase_group(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    stairs: &[Staircase],
+    color: (u8, u8, u8, u8),
+    colorblind_mode: bool,
+) {
+    for staircase in stairs {
+        draw_staircase(pixmap, g, staircase, color, colorblind_mode);
     }
 }
 
