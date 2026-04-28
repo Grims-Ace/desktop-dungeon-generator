@@ -1,6 +1,6 @@
 use crate::seed;
 use eframe::egui;
-use egui::RichText;
+use egui::{Color32, RichText, Stroke};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,6 +321,88 @@ pub fn draw_side_panel(
         });
 
     result
+}
+
+// Draw the accessibility and legend panel.
+pub fn draw_legend_panel(ctx: &egui::Context, colorblind_mode: &mut bool) {
+    egui::SidePanel::right("legend_panel")
+        .resizable(false)
+        .min_width(180.0)
+        .default_width(200.0)
+        .show_separator_line(true)
+        .show(ctx, |ui| {
+            ui.heading("Accessibility");
+            ui.add_space(6.0);
+            ui.checkbox(colorblind_mode, "Colorblind Mode");
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(8.0);
+            ui.heading("Legend");
+            ui.add_space(8.0);
+            if *colorblind_mode {
+                draw_legend_entry_colorblind(ui, "Rooms", LegendStyle::Crosshatch);
+                draw_legend_entry_colorblind(ui, "Corridors", LegendStyle::Dots);
+                draw_legend_entry_colorblind(ui, "Walls", LegendStyle::SolidLine);
+                draw_legend_entry_colorblind(ui, "Doors", LegendStyle::LongDash);
+                draw_legend_entry_colorblind(ui, "Locked Doors", LegendStyle::ShortDash);
+                draw_legend_entry_colorblind(ui, "Secret Doors", LegendStyle::DashDotDotLine);
+                draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
+                draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
+                draw_legend_entry_colorblind(ui, "Stairs", LegendStyle::LabelChar('\u{1F5CF}'));
+                draw_legend_entry_colorblind(ui, "Start Marker", LegendStyle::Label("S"));
+                draw_legend_entry_colorblind(ui, "End Marker", LegendStyle::Label("E"));
+                draw_legend_entry_colorblind(ui, "Trap", LegendStyle::Label("T"));
+                draw_legend_entry_colorblind(ui, "Monster", LegendStyle::Label("M"));
+            } else {
+                draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
+                draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
+                draw_legend_entry(ui, Color32::BLACK, "Walls");
+                draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Doors");
+                draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
+                draw_legend_entry(ui, Color32::from_rgb(170, 80, 170), "Secret Doors");
+                draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
+                draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
+                draw_legend_entry(ui, Color32::from_rgb(200, 150, 50), "Stairs");
+                draw_legend_entry(ui, Color32::from_rgb(60, 220, 200), "Start Marker");
+                draw_legend_entry(ui, Color32::from_rgb(240, 90, 90), "End Marker");
+                draw_legend_entry(ui, Color32::from_rgb(150, 80, 230), "Trap");
+                draw_legend_entry(ui, Color32::from_rgb(200, 50, 50), "Monster");
+            }
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(8.0);
+            ui.heading("Keybinds");
+            ui.add_space(6.0);
+            ui.label("• Delete / Backspace: Remove hovered room, corridor, door, text, or marker");
+            ui.label("• Ctrl+Z: Undo");
+            ui.label("• Ctrl+Y: Redo");
+            ui.label("• Left click + drag: Move hovered room");
+            ui.label("• Right click: Cancel add tool");
+            ui.label("• Right click + drag: Resize hovered room");
+        });
+}
+
+// Draw level tabs and return the hovered tab index.
+pub fn draw_level_tabs(
+    ui: &mut egui::Ui,
+    level_count: usize,
+    active_level_index: &mut usize,
+) -> Option<usize> {
+    let mut hovered_level_idx = None;
+    ui.horizontal(|ui| {
+        for level_idx in 0..level_count {
+            let label = format!("Level {}", level_idx + 1);
+            let is_active = *active_level_index == level_idx;
+            let response = ui.selectable_label(is_active, label);
+            if response.hovered() {
+                hovered_level_idx = Some(level_idx);
+            }
+            if response.clicked() {
+                *active_level_index = level_idx;
+            }
+        }
+    });
+    hovered_level_idx
 }
 
 // Render the Generate tab controls.
@@ -1056,6 +1138,281 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
         AddTool::MonsterMarker => ui.label("Click the grid to place a monster marker."),
         AddTool::None => ui.label("Select a tool to add rooms or corridors."),
     };
+}
+
+// Draw a colored legend entry.
+fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
+    ui.horizontal(|ui| {
+        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, color);
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0, Color32::WHITE),
+            egui::StrokeKind::Middle,
+        );
+        ui.add_space(6.0);
+        ui.label(label);
+    });
+    ui.add_space(4.0);
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LegendStyle {
+    Crosshatch,
+    Dots,
+    SolidLine,
+    LongDash,
+    ShortDash,
+    DottedLine,
+    DashDotLine,
+    DashDotDotLine,
+    Label(&'static str),
+    LabelChar(char),
+}
+
+// Draw a patterned legend entry.
+fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendStyle) {
+    ui.horizontal(|ui| {
+        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, Color32::from_gray(220));
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0, Color32::BLACK),
+            egui::StrokeKind::Middle,
+        );
+
+        match style {
+            LegendStyle::Crosshatch => {
+                ui.painter().line_segment(
+                    [rect.left_top(), rect.right_bottom()],
+                    Stroke::new(1.2, Color32::BLACK),
+                );
+                ui.painter().line_segment(
+                    [rect.right_top(), rect.left_bottom()],
+                    Stroke::new(1.2, Color32::BLACK),
+                );
+            }
+            LegendStyle::Dots => {
+                ui.painter()
+                    .circle_filled(rect.center(), 2.0, Color32::BLACK);
+                ui.painter().circle_filled(
+                    egui::pos2(rect.center().x - 4.0, rect.center().y),
+                    1.4,
+                    Color32::BLACK,
+                );
+                ui.painter().circle_filled(
+                    egui::pos2(rect.center().x + 4.0, rect.center().y),
+                    1.4,
+                    Color32::BLACK,
+                );
+            }
+            LegendStyle::SolidLine => {
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(rect.left() + 1.0, rect.center().y),
+                        egui::pos2(rect.right() - 1.0, rect.center().y),
+                    ],
+                    Stroke::new(2.0, Color32::BLACK),
+                );
+            }
+            LegendStyle::Label(prefix) => {
+                ui.painter()
+                    .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
+                ui.painter()
+                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
+                let font_size = 10.0;
+                let font_id = egui::FontId::monospace(font_size);
+                let text_width = prefix.len() as f32 * font_size * 0.6;
+                let text_height = font_size * 0.8;
+                let text_pos = egui::pos2(
+                    rect.center().x - text_width / 2.0,
+                    rect.center().y - text_height / 2.0 + font_size / 5.0,
+                );
+                ui.painter().text(
+                    text_pos,
+                    egui::Align2::LEFT_TOP,
+                    prefix,
+                    font_id,
+                    Color32::BLACK,
+                );
+            }
+            LegendStyle::LabelChar(character) => {
+                ui.painter()
+                    .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
+                ui.painter()
+                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
+                let font_size = 10.0;
+                let font_id = egui::FontId::monospace(font_size);
+                let text_width = font_size * 0.6;
+                let text_height = font_size * 0.8;
+                let text_pos = egui::pos2(
+                    rect.center().x - text_width / 2.0,
+                    rect.center().y - text_height / 2.0 + font_size / 5.0,
+                );
+                ui.painter().text(
+                    text_pos,
+                    egui::Align2::LEFT_TOP,
+                    character,
+                    font_id,
+                    Color32::BLACK,
+                );
+            }
+            LegendStyle::LongDash => draw_dashed_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+                6.0,
+                3.0,
+            ),
+            LegendStyle::ShortDash => draw_dashed_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+                3.0,
+                2.0,
+            ),
+            LegendStyle::DottedLine => draw_dotted_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+            LegendStyle::DashDotLine => draw_dash_dot_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+            LegendStyle::DashDotDotLine => draw_dash_dot_dot_line(
+                ui.painter(),
+                egui::pos2(rect.left() + 1.0, rect.center().y),
+                egui::pos2(rect.right() - 1.0, rect.center().y),
+                Stroke::new(2.0, Color32::BLACK),
+            ),
+        }
+
+        ui.add_space(6.0);
+        ui.label(label);
+    });
+    ui.add_space(4.0);
+}
+
+// Draw a dashed line.
+fn draw_dashed_line(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    stroke: Stroke,
+    dash_len: f32,
+    gap_len: f32,
+) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let seg_start = dist;
+        let seg_end = (dist + dash_len).min(len);
+        let p0 = egui::pos2(from.x + ux * seg_start, from.y + uy * seg_start);
+        let p1 = egui::pos2(from.x + ux * seg_end, from.y + uy * seg_end);
+        painter.line_segment([p0, p1], stroke);
+        dist += dash_len + gap_len;
+    }
+}
+
+// Draw a dotted line.
+fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let step = 5.0_f32;
+    let radius = (stroke.width * 0.35).max(1.0);
+
+    let mut dist = 0.0_f32;
+    while dist <= len {
+        let point = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(point, radius, stroke.color);
+        dist += step;
+    }
+}
+
+fn draw_dash_dot_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+
+    let ux = dx / len;
+    let uy = dy / len;
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let dash_end = (dist + 7.0).min(len);
+        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
+        painter.line_segment([p0, p1], stroke);
+        dist = dash_end + 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot, (stroke.width * 0.35).max(1.0), stroke.color);
+        dist += 4.0;
+    }
+}
+
+fn draw_dash_dot_dot_line(
+    painter: &egui::Painter,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    stroke: Stroke,
+) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 0.0 {
+        return;
+    }
+
+    let ux = dx / len;
+    let uy = dy / len;
+    let radius = (stroke.width * 0.35).max(1.0);
+    let mut dist = 0.0_f32;
+    while dist < len {
+        let dash_end = (dist + 7.0).min(len);
+        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
+        painter.line_segment([p0, p1], stroke);
+        dist = dash_end + 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot1 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot1, radius, stroke.color);
+        dist += 3.0;
+        if dist >= len {
+            break;
+        }
+        let dot2 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
+        painter.circle_filled(dot2, radius, stroke.color);
+        dist += 4.0;
+    }
 }
 
 fn draw_start_and_end_tab(

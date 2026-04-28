@@ -16,7 +16,7 @@ use layout::{
     manual_marker_size, manual_monster_marker_size, manual_trap_marker_size,
     populate_random_markers, populate_stairs, shortest_path_cells,
 };
-use ui::{AddTool, UiSettings, draw_side_panel};
+use ui::{AddTool, UiSettings, draw_legend_panel, draw_level_tabs, draw_side_panel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManualDoorKind {
@@ -216,81 +216,12 @@ impl eframe::App for DungeonApp {
             }
         }
 
-        egui::SidePanel::right("legend_panel")
-            .resizable(false)
-            .min_width(180.0)
-            .default_width(200.0)
-            .show_separator_line(true)
-            .show(ctx, |ui| {
-                ui.heading("Accessibility");
-                ui.add_space(6.0);
-                ui.checkbox(&mut self.settings.colorblind_mode, "Colorblind Mode");
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(8.0);
-                ui.heading("Legend");
-                ui.add_space(8.0);
-                if self.settings.colorblind_mode {
-                    draw_legend_entry_colorblind(ui, "Rooms", LegendStyle::Crosshatch);
-                    draw_legend_entry_colorblind(ui, "Corridors", LegendStyle::Dots);
-                    draw_legend_entry_colorblind(ui, "Walls", LegendStyle::SolidLine);
-                    draw_legend_entry_colorblind(ui, "Doors", LegendStyle::LongDash);
-                    draw_legend_entry_colorblind(ui, "Locked Doors", LegendStyle::ShortDash);
-                    draw_legend_entry_colorblind(ui, "Secret Doors", LegendStyle::DashDotDotLine);
-                    draw_legend_entry_colorblind(ui, "Archways", LegendStyle::DottedLine);
-                    draw_legend_entry_colorblind(ui, "Windows", LegendStyle::DashDotLine);
-                    draw_legend_entry_colorblind(ui, "Stairs", LegendStyle::LabelChar('\u{1F5CF}'));
-                    draw_legend_entry_colorblind(ui, "Start Marker", LegendStyle::Label("S"));
-                    draw_legend_entry_colorblind(ui, "End Marker", LegendStyle::Label("E"));
-                    draw_legend_entry_colorblind(ui, "Trap", LegendStyle::Label("T"));
-                    draw_legend_entry_colorblind(ui, "Monster", LegendStyle::Label("M"));
-                } else {
-                    draw_legend_entry(ui, Color32::from_rgb(70, 120, 160), "Rooms");
-                    draw_legend_entry(ui, Color32::from_rgb(210, 190, 120), "Corridors");
-                    draw_legend_entry(ui, Color32::BLACK, "Walls");
-                    draw_legend_entry(ui, Color32::from_rgb(80, 200, 120), "Doors");
-                    draw_legend_entry(ui, Color32::from_rgb(220, 70, 70), "Locked Doors");
-                    draw_legend_entry(ui, Color32::from_rgb(170, 80, 170), "Secret Doors");
-                    draw_legend_entry(ui, Color32::from_rgb(230, 140, 60), "Archways");
-                    draw_legend_entry(ui, Color32::from_rgb(70, 130, 220), "Windows");
-                    draw_legend_entry(ui, Color32::from_rgb(200, 150, 50), "Stairs");
-                    draw_legend_entry(ui, Color32::from_rgb(60, 220, 200), "Start Marker");
-                    draw_legend_entry(ui, Color32::from_rgb(240, 90, 90), "End Marker");
-                    draw_legend_entry(ui, Color32::from_rgb(150, 80, 230), "Trap");
-                    draw_legend_entry(ui, Color32::from_rgb(200, 50, 50), "Monster");
-                }
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(8.0);
-                ui.heading("Keybinds");
-                ui.add_space(6.0);
-                ui.label(
-                    "• Delete / Backspace: Remove hovered room, corridor, door, text, or marker",
-                );
-                ui.label("• Ctrl+Z: Undo");
-                ui.label("• Ctrl+Y: Redo");
-                ui.label("• Left click + drag: Move hovered room");
-                ui.label("• Right click: Cancel add tool");
-                ui.label("• Right click + drag: Resize hovered room");
-            });
+        draw_legend_panel(ctx, &mut self.settings.colorblind_mode);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Clear level hover state so it only reflects current frame.
-            self.hover_level_idx = None;
-            ui.horizontal(|ui| {
-                for i in 0..self.levels.len() {
-                    let label = format!("Level {}", i + 1);
-                    let is_active = self.settings.active_level_index == i;
-                    let response = ui.selectable_label(is_active, label);
-                    // Track hover on level tabs.
-                    if response.hovered() {
-                        self.hover_level_idx = Some(i);
-                    }
-                    if response.clicked() {
-                        self.settings.active_level_index = i;
-                    }
-                }
-            });
+            self.hover_level_idx =
+                draw_level_tabs(ui, self.levels.len(), &mut self.settings.active_level_index);
             ui.separator();
 
             let available = ui.available_size_before_wrap();
@@ -3650,164 +3581,4 @@ fn draw_room_crosshatch(
             painter.line_segment([rect.right_top(), rect.left_bottom()], stroke);
         }
     }
-}
-
-// Draw a colored legend entry in the sidebar.
-fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
-    ui.horizontal(|ui| {
-        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 0.0, color);
-        ui.painter().rect_stroke(
-            rect,
-            0.0,
-            Stroke::new(1.0, Color32::WHITE),
-            egui::StrokeKind::Middle,
-        );
-        ui.add_space(6.0);
-        ui.label(label);
-    });
-    ui.add_space(4.0);
-}
-
-#[derive(Debug, Clone, Copy)]
-enum LegendStyle {
-    Crosshatch,
-    Dots,
-    SolidLine,
-    LongDash,
-    ShortDash,
-    DottedLine,
-    DashDotLine,
-    DashDotDotLine,
-    Label(&'static str),
-    LabelChar(char),
-}
-
-// Draw a patterned legend entry for colorblind mode.
-fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: LegendStyle) {
-    ui.horizontal(|ui| {
-        let (rect, _resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 0.0, Color32::from_gray(220));
-        ui.painter().rect_stroke(
-            rect,
-            0.0,
-            Stroke::new(1.0, Color32::BLACK),
-            egui::StrokeKind::Middle,
-        );
-
-        match style {
-            LegendStyle::Crosshatch => {
-                ui.painter().line_segment(
-                    [rect.left_top(), rect.right_bottom()],
-                    Stroke::new(1.2, Color32::BLACK),
-                );
-                ui.painter().line_segment(
-                    [rect.right_top(), rect.left_bottom()],
-                    Stroke::new(1.2, Color32::BLACK),
-                );
-            }
-            LegendStyle::Dots => {
-                ui.painter()
-                    .circle_filled(rect.center(), 2.0, Color32::BLACK);
-                ui.painter().circle_filled(
-                    egui::pos2(rect.center().x - 4.0, rect.center().y),
-                    1.4,
-                    Color32::BLACK,
-                );
-                ui.painter().circle_filled(
-                    egui::pos2(rect.center().x + 4.0, rect.center().y),
-                    1.4,
-                    Color32::BLACK,
-                );
-            }
-            LegendStyle::SolidLine => {
-                ui.painter().line_segment(
-                    [
-                        egui::pos2(rect.left() + 1.0, rect.center().y),
-                        egui::pos2(rect.right() - 1.0, rect.center().y),
-                    ],
-                    Stroke::new(2.0, Color32::BLACK),
-                );
-            }
-            LegendStyle::Label(prefix) => {
-                // Draw a small circle background for the label
-                ui.painter()
-                    .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
-                ui.painter()
-                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
-                // Draw the prefix text in the center (monospace char is ~0.6 * font_size wide)
-                let font_size = 10.0;
-                let font_id = egui::FontId::monospace(font_size);
-                let text_width = prefix.len() as f32 * font_size * 0.6;
-                let text_height = font_size * 0.8;
-                let text_pos = egui::pos2(
-                    rect.center().x - text_width / 2.0,
-                    rect.center().y - text_height / 2.0 + font_size / 5.0,
-                );
-                ui.painter().text(
-                    text_pos,
-                    egui::Align2::LEFT_TOP,
-                    prefix,
-                    font_id,
-                    Color32::BLACK,
-                );
-            }
-            LegendStyle::LabelChar(c) => {
-                // Draw a small circle background for the label
-                ui.painter()
-                    .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
-                ui.painter()
-                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
-                // Draw the character in the center
-                let font_size = 10.0;
-                let font_id = egui::FontId::monospace(font_size);
-                let text_width = 1.0 as f32 * font_size * 0.6;
-                let text_height = font_size * 0.8;
-                let text_pos = egui::pos2(
-                    rect.center().x - text_width / 2.0,
-                    rect.center().y - text_height / 2.0 + font_size / 5.0,
-                );
-                ui.painter()
-                    .text(text_pos, egui::Align2::LEFT_TOP, c, font_id, Color32::BLACK);
-            }
-            LegendStyle::LongDash => draw_dashed_line(
-                ui.painter(),
-                egui::pos2(rect.left() + 1.0, rect.center().y),
-                egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
-                6.0,
-                3.0,
-            ),
-            LegendStyle::ShortDash => draw_dashed_line(
-                ui.painter(),
-                egui::pos2(rect.left() + 1.0, rect.center().y),
-                egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
-                3.0,
-                2.0,
-            ),
-            LegendStyle::DottedLine => draw_dotted_line(
-                ui.painter(),
-                egui::pos2(rect.left() + 1.0, rect.center().y),
-                egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
-            ),
-            LegendStyle::DashDotLine => draw_dash_dot_line(
-                ui.painter(),
-                egui::pos2(rect.left() + 1.0, rect.center().y),
-                egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
-            ),
-            LegendStyle::DashDotDotLine => draw_dash_dot_dot_line(
-                ui.painter(),
-                egui::pos2(rect.left() + 1.0, rect.center().y),
-                egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
-            ),
-        }
-
-        ui.add_space(6.0);
-        ui.label(label);
-    });
-    ui.add_space(4.0);
 }
