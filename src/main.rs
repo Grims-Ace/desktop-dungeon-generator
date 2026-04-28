@@ -1196,9 +1196,22 @@ impl DungeonApp {
                 layout.stairs.push(stair.clone());
             }
         } else {
-            // Add stairs only to the active level.
-            let layout = &mut self.levels[self.settings.active_level_index];
-            layout.stairs.push(stair);
+            // Add stairs to the active level and the adjacent level above (or below for top level).
+            let active_idx = self.settings.active_level_index;
+            let layout = &mut self.levels[active_idx];
+            layout.stairs.push(stair.clone());
+
+            // Determine which adjacent level to add the stair to.
+            // Stairs connect two adjacent floors, so we add them to the level above
+            // (or below if this is the top level).
+            if active_idx + 1 < self.levels.len() {
+                let above_layout = &mut self.levels[active_idx + 1];
+                above_layout.stairs.push(stair);
+            } else if active_idx > 0 {
+                // Top level: connect to the level below
+                let below_layout = &mut self.levels[active_idx - 1];
+                below_layout.stairs.push(stair);
+            }
         }
     }
 
