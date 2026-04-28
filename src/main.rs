@@ -3,7 +3,6 @@ mod layout;
 mod saveandload;
 mod seed;
 mod settings;
-mod startend;
 mod ui;
 
 use std::collections::HashSet;
@@ -14,11 +13,8 @@ use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{
     DoorSettings, DungeonLayout, WindowSettings, blocked_room_cells, corridor_cells,
-    shortest_path_cells,
-};
-use startend::{
     manual_marker_size, manual_monster_marker_size, manual_trap_marker_size,
-    populate_random_markers, populate_stairs,
+    populate_random_markers, populate_stairs, shortest_path_cells,
 };
 use ui::{AddTool, UiSettings, draw_side_panel};
 
