@@ -114,7 +114,12 @@ impl Drop for DungeonApp {
 impl eframe::App for DungeonApp {
     // Render UI, handle input, and update app state each frame.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let panel_result = draw_side_panel(ctx, &mut self.settings, self.export_rx.is_some());
+        let panel_result = draw_side_panel(
+            ctx,
+            &mut self.settings,
+            self.export_rx.is_some(),
+            self.levels.len(),
+        );
         let undo_requested = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z));
         let redo_requested = ctx.input(|i| {
             (i.modifiers.command && i.key_pressed(egui::Key::Y))
@@ -218,8 +223,12 @@ impl eframe::App for DungeonApp {
                 }
             }
 
-            if self.settings.active_level_index < self.levels.len() {
-                let layout = self.levels[self.settings.active_level_index].clone();
+            let export_idx = self
+                .settings
+                .export_level_index
+                .min(self.levels.len().saturating_sub(1));
+            if export_idx < self.levels.len() {
+                let layout = self.levels[export_idx].clone();
                 let settings = self.settings.clone();
                 let (tx, rx) = mpsc::channel();
                 thread::spawn(move || {

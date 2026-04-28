@@ -145,6 +145,7 @@ pub struct UiSettings {
     pub min_levels: usize,
     pub max_levels: usize,
     pub active_level_index: usize,
+    pub export_level_index: usize,
     pub trap_frequency_percent: usize,
     pub min_traps_per_area: usize,
     pub max_traps_per_area: usize,
@@ -223,6 +224,7 @@ impl Default for UiSettings {
             max_stairs_per_level: 2,
             sync_stairs_across_levels: false,
             manual_stair_size: 2,
+            export_level_index: 0,
             active_tab: Tab::Generate,
         }
     }
@@ -260,6 +262,7 @@ pub fn draw_side_panel(
     ctx: &egui::Context,
     settings: &mut UiSettings,
     export_in_progress: bool,
+    num_levels: usize,
 ) -> SidePanelResult {
     // Render the left side panel and return user interaction results.
     let mut result = SidePanelResult::default();
@@ -307,7 +310,7 @@ pub fn draw_side_panel(
 
                 match settings.active_tab {
                     Tab::Generate => {
-                        draw_generate_tab(ui, settings, &mut result, export_in_progress)
+                        draw_generate_tab(ui, settings, &mut result, export_in_progress, num_levels)
                     }
                     Tab::Layout => draw_layout_tab(ui, settings, &mut result),
                     Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
@@ -326,6 +329,7 @@ fn draw_generate_tab(
     settings: &mut UiSettings,
     result: &mut SidePanelResult,
     export_in_progress: bool,
+    num_levels: usize,
 ) {
     ui.label(RichText::new("Grid Settings").strong());
     ui.add_space(8.0);
@@ -421,6 +425,23 @@ fn draw_generate_tab(
                     ExportFormat::Folder,
                     "Folder (Composite)",
                 );
+            });
+    });
+
+    ui.add_space(4.0);
+    let level_count = num_levels;
+    ui.horizontal(|ui| {
+        ui.label("Level");
+        egui::ComboBox::from_id_salt("export_level")
+            .selected_text(format!("Level {}", settings.export_level_index))
+            .show_ui(ui, |ui| {
+                for i in 0..level_count {
+                    ui.selectable_value(
+                        &mut settings.export_level_index,
+                        i,
+                        format!("Level {}", i),
+                    );
+                }
             });
     });
 
