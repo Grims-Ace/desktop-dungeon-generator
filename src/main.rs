@@ -141,19 +141,21 @@ impl eframe::App for DungeonApp {
             self.push_undo_snapshot();
             self.regenerate_layout();
         } else if panel_result.save_clicked {
-            if self.settings.active_level_index < self.levels.len() {
-                let layout = &self.levels[self.settings.active_level_index];
-                let svg = exporter::build_svg(layout, &self.settings);
-                if let Err(err) = saveandload::save_dungeon(&self.settings, layout, svg) {
-                    eprintln!("{err}");
-                }
+            let mut layouts = Vec::new();
+            let mut svgs = Vec::new();
+            for layout in &self.levels {
+                layouts.push(layout.clone());
+                svgs.push(exporter::build_svg(layout, &self.settings));
+            }
+            if let Err(err) = saveandload::save_dungeon(&self.settings, layouts, svgs) {
+                eprintln!("{err}");
             }
         } else if panel_result.load_clicked {
             match saveandload::load_dungeon() {
                 Ok(data) => {
                     self.push_undo_snapshot();
                     self.settings = data.settings;
-                    self.levels = vec![data.layout];
+                    self.levels = data.layouts;
                     self.settings.active_level_index = 0;
                     // Don't regenerate_layout() here to preserve the exact loaded state.
                 }

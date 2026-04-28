@@ -9,14 +9,14 @@ use crate::ui::UiSettings;
 #[derive(Serialize, Deserialize)]
 pub struct DungeonSave {
     pub settings: UiSettings,
-    pub layout: DungeonLayout,
-    pub svg: String,
+    pub layouts: Vec<DungeonLayout>,
+    pub svgs: Vec<String>,
 }
 
 pub fn save_dungeon(
     settings: &UiSettings,
-    layout: &DungeonLayout,
-    svg: String,
+    layouts: Vec<DungeonLayout>,
+    svgs: Vec<String>,
 ) -> Result<PathBuf, String> {
     let path = FileDialog::new()
         .set_title("Save Dungeon State")
@@ -27,8 +27,8 @@ pub fn save_dungeon(
 
     let save_data = DungeonSave {
         settings: settings.clone(),
-        layout: layout.clone(),
-        svg,
+        layouts,
+        svgs,
     };
 
     let json = serde_json::to_string_pretty(&save_data)
