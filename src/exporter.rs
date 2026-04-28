@@ -136,8 +136,13 @@ fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneDat
 
 // Open a dialog to select an export destination.
 pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, String> {
-    if settings.export_format == ExportFormat::Folder {
-        let mut dialog = FileDialog::new().set_title("Export composite masks folder");
+    if settings.export_format == ExportFormat::Folder || settings.export_level_index == 999 {
+        let title = if settings.export_level_index == 999 {
+            "Select export folder for all levels"
+        } else {
+            "Export composite masks folder"
+        };
+        let mut dialog = FileDialog::new().set_title(title);
         if let Some(ref last_path) = settings.last_export_path {
             dialog = dialog.set_directory(last_path);
         }
@@ -173,38 +178,72 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
 
 // Export the current layout to the chosen file or folder target.
 pub fn export_to_target(
-    layout: &DungeonLayout,
+    layouts: &[DungeonLayout],
     settings: &UiSettings,
     target: ExportTarget,
 ) -> Result<PathBuf, String> {
+    let export_indices: Vec<usize> = if settings.export_level_index == 999 {
+        (0..layouts.len()).collect()
+    } else {
+        let idx = settings
+            .export_level_index
+            .min(layouts.len().saturating_sub(1));
+        vec![idx]
+    };
+
     match target {
         ExportTarget::Folder(folder) => {
-            export_composite_masks(layout, settings, &folder)?;
+            for &idx in &export_indices {
+                let layout = &layouts[idx];
+                if settings.export_format == ExportFormat::Folder {
+                    let subfolder = if settings.export_level_index == 999 {
+                        folder.join(format!("level {}", idx + 1))
+                    } else {
+                        folder.clone()
+                    };
+                    export_composite_masks(layout, settings, &subfolder)?;
+                } else {
+                    let ext = settings.export_format.extension();
+                    let filename = format!("level{}.{ext}", idx + 1);
+                    let path = folder.join(filename);
+                    save_layout_to_file(layout, settings, &path)?;
+                }
+            }
             Ok(folder)
         }
         ExportTarget::File(path) => {
-            match settings.export_format {
-                ExportFormat::Svg => {
-                    let svg = build_svg(layout, settings);
-                    std::fs::write(&path, svg).map_err(|e| format!("Failed writing SVG: {e}"))?;
-                }
-                ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
-                    let pixmap = render_pixmap(layout, settings)?;
-                    let img = raster_image_from_pixmap(&pixmap, settings)?;
-                    let format = match settings.export_format {
-                        ExportFormat::Png => ImageFormat::Png,
-                        ExportFormat::Jpeg => ImageFormat::Jpeg,
-                        ExportFormat::Webp => ImageFormat::WebP,
-                        ExportFormat::Svg | ExportFormat::Folder => unreachable!(),
-                    };
-                    img.save_with_format(&path, format)
-                        .map_err(|e| format!("Failed writing image: {e}"))?;
-                }
-                ExportFormat::Folder => unreachable!(),
-            }
+            let idx = export_indices[0];
+            save_layout_to_file(&layouts[idx], settings, &path)?;
             Ok(path)
         }
     }
+}
+
+fn save_layout_to_file(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    match settings.export_format {
+        ExportFormat::Svg => {
+            let svg = build_svg(layout, settings);
+            std::fs::write(path, svg).map_err(|e| format!("Failed writing SVG: {e}"))?;
+        }
+        ExportFormat::Png | ExportFormat::Jpeg | ExportFormat::Webp => {
+            let pixmap = render_pixmap(layout, settings)?;
+            let img = raster_image_from_pixmap(&pixmap, settings)?;
+            let format = match settings.export_format {
+                ExportFormat::Png => ImageFormat::Png,
+                ExportFormat::Jpeg => ImageFormat::Jpeg,
+                ExportFormat::Webp => ImageFormat::WebP,
+                ExportFormat::Svg | ExportFormat::Folder => unreachable!(),
+            };
+            img.save_with_format(path, format)
+                .map_err(|e| format!("Failed writing image: {e}"))?;
+        }
+        ExportFormat::Folder => unreachable!(),
+    }
+    Ok(())
 }
 
 // Render the dungeon layout to a pixmap.

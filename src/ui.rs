@@ -432,14 +432,20 @@ fn draw_generate_tab(
     let level_count = num_levels;
     ui.horizontal(|ui| {
         ui.label("Level");
+        let selected_text = if settings.export_level_index == 999 {
+            "All Levels".to_string()
+        } else {
+            format!("Level {}", settings.export_level_index + 1)
+        };
         egui::ComboBox::from_id_salt("export_level")
-            .selected_text(format!("Level {}", settings.export_level_index))
+            .selected_text(selected_text)
             .show_ui(ui, |ui| {
+                ui.selectable_value(&mut settings.export_level_index, 999, "All Levels");
                 for i in 0..level_count {
                     ui.selectable_value(
                         &mut settings.export_level_index,
                         i,
-                        format!("Level {}", i),
+                        format!("Level {}", i + 1),
                     );
                 }
             });

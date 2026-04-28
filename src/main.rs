@@ -223,20 +223,14 @@ impl eframe::App for DungeonApp {
                 }
             }
 
-            let export_idx = self
-                .settings
-                .export_level_index
-                .min(self.levels.len().saturating_sub(1));
-            if export_idx < self.levels.len() {
-                let layout = self.levels[export_idx].clone();
-                let settings = self.settings.clone();
-                let (tx, rx) = mpsc::channel();
-                thread::spawn(move || {
-                    let result = exporter::export_to_target(&layout, &settings, target);
-                    let _ = tx.send(result);
-                });
-                self.export_rx = Some(rx);
-            }
+            let layouts = self.levels.clone();
+            let settings = self.settings.clone();
+            let (tx, rx) = mpsc::channel();
+            thread::spawn(move || {
+                let result = exporter::export_to_target(&layouts, &settings, target);
+                let _ = tx.send(result);
+            });
+            self.export_rx = Some(rx);
         }
 
         if let Some(rx) = &self.export_rx {
