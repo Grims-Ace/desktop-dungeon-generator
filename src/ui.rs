@@ -125,6 +125,7 @@ pub struct UiSettings {
     pub room_hallway_window_percent: usize,
     pub allow_internal_windows: bool,
     pub colorblind_mode: bool,
+    pub composition_mode: bool,
     pub export_format: ExportFormat,
     pub mask_format: MaskFormat,
     pub export_width: u32,
@@ -190,6 +191,7 @@ impl Default for UiSettings {
             room_hallway_window_percent: 10,
             allow_internal_windows: false,
             colorblind_mode: false,
+            composition_mode: false,
             export_format: ExportFormat::Png,
             mask_format: MaskFormat::Png,
             export_width: 0,
@@ -323,23 +325,28 @@ pub fn draw_side_panel(
     result
 }
 
-// Draw the accessibility and legend panel.
-pub fn draw_legend_panel(ctx: &egui::Context, colorblind_mode: &mut bool) {
+// Draw mode controls and the legend panel.
+pub fn draw_legend_panel(ctx: &egui::Context, settings: &mut UiSettings) -> bool {
+    let mut composition_mode_changed = false;
+
     egui::SidePanel::right("legend_panel")
         .resizable(false)
         .min_width(180.0)
         .default_width(200.0)
         .show_separator_line(true)
         .show(ctx, |ui| {
-            ui.heading("Accessibility");
+            ui.heading("Modes");
             ui.add_space(6.0);
-            ui.checkbox(colorblind_mode, "Colorblind Mode");
+            ui.checkbox(&mut settings.colorblind_mode, "Colorblind Mode");
+            composition_mode_changed = ui
+                .checkbox(&mut settings.composition_mode, "Composition Mode")
+                .changed();
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(8.0);
             ui.heading("Legend");
             ui.add_space(8.0);
-            if *colorblind_mode {
+            if settings.colorblind_mode {
                 draw_legend_entry_colorblind(ui, "Rooms", LegendStyle::Crosshatch);
                 draw_legend_entry_colorblind(ui, "Corridors", LegendStyle::Dots);
                 draw_legend_entry_colorblind(ui, "Walls", LegendStyle::SolidLine);
@@ -380,6 +387,8 @@ pub fn draw_legend_panel(ctx: &egui::Context, colorblind_mode: &mut bool) {
             ui.label("• Right click: Cancel add tool");
             ui.label("• Right click + drag: Resize hovered room");
         });
+
+    composition_mode_changed
 }
 
 // Draw level tabs and return the hovered tab index.

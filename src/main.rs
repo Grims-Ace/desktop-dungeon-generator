@@ -89,8 +89,12 @@ impl Default for DungeonApp {
             hover_level_idx: None,
             hover_stair_idx: None,
         };
-        app.levels = generate_all_levels(&app.settings);
-        app.refresh_stairs();
+        if app.settings.composition_mode {
+            app.enter_composition_layout();
+        } else {
+            app.levels = generate_all_levels(&app.settings);
+            app.refresh_stairs();
+        }
         app
     }
 }
@@ -136,7 +140,14 @@ impl eframe::App for DungeonApp {
         if panel_result.clear_clicked {
             self.push_undo_snapshot();
             self.clear_layout();
-        } else if panel_result.reset_clicked || panel_result.settings_changed {
+        } else if panel_result.reset_clicked {
+            self.push_undo_snapshot();
+            if self.settings.composition_mode {
+                self.enter_composition_layout();
+            } else {
+                self.regenerate_layout();
+            }
+        } else if panel_result.settings_changed && !self.settings.composition_mode {
             self.push_undo_snapshot();
             self.regenerate_layout();
         } else if panel_result.save_clicked {
@@ -164,9 +175,15 @@ impl eframe::App for DungeonApp {
             }
         } else if panel_result.new_level_clicked {
             self.push_undo_snapshot();
-            self.levels
-                .push(generate_level(&self.settings, self.levels.len()));
-            self.refresh_stairs();
+            if self.settings.composition_mode {
+                self.levels.push(DungeonLayout::empty(
+                    self.settings.pack_rooms_without_corridors,
+                ));
+            } else {
+                self.levels
+                    .push(generate_level(&self.settings, self.levels.len()));
+                self.refresh_stairs();
+            }
             self.settings.active_level_index = self.levels.len() - 1;
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
@@ -237,7 +254,14 @@ impl eframe::App for DungeonApp {
             self.export_progress = None;
         }
 
-        draw_legend_panel(ctx, &mut self.settings.colorblind_mode);
+        if draw_legend_panel(ctx, &mut self.settings) {
+            self.push_undo_snapshot();
+            if self.settings.composition_mode {
+                self.enter_composition_layout();
+            } else {
+                self.regenerate_layout();
+            }
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Clear level hover state so it only reflects current frame.
@@ -440,6 +464,17 @@ impl DungeonApp {
         }
         self.levels[self.settings.active_level_index] =
             DungeonLayout::empty(self.settings.pack_rooms_without_corridors);
+        self.suppressed_auto_door_edges.clear();
+        self.reset_transient_state();
+    }
+
+    // Start composition mode with one empty level.
+    fn enter_composition_layout(&mut self) {
+        self.levels = vec![DungeonLayout::empty(
+            self.settings.pack_rooms_without_corridors,
+        )];
+        self.settings.active_level_index = 0;
+        self.settings.export_level_index = 0;
         self.suppressed_auto_door_edges.clear();
         self.reset_transient_state();
     }
