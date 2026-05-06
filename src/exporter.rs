@@ -255,7 +255,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     fill_bg(&mut pixmap, BG);
 
     let wall_w = snap_even_width((g.cell / 2.5).max(1.0));
-    let door_w = (g.cell / 10.0).max(1.0).round();
+    let door_w = (g.cell / 5.0).max(1.0).round();
 
     if settings.export_show_grid {
         draw_grid(&mut pixmap, &g);
@@ -383,7 +383,7 @@ fn export_composite_masks(
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let scene = collect_scene_data(layout, settings);
     let wall_w = (g.cell / 2.5).max(1.0);
-    let door_w = (g.cell / 10.0).max(1.0);
+    let door_w = (g.cell / 5.0).max(1.0);
 
     // List of tasks to perform in parallel
     enum MaskTask {
@@ -451,7 +451,7 @@ fn export_composite_masks(
                     &mut pixmap,
                     &g,
                     &scene.room_cells,
-                    None,
+                    Some(&scene.room_edges),
                     &scene.door_edges,
                     wall_w,
                     WHITE,
@@ -664,7 +664,7 @@ fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
 pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let wall_w = (g.cell / 2.5).max(1.0);
-    let door_w = (g.cell / 10.0).max(1.0);
+    let door_w = (g.cell / 5.0).max(1.0);
 
     let mut s = String::new();
     let _ = writeln!(

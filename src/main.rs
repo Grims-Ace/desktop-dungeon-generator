@@ -2433,7 +2433,7 @@ fn draw_layout(
     hover_stair_idx: Option<usize>,
 ) {
     let wall_width_px = (geometry.cell_size / 2.5).max(1.0);
-    let door_width_px = (geometry.cell_size / 10.0).max(1.0);
+    let door_width_px = (geometry.cell_size / 5.0).max(1.0);
 
     let room_fill = Color32::from_rgb(70, 120, 160);
     let corridor_fill = Color32::from_rgb(210, 190, 120);
