@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::sync::mpsc;
 
 use image::{DynamicImage, ImageFormat, RgbaImage, imageops::FilterType};
 use rayon::prelude::*;
@@ -33,6 +34,19 @@ pub enum ExportTarget {
     File(PathBuf),
     Folder(PathBuf),
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExportProgress {
+    pub completed: usize,
+    pub total: usize,
+}
+
+pub enum ExportEvent {
+    Progress(ExportProgress),
+    Finished(Result<PathBuf, String>),
+}
+
+type ProgressSender = mpsc::Sender<ExportEvent>;
 
 #[derive(Debug, Clone, Copy)]
 enum DoorStyle {
@@ -213,6 +227,7 @@ pub fn export_to_target(
     layouts: &[DungeonLayout],
     settings: &UiSettings,
     target: ExportTarget,
+    progress_tx: &ProgressSender,
 ) -> Result<PathBuf, String> {
     let export_indices: Vec<usize> = if settings.export_level_index == 999 {
         (0..layouts.len()).collect()
@@ -222,22 +237,58 @@ pub fn export_to_target(
             .min(layouts.len().saturating_sub(1));
         vec![idx]
     };
+    let total = export_image_count(settings, &target, export_indices.len());
+    report_progress(progress_tx, 0, total);
 
     match target {
         ExportTarget::Folder(folder) => {
             if settings.export_format == ExportFormat::Folder {
-                export_composite_masks_for_levels(layouts, settings, &folder, &export_indices)?;
+                export_composite_masks_for_levels(
+                    layouts,
+                    settings,
+                    &folder,
+                    &export_indices,
+                    progress_tx,
+                )?;
             } else {
-                export_level_images_to_folder(layouts, settings, &folder, &export_indices)?;
+                export_level_images_to_folder(
+                    layouts,
+                    settings,
+                    &folder,
+                    &export_indices,
+                    progress_tx,
+                )?;
             }
             Ok(folder)
         }
         ExportTarget::File(path) => {
             let idx = export_indices[0];
             save_layout_to_file(&layouts[idx], settings, &path)?;
+            report_progress(progress_tx, 1, total);
             Ok(path)
         }
     }
+}
+
+fn export_image_count(settings: &UiSettings, target: &ExportTarget, level_count: usize) -> usize {
+    match target {
+        ExportTarget::File(_) => 1,
+        ExportTarget::Folder(_) if settings.export_format == ExportFormat::Folder => {
+            level_count * composite_images_per_level(settings)
+        }
+        ExportTarget::Folder(_) => level_count,
+    }
+}
+
+fn composite_images_per_level(settings: &UiSettings) -> usize {
+    let base_masks = 12;
+    let grid_mask = usize::from(settings.export_show_grid);
+    let composite = 1;
+    base_masks + grid_mask + composite
+}
+
+fn report_progress(progress_tx: &ProgressSender, completed: usize, total: usize) {
+    let _ = progress_tx.send(ExportEvent::Progress(ExportProgress { completed, total }));
 }
 
 fn export_level_images_to_folder(
@@ -245,14 +296,20 @@ fn export_level_images_to_folder(
     settings: &UiSettings,
     folder: &std::path::Path,
     export_indices: &[usize],
+    progress_tx: &ProgressSender,
 ) -> Result<(), String> {
     std::fs::create_dir_all(folder).map_err(|err| format!("Failed creating folder: {err}"))?;
+    let completed = std::sync::atomic::AtomicUsize::new(0);
+    let total = export_indices.len();
 
     let ext = settings.export_format.extension();
     export_indices.par_iter().try_for_each(|&idx| {
         let filename = format!("level{}.{ext}", idx + 1);
         let path = folder.join(filename);
-        save_layout_to_file(&layouts[idx], settings, &path)
+        save_layout_to_file(&layouts[idx], settings, &path)?;
+        let done = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        report_progress(progress_tx, done, total);
+        Ok(())
     })
 }
 
@@ -424,6 +481,7 @@ fn export_composite_masks_for_levels(
     settings: &UiSettings,
     folder: &std::path::Path,
     export_indices: &[usize],
+    progress_tx: &ProgressSender,
 ) -> Result<(), String> {
     let contexts = export_indices
         .iter()
@@ -479,6 +537,8 @@ fn export_composite_masks_for_levels(
                 .chain(std::iter::once((context_idx, CompositeTask::Composite)))
         })
         .collect::<Vec<_>>();
+    let completed = std::sync::atomic::AtomicUsize::new(0);
+    let total = export_tasks.len();
 
     export_tasks
         .into_par_iter()
@@ -490,7 +550,10 @@ fn export_composite_masks_for_levels(
                     save_mask_image(&context.folder, stem, &pixmap, settings)
                 }
                 CompositeTask::Composite => save_composite_image(context, settings),
-            }
+            }?;
+            let done = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            report_progress(progress_tx, done, total);
+            Ok::<(), String>(())
         })?;
 
     Ok(())

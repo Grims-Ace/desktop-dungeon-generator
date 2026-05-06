@@ -51,7 +51,8 @@ struct DungeonApp {
     undo_stack: Vec<AppSnapshot>,
     redo_stack: Vec<AppSnapshot>,
     drag_state: Option<DragState>,
-    export_rx: Option<mpsc::Receiver<Result<std::path::PathBuf, String>>>,
+    export_rx: Option<mpsc::Receiver<exporter::ExportEvent>>,
+    export_progress: Option<exporter::ExportProgress>,
     pending_delete: bool,
     add_corridor_drag: Option<AddCorridorDrag>,
     resize_state: Option<ResizeState>,
@@ -76,6 +77,7 @@ impl Default for DungeonApp {
             redo_stack: Vec::new(),
             drag_state: None,
             export_rx: None,
+            export_progress: None,
             pending_delete: false,
             add_corridor_drag: None,
             resize_state: None,
@@ -108,7 +110,8 @@ impl eframe::App for DungeonApp {
         let panel_result = draw_side_panel(
             ctx,
             &mut self.settings,
-            self.export_rx.is_some(),
+            self.export_progress
+                .map(|progress| (progress.completed, progress.total)),
             self.levels.len(),
         );
         let undo_requested = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z));
@@ -194,26 +197,44 @@ impl eframe::App for DungeonApp {
             let settings = self.settings.clone();
             let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
-                let result = exporter::export_to_target(&layouts, &settings, target);
-                let _ = tx.send(result);
+                let result = exporter::export_to_target(&layouts, &settings, target, &tx);
+                let _ = tx.send(exporter::ExportEvent::Finished(result));
+            });
+            self.export_progress = Some(exporter::ExportProgress {
+                completed: 0,
+                total: 1,
             });
             self.export_rx = Some(rx);
         }
 
+        let mut export_finished = false;
         if let Some(rx) = &self.export_rx {
-            match rx.try_recv() {
-                Ok(Ok(_)) => {
-                    self.export_rx = None;
-                }
-                Ok(Err(err)) => {
-                    eprintln!("{err}");
-                    self.export_rx = None;
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.export_rx = None;
+            loop {
+                match rx.try_recv() {
+                    Ok(exporter::ExportEvent::Progress(progress)) => {
+                        self.export_progress = Some(progress);
+                        ctx.request_repaint();
+                    }
+                    Ok(exporter::ExportEvent::Finished(Ok(_))) => {
+                        export_finished = true;
+                        break;
+                    }
+                    Ok(exporter::ExportEvent::Finished(Err(err))) => {
+                        eprintln!("{err}");
+                        export_finished = true;
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        export_finished = true;
+                        break;
+                    }
                 }
             }
+        }
+        if export_finished {
+            self.export_rx = None;
+            self.export_progress = None;
         }
 
         draw_legend_panel(ctx, &mut self.settings.colorblind_mode);

@@ -261,7 +261,7 @@ pub struct SidePanelResult {
 pub fn draw_side_panel(
     ctx: &egui::Context,
     settings: &mut UiSettings,
-    export_in_progress: bool,
+    export_progress: Option<(usize, usize)>,
     num_levels: usize,
 ) -> SidePanelResult {
     // Render the left side panel and return user interaction results.
@@ -310,7 +310,7 @@ pub fn draw_side_panel(
 
                 match settings.active_tab {
                     Tab::Generate => {
-                        draw_generate_tab(ui, settings, &mut result, export_in_progress, num_levels)
+                        draw_generate_tab(ui, settings, &mut result, export_progress, num_levels)
                     }
                     Tab::Layout => draw_layout_tab(ui, settings, &mut result),
                     Tab::StartAndEnd => draw_start_and_end_tab(ui, settings, &mut result),
@@ -410,9 +410,10 @@ fn draw_generate_tab(
     ui: &mut egui::Ui,
     settings: &mut UiSettings,
     result: &mut SidePanelResult,
-    export_in_progress: bool,
+    export_progress: Option<(usize, usize)>,
     num_levels: usize,
 ) {
+    let export_in_progress = export_progress.is_some();
     ui.label(RichText::new("Grid Settings").strong());
     ui.add_space(8.0);
 
@@ -615,7 +616,14 @@ fn draw_generate_tab(
 
     if export_in_progress {
         ui.add_space(6.0);
-        ui.add(egui::ProgressBar::new(0.0).animate(true));
+        let (completed, total) = export_progress.unwrap_or((0, 1));
+        let total = total.max(1);
+        let fraction = (completed as f32 / total as f32).clamp(0.0, 1.0);
+        ui.add(
+            egui::ProgressBar::new(fraction)
+                .show_percentage()
+                .text(format!("{completed}/{total} images")),
+        );
     }
 }
 
