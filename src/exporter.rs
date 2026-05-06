@@ -109,6 +109,38 @@ struct SceneData {
     door_edges: HashSet<((usize, usize), (usize, usize))>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum MaskTask {
+    Floors,
+    Walls,
+    Doors,
+    Archways,
+    LockedDoors,
+    SecretDoors,
+    Windows,
+    StartMarkers,
+    EndMarkers,
+    TrapMarkers,
+    MonsterMarkers,
+    Stairs,
+    Grid,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CompositeTask {
+    Mask(MaskTask),
+    Composite,
+}
+
+struct CompositeExportContext<'a> {
+    layout: &'a DungeonLayout,
+    folder: PathBuf,
+    geometry: ExportGeometry,
+    scene: SceneData,
+    wall_width: f32,
+    door_width: f32,
+}
+
 // Collect precomputed cell and edge sets needed for rendering.
 fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneData {
     let mut scene = SceneData::default();
@@ -193,21 +225,10 @@ pub fn export_to_target(
 
     match target {
         ExportTarget::Folder(folder) => {
-            for &idx in &export_indices {
-                let layout = &layouts[idx];
-                if settings.export_format == ExportFormat::Folder {
-                    let subfolder = if settings.export_level_index == 999 {
-                        folder.join(format!("level {}", idx + 1))
-                    } else {
-                        folder.clone()
-                    };
-                    export_composite_masks(layout, settings, &subfolder)?;
-                } else {
-                    let ext = settings.export_format.extension();
-                    let filename = format!("level{}.{ext}", idx + 1);
-                    let path = folder.join(filename);
-                    save_layout_to_file(layout, settings, &path)?;
-                }
+            if settings.export_format == ExportFormat::Folder {
+                export_composite_masks_for_levels(layouts, settings, &folder, &export_indices)?;
+            } else {
+                export_level_images_to_folder(layouts, settings, &folder, &export_indices)?;
             }
             Ok(folder)
         }
@@ -217,6 +238,22 @@ pub fn export_to_target(
             Ok(path)
         }
     }
+}
+
+fn export_level_images_to_folder(
+    layouts: &[DungeonLayout],
+    settings: &UiSettings,
+    folder: &std::path::Path,
+    export_indices: &[usize],
+) -> Result<(), String> {
+    std::fs::create_dir_all(folder).map_err(|err| format!("Failed creating folder: {err}"))?;
+
+    let ext = settings.export_format.extension();
+    export_indices.par_iter().try_for_each(|&idx| {
+        let filename = format!("level{}.{ext}", idx + 1);
+        let path = folder.join(filename);
+        save_layout_to_file(&layouts[idx], settings, &path)
+    })
 }
 
 fn save_layout_to_file(
@@ -250,6 +287,15 @@ fn save_layout_to_file(
 fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let scene = collect_scene_data(layout, settings);
+    render_pixmap_with_scene(layout, settings, &g, &scene)
+}
+
+fn render_pixmap_with_scene(
+    layout: &DungeonLayout,
+    settings: &UiSettings,
+    g: &ExportGeometry,
+    scene: &SceneData,
+) -> Result<Pixmap, String> {
     let mut pixmap =
         Pixmap::new(g.width, g.height).ok_or_else(|| "Failed to allocate canvas".to_string())?;
     fill_bg(&mut pixmap, BG);
@@ -258,11 +304,11 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     let door_w = (g.cell / 5.0).max(1.0).round();
 
     if settings.export_show_grid {
-        draw_grid(&mut pixmap, &g);
+        draw_grid(&mut pixmap, g);
     }
 
     for &(x, y) in &scene.corridor_cells {
-        fill_rect_cell(&mut pixmap, &g, x, y, CORRIDOR);
+        fill_rect_cell(&mut pixmap, g, x, y, CORRIDOR);
         if settings.colorblind_mode {
             let (cx, cy) = g.cell_center(x, y);
             draw_dot(&mut pixmap, cx, cy, g.cell * 0.14, BLACK);
@@ -270,15 +316,15 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     }
 
     for room in &layout.rooms {
-        fill_rect_room(&mut pixmap, &g, room, ROOM);
+        fill_rect_room(&mut pixmap, g, room, ROOM);
         if settings.colorblind_mode {
-            draw_room_crosshatch(&mut pixmap, &g, room, 1.5, BLACK);
+            draw_room_crosshatch(&mut pixmap, g, room, 1.5, BLACK);
         }
     }
 
     draw_cell_walls(
         &mut pixmap,
-        &g,
+        g,
         &scene.corridor_cells,
         Some(&scene.corridor_edges),
         &scene.door_edges,
@@ -287,7 +333,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     );
     draw_cell_walls(
         &mut pixmap,
-        &g,
+        g,
         &scene.room_cells,
         Some(&scene.room_edges),
         &scene.door_edges,
@@ -316,7 +362,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         } else {
             (OPEN_DOOR, DoorStyle::Solid)
         };
-        draw_door(&mut pixmap, &g, door, door_w, color, style);
+        draw_door(&mut pixmap, g, door, door_w, color, style);
     }
 
     for window in &layout.windows {
@@ -325,12 +371,12 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
         } else {
             DoorStyle::Solid
         };
-        draw_window(&mut pixmap, &g, window, door_w, WINDOW, style);
+        draw_window(&mut pixmap, g, window, door_w, WINDOW, style);
     }
 
     draw_area_marker_group(
         &mut pixmap,
-        &g,
+        g,
         &layout.start_markers,
         "S",
         START_MARKER,
@@ -338,7 +384,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     );
     draw_area_marker_group(
         &mut pixmap,
-        &g,
+        g,
         &layout.end_markers,
         "E",
         END_MARKER,
@@ -346,7 +392,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     );
     draw_area_marker_group(
         &mut pixmap,
-        &g,
+        g,
         &layout.trap_markers,
         "T",
         TRAP_MARKER,
@@ -354,7 +400,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     );
     draw_area_marker_group(
         &mut pixmap,
-        &g,
+        g,
         &layout.monster_markers,
         "M",
         MONSTER_MARKER,
@@ -363,7 +409,7 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
 
     draw_staircase_group(
         &mut pixmap,
-        &g,
+        g,
         &layout.stairs,
         STAIRS,
         settings.colorblind_mode,
@@ -372,35 +418,36 @@ fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap
     Ok(pixmap)
 }
 
-// Export composite image plus mask layers into a folder.
-fn export_composite_masks(
-    layout: &DungeonLayout,
+// Export composite images and masks using one global task queue.
+fn export_composite_masks_for_levels(
+    layouts: &[DungeonLayout],
     settings: &UiSettings,
     folder: &std::path::Path,
+    export_indices: &[usize],
 ) -> Result<(), String> {
-    std::fs::create_dir_all(folder).map_err(|e| format!("Failed creating folder: {e}"))?;
+    let contexts = export_indices
+        .iter()
+        .map(|&idx| {
+            let subfolder = if settings.export_level_index == 999 {
+                folder.join(format!("level {}", idx + 1))
+            } else {
+                folder.to_path_buf()
+            };
+            std::fs::create_dir_all(&subfolder)
+                .map_err(|err| format!("Failed creating folder: {err}"))?;
 
-    let g = ExportGeometry::new(settings.cols, settings.rows);
-    let scene = collect_scene_data(layout, settings);
-    let wall_w = (g.cell / 2.5).max(1.0);
-    let door_w = (g.cell / 5.0).max(1.0);
-
-    // List of tasks to perform in parallel
-    enum MaskTask {
-        Floors,
-        Walls,
-        Doors,
-        Archways,
-        LockedDoors,
-        SecretDoors,
-        Windows,
-        StartMarkers,
-        EndMarkers,
-        TrapMarkers,
-        MonsterMarkers,
-        Stairs,
-        Grid,
-    }
+            let geometry = ExportGeometry::new(settings.cols, settings.rows);
+            let scene = collect_scene_data(&layouts[idx], settings);
+            Ok(CompositeExportContext {
+                layout: &layouts[idx],
+                folder: subfolder,
+                geometry,
+                scene,
+                wall_width: (geometry.cell / 2.5).max(1.0),
+                door_width: (geometry.cell / 5.0).max(1.0),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
 
     let mut tasks = vec![
         MaskTask::Floors,
@@ -421,134 +468,204 @@ fn export_composite_masks(
         tasks.push(MaskTask::Grid);
     }
 
-    // Process masks in parallel
-    tasks.into_par_iter().try_for_each(|task| {
-        let (stem, pixmap) = match task {
-            MaskTask::Floors => {
-                let mut pixmap = Pixmap::new(g.width, g.height).unwrap();
-                fill_bg(&mut pixmap, BLACK);
-                for &(x, y) in &scene.corridor_cells {
-                    fill_rect_cell(&mut pixmap, &g, x, y, WHITE);
-                }
-                for room in &layout.rooms {
-                    fill_rect_room(&mut pixmap, &g, room, WHITE);
-                }
-                ("floors_mask", pixmap)
-            }
-            MaskTask::Walls => {
-                let mut pixmap = Pixmap::new(g.width, g.height).unwrap();
-                fill_bg(&mut pixmap, BLACK);
-                draw_cell_walls(
-                    &mut pixmap,
-                    &g,
-                    &scene.corridor_cells,
-                    Some(&scene.corridor_edges),
-                    &scene.door_edges,
-                    wall_w,
-                    WHITE,
-                );
-                draw_cell_walls(
-                    &mut pixmap,
-                    &g,
-                    &scene.room_cells,
-                    Some(&scene.room_edges),
-                    &scene.door_edges,
-                    wall_w,
-                    WHITE,
-                );
-                ("walls_mask", pixmap)
-            }
-            MaskTask::Doors => {
-                let mut pixmap = blank_mask(&g, "doors").unwrap();
-                for door in &layout.doors {
-                    if !door.secret && !door.archway && !door.locked {
-                        draw_door(&mut pixmap, &g, door, door_w, WHITE, DoorStyle::Solid);
-                    }
-                }
-                ("doors_mask", pixmap)
-            }
-            MaskTask::Archways => {
-                let mut pixmap = blank_mask(&g, "archways").unwrap();
-                for door in &layout.doors {
-                    if door.archway {
-                        draw_door(&mut pixmap, &g, door, door_w, WHITE, DoorStyle::Solid);
-                    }
-                }
-                ("archways_mask", pixmap)
-            }
-            MaskTask::LockedDoors => {
-                let mut pixmap = blank_mask(&g, "locked doors").unwrap();
-                for door in &layout.doors {
-                    if door.locked {
-                        draw_door(&mut pixmap, &g, door, door_w, WHITE, DoorStyle::Solid);
-                    }
-                }
-                ("locked_doors_mask", pixmap)
-            }
-            MaskTask::SecretDoors => {
-                let mut pixmap = blank_mask(&g, "secret doors").unwrap();
-                for door in &layout.doors {
-                    if door.secret {
-                        draw_door(&mut pixmap, &g, door, door_w, WHITE, DoorStyle::Solid);
-                    }
-                }
-                ("secret_doors_mask", pixmap)
-            }
-            MaskTask::Windows => {
-                let mut pixmap = blank_mask(&g, "windows").unwrap();
-                for window in &layout.windows {
-                    draw_window(&mut pixmap, &g, window, door_w, WHITE, DoorStyle::Solid);
-                }
-                ("windows_mask", pixmap)
-            }
-            MaskTask::StartMarkers => {
-                let mut pixmap = blank_mask(&g, "start markers").unwrap();
-                fill_marker_mask(&mut pixmap, &g, &layout.start_markers);
-                ("start_markers_mask", pixmap)
-            }
-            MaskTask::EndMarkers => {
-                let mut pixmap = blank_mask(&g, "end markers").unwrap();
-                fill_marker_mask(&mut pixmap, &g, &layout.end_markers);
-                ("end_markers_mask", pixmap)
-            }
-            MaskTask::TrapMarkers => {
-                let mut pixmap = blank_mask(&g, "trap markers").unwrap();
-                fill_marker_mask(&mut pixmap, &g, &layout.trap_markers);
-                ("trap_markers_mask", pixmap)
-            }
-            MaskTask::MonsterMarkers => {
-                let mut pixmap = blank_mask(&g, "monster markers").unwrap();
-                fill_marker_mask(&mut pixmap, &g, &layout.monster_markers);
-                ("monster_markers_mask", pixmap)
-            }
-            MaskTask::Stairs => {
-                let mut pixmap = blank_mask(&g, "stairs").unwrap();
-                for staircase in &layout.stairs {
-                    fill_rect_staircase(&mut pixmap, &g, staircase, WHITE);
-                }
-                ("stairs_mask", pixmap)
-            }
-            MaskTask::Grid => {
-                let mut pixmap = Pixmap::new(g.width, g.height).unwrap();
-                fill_bg(&mut pixmap, BLACK);
-                draw_grid_color(&mut pixmap, &g, WHITE);
-                ("grid_mask", pixmap)
-            }
-        };
+    let export_tasks = contexts
+        .iter()
+        .enumerate()
+        .flat_map(|(context_idx, _)| {
+            tasks
+                .iter()
+                .copied()
+                .map(move |task| (context_idx, CompositeTask::Mask(task)))
+                .chain(std::iter::once((context_idx, CompositeTask::Composite)))
+        })
+        .collect::<Vec<_>>();
 
-        save_mask_image(folder, stem, &pixmap, settings)
-    })?;
+    export_tasks
+        .into_par_iter()
+        .try_for_each(|(context_idx, task)| {
+            let context = &contexts[context_idx];
+            match task {
+                CompositeTask::Mask(mask_task) => {
+                    let (stem, pixmap) = render_mask_pixmap(context, mask_task)?;
+                    save_mask_image(&context.folder, stem, &pixmap, settings)
+                }
+                CompositeTask::Composite => save_composite_image(context, settings),
+            }
+        })?;
 
-    // Also export the composite image
-    let composite = render_pixmap(layout, settings)?;
+    Ok(())
+}
+
+fn save_composite_image(
+    context: &CompositeExportContext<'_>,
+    settings: &UiSettings,
+) -> Result<(), String> {
+    let composite =
+        render_pixmap_with_scene(context.layout, settings, &context.geometry, &context.scene)?;
     let composite_img = raster_image_from_pixmap(&composite, settings)?;
     let composite_ext = settings.export_format.extension();
-    let composite_path = folder.join(format!("composite.{composite_ext}"));
+    let composite_path = context.folder.join(format!("composite.{composite_ext}"));
     composite_img
         .save_with_format(&composite_path, export_image_format(settings.export_format))
         .map_err(|e| format!("Failed writing {}: {e}", composite_path.display()))?;
 
     Ok(())
+}
+
+fn render_mask_pixmap(
+    context: &CompositeExportContext<'_>,
+    task: MaskTask,
+) -> Result<(&'static str, Pixmap), String> {
+    let g = &context.geometry;
+    let scene = &context.scene;
+    let layout = context.layout;
+
+    let result = match task {
+        MaskTask::Floors => {
+            let mut pixmap = blank_mask(g, "floors")?;
+            for &(x, y) in &scene.corridor_cells {
+                fill_rect_cell(&mut pixmap, g, x, y, WHITE);
+            }
+            for room in &layout.rooms {
+                fill_rect_room(&mut pixmap, g, room, WHITE);
+            }
+            ("floors_mask", pixmap)
+        }
+        MaskTask::Walls => {
+            let mut pixmap = blank_mask(g, "walls")?;
+            draw_cell_walls(
+                &mut pixmap,
+                g,
+                &scene.corridor_cells,
+                Some(&scene.corridor_edges),
+                &scene.door_edges,
+                context.wall_width,
+                WHITE,
+            );
+            draw_cell_walls(
+                &mut pixmap,
+                g,
+                &scene.room_cells,
+                Some(&scene.room_edges),
+                &scene.door_edges,
+                context.wall_width,
+                WHITE,
+            );
+            ("walls_mask", pixmap)
+        }
+        MaskTask::Doors => {
+            let mut pixmap = blank_mask(g, "doors")?;
+            for door in &layout.doors {
+                if !door.secret && !door.archway && !door.locked {
+                    draw_door(
+                        &mut pixmap,
+                        g,
+                        door,
+                        context.door_width,
+                        WHITE,
+                        DoorStyle::Solid,
+                    );
+                }
+            }
+            ("doors_mask", pixmap)
+        }
+        MaskTask::Archways => {
+            let mut pixmap = blank_mask(g, "archways")?;
+            for door in &layout.doors {
+                if door.archway {
+                    draw_door(
+                        &mut pixmap,
+                        g,
+                        door,
+                        context.door_width,
+                        WHITE,
+                        DoorStyle::Solid,
+                    );
+                }
+            }
+            ("archways_mask", pixmap)
+        }
+        MaskTask::LockedDoors => {
+            let mut pixmap = blank_mask(g, "locked doors")?;
+            for door in &layout.doors {
+                if door.locked {
+                    draw_door(
+                        &mut pixmap,
+                        g,
+                        door,
+                        context.door_width,
+                        WHITE,
+                        DoorStyle::Solid,
+                    );
+                }
+            }
+            ("locked_doors_mask", pixmap)
+        }
+        MaskTask::SecretDoors => {
+            let mut pixmap = blank_mask(g, "secret doors")?;
+            for door in &layout.doors {
+                if door.secret {
+                    draw_door(
+                        &mut pixmap,
+                        g,
+                        door,
+                        context.door_width,
+                        WHITE,
+                        DoorStyle::Solid,
+                    );
+                }
+            }
+            ("secret_doors_mask", pixmap)
+        }
+        MaskTask::Windows => {
+            let mut pixmap = blank_mask(g, "windows")?;
+            for window in &layout.windows {
+                draw_window(
+                    &mut pixmap,
+                    g,
+                    window,
+                    context.door_width,
+                    WHITE,
+                    DoorStyle::Solid,
+                );
+            }
+            ("windows_mask", pixmap)
+        }
+        MaskTask::StartMarkers => {
+            let mut pixmap = blank_mask(g, "start markers")?;
+            fill_marker_mask(&mut pixmap, g, &layout.start_markers);
+            ("start_markers_mask", pixmap)
+        }
+        MaskTask::EndMarkers => {
+            let mut pixmap = blank_mask(g, "end markers")?;
+            fill_marker_mask(&mut pixmap, g, &layout.end_markers);
+            ("end_markers_mask", pixmap)
+        }
+        MaskTask::TrapMarkers => {
+            let mut pixmap = blank_mask(g, "trap markers")?;
+            fill_marker_mask(&mut pixmap, g, &layout.trap_markers);
+            ("trap_markers_mask", pixmap)
+        }
+        MaskTask::MonsterMarkers => {
+            let mut pixmap = blank_mask(g, "monster markers")?;
+            fill_marker_mask(&mut pixmap, g, &layout.monster_markers);
+            ("monster_markers_mask", pixmap)
+        }
+        MaskTask::Stairs => {
+            let mut pixmap = blank_mask(g, "stairs")?;
+            for staircase in &layout.stairs {
+                fill_rect_staircase(&mut pixmap, g, staircase, WHITE);
+            }
+            ("stairs_mask", pixmap)
+        }
+        MaskTask::Grid => {
+            let mut pixmap = blank_mask(g, "grid")?;
+            draw_grid_color(&mut pixmap, g, WHITE);
+            ("grid_mask", pixmap)
+        }
+    };
+
+    Ok(result)
 }
 
 fn blank_mask(g: &ExportGeometry, name: &str) -> Result<Pixmap, String> {
