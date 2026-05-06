@@ -503,10 +503,10 @@ fn save_composite_image(
     let composite =
         render_pixmap_with_scene(context.layout, settings, &context.geometry, &context.scene)?;
     let composite_img = raster_image_from_pixmap(&composite, settings)?;
-    let composite_ext = settings.export_format.extension();
+    let composite_ext = settings.mask_format.extension();
     let composite_path = context.folder.join(format!("composite.{composite_ext}"));
     composite_img
-        .save_with_format(&composite_path, export_image_format(settings.export_format))
+        .save_with_format(&composite_path, mask_image_format(settings.mask_format))
         .map_err(|e| format!("Failed writing {}: {e}", composite_path.display()))?;
 
     Ok(())
@@ -702,16 +702,6 @@ fn mask_image_format(format: MaskFormat) -> ImageFormat {
         MaskFormat::Png => ImageFormat::Png,
         MaskFormat::Jpeg => ImageFormat::Jpeg,
         MaskFormat::Webp => ImageFormat::WebP,
-    }
-}
-
-// Map an export format to an image encoding.
-fn export_image_format(format: ExportFormat) -> ImageFormat {
-    match format {
-        ExportFormat::Png => ImageFormat::Png,
-        ExportFormat::Jpeg => ImageFormat::Jpeg,
-        ExportFormat::Webp => ImageFormat::WebP,
-        ExportFormat::Svg | ExportFormat::Folder => ImageFormat::Png,
     }
 }
 
