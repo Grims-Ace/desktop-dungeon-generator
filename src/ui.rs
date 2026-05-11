@@ -135,6 +135,13 @@ pub struct UiSettings {
     pub last_export_path: Option<String>,
     pub add_tool: AddTool,
     pub add_text_value: String,
+    pub add_text_font_size: u16,
+    pub add_room_width: usize,
+    pub add_room_height: usize,
+    pub add_corridor_width: usize,
+    pub add_stair_width: usize,
+    pub add_stair_height: usize,
+    pub add_marker_size: usize,
     pub min_start_marker_size: usize,
     pub max_start_marker_size: usize,
     pub min_end_marker_size: usize,
@@ -160,7 +167,6 @@ pub struct UiSettings {
     pub min_stairs_per_level: usize,
     pub max_stairs_per_level: usize,
     pub sync_stairs_across_levels: bool,
-    pub manual_stair_size: usize,
     active_tab: Tab,
 }
 
@@ -201,6 +207,13 @@ impl Default for UiSettings {
             last_export_path: None,
             add_tool: AddTool::None,
             add_text_value: String::from("Text"),
+            add_text_font_size: 18,
+            add_room_width: 5,
+            add_room_height: 5,
+            add_corridor_width: 2,
+            add_stair_width: 2,
+            add_stair_height: 2,
+            add_marker_size: 1,
             min_start_marker_size: 1,
             max_start_marker_size: 3,
             min_end_marker_size: 1,
@@ -225,7 +238,6 @@ impl Default for UiSettings {
             min_stairs_per_level: 1,
             max_stairs_per_level: 2,
             sync_stairs_across_levels: false,
-            manual_stair_size: 2,
             export_level_index: 0,
             active_tab: Tab::Generate,
         }
@@ -1067,94 +1079,128 @@ fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut SideP
     ui.label(RichText::new("Add Tools").strong());
     ui.add_space(8.0);
 
-    ui.label(RichText::new("Layout").strong());
+    ui.label(RichText::new("Structure").strong());
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::Room, "Add Room");
-        ui.selectable_value(&mut settings.add_tool, AddTool::Corridor, "Add Corridor");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Room, "Room");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Corridor, "Corridor");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Staircase, "Stairs");
     });
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::Staircase, "Add Stairs");
-        if ui
-            .add(egui::Button::new("Add Level").frame(false))
-            .clicked()
-        {
-            result.new_level_clicked = true;
-        }
+    if ui.button("Add New Level").clicked() {
+        result.new_level_clicked = true;
+    }
+
+    ui.add_space(8.0);
+    ui.label(RichText::new("Passages").strong());
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::Archway, "Archway");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Door");
+        ui.selectable_value(&mut settings.add_tool, AddTool::LockedDoor, "Locked");
+        ui.selectable_value(&mut settings.add_tool, AddTool::SecretDoor, "Secret");
     });
 
     ui.add_space(8.0);
-    ui.label(RichText::new("Doors").strong());
+    ui.label(RichText::new("Markers & Annotation").strong());
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::Archway, "Add Archway");
-        ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Add Door");
-    });
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(
-            &mut settings.add_tool,
-            AddTool::LockedDoor,
-            "Add Locked Door",
-        );
-        ui.selectable_value(
-            &mut settings.add_tool,
-            AddTool::SecretDoor,
-            "Add Secret Door",
-        );
+    ui.horizontal_wrapped(|ui| {
+        ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Start");
+        ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "End");
+        ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Trap");
+        ui.selectable_value(&mut settings.add_tool, AddTool::MonsterMarker, "Monster");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Text");
     });
 
+    ui.add_space(12.0);
+    ui.separator();
     ui.add_space(8.0);
-    ui.label(RichText::new("Features").strong());
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::StartMarker, "Place Start");
-        ui.selectable_value(&mut settings.add_tool, AddTool::EndMarker, "Place End");
-    });
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::TrapMarker, "Place Trap");
-        ui.selectable_value(
-            &mut settings.add_tool,
-            AddTool::MonsterMarker,
-            "Place Monster",
-        );
-    });
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut settings.add_tool, AddTool::Text, "Add Text");
-    });
 
-    ui.add_space(8.0);
-    ui.label("Left click to place, Right click/Escape to cancel");
+    if settings.add_tool != AddTool::None {
+        ui.label(RichText::new("Tool Options").strong());
+        ui.add_space(4.0);
 
-    ui.add_space(6.0);
-    match settings.add_tool {
-        AddTool::Room => ui.label("Click to place a room at the grid cell."),
-        AddTool::Corridor => ui.label("Click-drag to place a corridor between two cells."),
-        AddTool::Staircase => {
-            ui.label("Click the grid to place stairs (visible on current and adjacent levels).")
+        match settings.add_tool {
+            AddTool::Room => {
+                ui.label("Room Width");
+                ui.add(egui::Slider::new(&mut settings.add_room_width, 1..=30));
+                ui.label("Room Height");
+                ui.add(egui::Slider::new(&mut settings.add_room_height, 1..=30));
+            }
+            AddTool::Corridor => {
+                ui.label("Corridor Width");
+                ui.add(egui::Slider::new(&mut settings.add_corridor_width, 1..=10));
+            }
+            AddTool::Staircase => {
+                ui.label("Stair Width");
+                ui.add(egui::Slider::new(&mut settings.add_stair_width, 1..=10));
+                ui.label("Stair Height");
+                ui.add(egui::Slider::new(&mut settings.add_stair_height, 1..=10));
+            }
+            AddTool::StartMarker
+            | AddTool::EndMarker
+            | AddTool::TrapMarker
+            | AddTool::MonsterMarker => {
+                ui.label("Marker Size");
+                ui.add(egui::Slider::new(&mut settings.add_marker_size, 1..=10));
+            }
+            AddTool::Text => {
+                ui.label("Text Label");
+                ui.text_edit_singleline(&mut settings.add_text_value);
+                ui.label("Font Size");
+                ui.add(egui::Slider::new(&mut settings.add_text_font_size, 8..=96));
+            }
+            _ => {
+                ui.label("No additional options for this tool.");
+            }
         }
-        AddTool::Archway => ui.label("Click a valid room or corridor edge to place an archway."),
-        AddTool::Door => ui.label("Click a room/corridor edge to place a door."),
-        AddTool::LockedDoor => ui.label("Click a room/corridor edge to place a locked door."),
-        AddTool::SecretDoor => ui.label("Click a room/corridor edge to place a secret door."),
-        AddTool::Text => {
-            ui.label("Enter the label text, then click a grid cell to place it.");
-            ui.add_space(6.0);
-            ui.label("Text");
-            let response = ui.text_edit_singleline(&mut settings.add_text_value);
-            ui.add_space(4.0);
-            ui.label("Note: Left click on the canvas to place the text.");
-            response
+        ui.add_space(8.0);
+        ui.label(RichText::new("Instructions:").italics());
+        match settings.add_tool {
+            AddTool::Room => {
+                ui.label("Click to place a room at the grid cell.");
+            }
+            AddTool::Corridor => {
+                ui.label("Click-drag to place a corridor between two cells.");
+            }
+            AddTool::Staircase => {
+                ui.label(
+                    "Click the grid to place stairs (visible on current and adjacent levels).",
+                );
+            }
+            AddTool::Archway => {
+                ui.label("Click a valid room or corridor edge to place an archway.");
+            }
+            AddTool::Door => {
+                ui.label("Click a room/corridor edge to place a door.");
+            }
+            AddTool::LockedDoor => {
+                ui.label("Click a room/corridor edge to place a locked door.");
+            }
+            AddTool::SecretDoor => {
+                ui.label("Click a room/corridor edge to place a secret door.");
+            }
+            AddTool::Text => {
+                ui.label("Click a grid cell to place the text label.");
+            }
+            AddTool::StartMarker => {
+                ui.label("Click the grid to place the start marker.");
+            }
+            AddTool::EndMarker => {
+                ui.label("Click the grid to place the end marker.");
+            }
+            AddTool::TrapMarker => {
+                ui.label("Click the grid to place a trap marker.");
+            }
+            AddTool::MonsterMarker => {
+                ui.label("Click the grid to place a monster marker.");
+            }
+            _ => {}
         }
-        AddTool::StartMarker => ui.label("Click the grid to place the start marker."),
-        AddTool::EndMarker => ui.label("Click the grid to place the end marker."),
-        AddTool::TrapMarker => ui.label("Click the grid to place a trap marker."),
-        AddTool::MonsterMarker => ui.label("Click the grid to place a monster marker."),
-        AddTool::None => ui.label("Select a tool to add rooms or corridors."),
-    };
+        ui.add_space(4.0);
+        ui.label("Left click to place, Right click/Escape to cancel.");
+    } else {
+        ui.label("Select a tool above to start building manually.");
+    }
 }
 
 // Draw a colored legend entry.

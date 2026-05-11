@@ -13,7 +13,6 @@ use eframe::egui;
 use egui::{Color32, Stroke};
 use layout::{
     DoorSettings, DungeonLayout, WindowSettings, blocked_room_cells, corridor_cells,
-    manual_marker_size, manual_monster_marker_size, manual_trap_marker_size,
     populate_random_markers, populate_stairs, shortest_path_cells,
 };
 use ui::{AddTool, UiSettings, draw_legend_panel, draw_level_tabs, draw_side_panel};
@@ -1002,8 +1001,8 @@ impl DungeonApp {
         }
         let layout = &mut self.levels[self.settings.active_level_index];
 
-        let width = self.settings.min_room_size.max(1);
-        let height = self.settings.min_room_size.max(1);
+        let width = self.settings.add_room_width.max(1);
+        let height = self.settings.add_room_height.max(1);
         if cell.0 >= self.settings.cols || cell.1 >= self.settings.rows {
             return;
         }
@@ -1067,7 +1066,7 @@ impl DungeonApp {
             .max()
             .unwrap_or(0)
             .wrapping_add(1);
-        let width = self.settings.min_corridor_width.max(1);
+        let width = self.settings.add_corridor_width.max(1);
 
         layout.corridors.push(layout::Corridor {
             id: next_id,
@@ -1107,7 +1106,7 @@ impl DungeonApp {
         layout.text_labels.push(layout::TextLabel {
             cell,
             text,
-            font_size: 18,
+            font_size: self.settings.add_text_font_size,
         });
     }
 
@@ -1122,12 +1121,7 @@ impl DungeonApp {
             return;
         }
 
-        let size = match kind {
-            MarkerKind::Start => manual_marker_size(&self.settings, true),
-            MarkerKind::End => manual_marker_size(&self.settings, false),
-            MarkerKind::Trap => manual_trap_marker_size(&self.settings),
-            MarkerKind::Monster => manual_monster_marker_size(&self.settings),
-        };
+        let size = self.settings.add_marker_size.max(1);
         let origin = centered_marker_origin(cell, size, self.settings.cols, self.settings.rows);
         let marker = layout::AreaMarker { cell: origin, size };
 
@@ -1149,16 +1143,17 @@ impl DungeonApp {
             return;
         }
 
-        let size = self.settings.manual_stair_size.max(1);
-        let max_x = self.settings.cols.saturating_sub(size);
-        let max_y = self.settings.rows.saturating_sub(size);
+        let width = self.settings.add_stair_width.max(1);
+        let height = self.settings.add_stair_height.max(1);
+        let max_x = self.settings.cols.saturating_sub(width);
+        let max_y = self.settings.rows.saturating_sub(height);
         let origin_x = cell.0.min(max_x);
         let origin_y = cell.1.min(max_y);
 
         let stair = layout::Staircase {
             cell: (origin_x, origin_y),
-            width: size,
-            height: size,
+            width,
+            height,
         };
 
         if self.settings.sync_stairs_across_levels {

@@ -1178,30 +1178,6 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
     layout
 }
 
-// Return the manual marker size.
-pub fn manual_marker_size(settings: &UiSettings, is_start: bool) -> usize {
-    if is_start {
-        settings
-            .min_start_marker_size
-            .min(settings.max_start_marker_size)
-    } else {
-        settings
-            .min_end_marker_size
-            .min(settings.max_end_marker_size)
-    }
-    .clamp(1, 10)
-}
-
-// Return the manual trap size.
-pub fn manual_trap_marker_size(_settings: &UiSettings) -> usize {
-    1
-}
-
-// Return the manual monster size.
-pub fn manual_monster_marker_size(_settings: &UiSettings) -> usize {
-    1
-}
-
 // Pick a deterministic inclusive random value.
 fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
     let min = min.max(1);
