@@ -4,6 +4,9 @@
  *   and custom line styling (dashed, dotted, dash-dot patterns).
  */
 
+pub use crate::rendering::{
+    draw_dash_dot_dot_line, draw_dash_dot_line, draw_dashed_line, draw_dotted_line,
+};
 use eframe::egui;
 use egui::{Color32, Stroke};
 
@@ -166,125 +169,4 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
         ui.label(label);
     });
     ui.add_space(4.0);
-}
-
-// Draw a dashed line.
-pub fn draw_dashed_line(
-    painter: &egui::Painter,
-    from: egui::Pos2,
-    to: egui::Pos2,
-    stroke: Stroke,
-    dash_len: f32,
-    gap_len: f32,
-) {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.0 {
-        return;
-    }
-    let ux = dx / len;
-    let uy = dy / len;
-
-    let mut dist = 0.0_f32;
-    while dist < len {
-        let seg_start = dist;
-        let seg_end = (dist + dash_len).min(len);
-        let p0 = egui::pos2(from.x + ux * seg_start, from.y + uy * seg_start);
-        let p1 = egui::pos2(from.x + ux * seg_end, from.y + uy * seg_end);
-        painter.line_segment([p0, p1], stroke);
-        dist += dash_len + gap_len;
-    }
-}
-
-// Draw a dotted line.
-pub fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.0 {
-        return;
-    }
-    let ux = dx / len;
-    let uy = dy / len;
-    let step = 5.0_f32;
-    let radius = (stroke.width * 0.35).max(1.0);
-
-    let mut dist = 0.0_f32;
-    while dist <= len {
-        let point = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        painter.circle_filled(point, radius, stroke.color);
-        dist += step;
-    }
-}
-
-// Draws dash dot line.
-pub fn draw_dash_dot_line(
-    painter: &egui::Painter,
-    from: egui::Pos2,
-    to: egui::Pos2,
-    stroke: Stroke,
-) {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.0 {
-        return;
-    }
-
-    let ux = dx / len;
-    let uy = dy / len;
-    let mut dist = 0.0_f32;
-    while dist < len {
-        let dash_end = (dist + 7.0).min(len);
-        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
-        painter.line_segment([p0, p1], stroke);
-        dist = dash_end + 3.0;
-        if dist >= len {
-            break;
-        }
-        let dot = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        painter.circle_filled(dot, (stroke.width * 0.35).max(1.0), stroke.color);
-        dist += 4.0;
-    }
-}
-
-// Draws dash dot dot line.
-pub fn draw_dash_dot_dot_line(
-    painter: &egui::Painter,
-    from: egui::Pos2,
-    to: egui::Pos2,
-    stroke: Stroke,
-) {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 0.0 {
-        return;
-    }
-
-    let ux = dx / len;
-    let uy = dy / len;
-    let radius = (stroke.width * 0.35).max(1.0);
-    let mut dist = 0.0_f32;
-    while dist < len {
-        let dash_end = (dist + 7.0).min(len);
-        let p0 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        let p1 = egui::pos2(from.x + ux * dash_end, from.y + uy * dash_end);
-        painter.line_segment([p0, p1], stroke);
-        dist = dash_end + 3.0;
-        if dist >= len {
-            break;
-        }
-        let dot1 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        painter.circle_filled(dot1, radius, stroke.color);
-        dist += 3.0;
-        if dist >= len {
-            break;
-        }
-        let dot2 = egui::pos2(from.x + ux * dist, from.y + uy * dist);
-        painter.circle_filled(dot2, radius, stroke.color);
-        dist += 4.0;
-    }
 }

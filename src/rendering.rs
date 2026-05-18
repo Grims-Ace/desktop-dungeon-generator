@@ -4,6 +4,7 @@
  * and various markers using egui's Painter API.
  */
 
+use crate::exporter::utils::{corridor_edges_from_cells, room_edges_from_rooms};
 use crate::interact::{
     GridGeometry, HoverMarker, MarkerKind, cell_center, cell_rect, door_edges_for,
     door_render_width, marker_rect, normalized_edge, window_render_width,
@@ -494,46 +495,6 @@ pub fn draw_wall_segment(
         );
         painter.rect_filled(rect, 0.0, color);
     }
-}
-
-// Computes edges from cells.
-pub fn corridor_edges_from_cells(
-    corridor_cells: &HashSet<(usize, usize)>,
-) -> HashSet<((usize, usize), (usize, usize))> {
-    let mut edges = HashSet::new();
-    for &(col, row) in corridor_cells {
-        let right = (col + 1, row);
-        let bottom = (col, row + 1);
-        if corridor_cells.contains(&right) {
-            edges.insert(normalized_edge((col, row), right));
-        }
-        if corridor_cells.contains(&bottom) {
-            edges.insert(normalized_edge((col, row), bottom));
-        }
-    }
-    edges
-}
-
-// Computes edges from rooms.
-pub fn room_edges_from_rooms(
-    rooms: &[crate::layout::Room],
-) -> HashSet<((usize, usize), (usize, usize))> {
-    let mut edges = HashSet::new();
-    for room in rooms {
-        let x_end = room.x + room.width;
-        let y_end = room.y + room.height;
-        for x in room.x..x_end {
-            for y in room.y..y_end {
-                if x + 1 < x_end {
-                    edges.insert(normalized_edge((x, y), (x + 1, y)));
-                }
-                if y + 1 < y_end {
-                    edges.insert(normalized_edge((x, y), (x, y + 1)));
-                }
-            }
-        }
-    }
-    edges
 }
 
 #[derive(Debug, Clone, Copy)]

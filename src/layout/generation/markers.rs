@@ -5,7 +5,7 @@
  */
 
 use super::super::types::{AreaMarker, Corridor, DungeonLayout, Room, Staircase};
-use super::super::utils::room_index_at_cell;
+use super::super::utils::{SimpleRng, room_index_at_cell, shuffle_items};
 use crate::seed;
 use crate::ui::UiSettings;
 use std::collections::HashSet;
@@ -600,29 +600,6 @@ pub fn random_stair_size(settings: &UiSettings, seed_value: u64) -> (usize, usiz
 }
 
 pub fn shuffle_with_seed<T>(items: &mut [T], seed: u64) {
-    let mut rng = StairShuffleRng::new(seed);
-    for idx in (1..items.len()).rev() {
-        let swap_idx = rng.next_u32() as usize % (idx + 1);
-        items.swap(idx, swap_idx);
-    }
-}
-
-pub struct StairShuffleRng {
-    pub state: u64,
-}
-
-impl StairShuffleRng {
-    // Creates a new instance with the given inputs.
-    pub fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    // Generates the next pseudo-random 32-bit value.
-    pub fn next_u32(&mut self) -> u32 {
-        self.state = self
-            .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        (self.state >> 32) as u32
-    }
+    let mut rng = SimpleRng::new(seed);
+    shuffle_items(items, &mut rng);
 }

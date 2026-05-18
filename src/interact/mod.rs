@@ -5,6 +5,9 @@
  */
 
 use crate::app::DungeonApp;
+pub use crate::exporter::types::{
+    door_edges_for, door_render_width, norm_edge as normalized_edge, window_render_width,
+};
 use crate::layout;
 use crate::ui::AddTool;
 use eframe::egui;
@@ -600,71 +603,6 @@ pub fn resize_hit_cells(
     }
 
     cells
-}
-
-// Computes edges for.
-pub fn door_edges_for(
-    door: &layout::Door,
-    cols: usize,
-    rows: usize,
-) -> Vec<((usize, usize), (usize, usize))> {
-    let mut edges = Vec::new();
-    if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
-        return edges;
-    }
-
-    let width = door_render_width(door).max(1) as isize;
-    let min_offset = -((width - 1) / 2);
-    let max_offset = width / 2;
-
-    if door.from.0 != door.to.0 {
-        let y = door.from.1 as isize;
-        for dy in min_offset..=max_offset {
-            let ny = y + dy;
-            if ny < 0 || ny >= rows as isize {
-                continue;
-            }
-            let a = (door.from.0, ny as usize);
-            let b = (door.to.0, ny as usize);
-            edges.push(normalized_edge(a, b));
-        }
-    } else {
-        let x = door.from.0 as isize;
-        for dx in min_offset..=max_offset {
-            let nx = x + dx;
-            if nx < 0 || nx >= cols as isize {
-                continue;
-            }
-            let a = (nx as usize, door.from.1);
-            let b = (nx as usize, door.to.1);
-            edges.push(normalized_edge(a, b));
-        }
-    }
-
-    edges
-}
-
-// Computes render width.
-pub fn door_render_width(door: &layout::Door) -> usize {
-    if door.span_width {
-        door.width.max(1)
-    } else {
-        1
-    }
-}
-
-// Computes render width.
-pub fn window_render_width(window: &layout::Window) -> usize {
-    if window.span_width {
-        window.width.max(1)
-    } else {
-        1
-    }
-}
-
-// Normalizes a cell edge so either endpoint order compares equal.
-pub fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
-    if a <= b { (a, b) } else { (b, a) }
 }
 
 // Returns the screen center point for a grid cell.

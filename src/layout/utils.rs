@@ -468,13 +468,18 @@ pub fn noisy_path(
     path
 }
 
-// Shuffle indices in place using the provided RNG.
-pub fn shuffle_indices(indices: &mut [usize], rng: &mut SimpleRng) {
-    if indices.len() <= 1 {
+// Shuffle any mutable slice in place using the provided RNG.
+pub fn shuffle_items<T>(items: &mut [T], rng: &mut SimpleRng) {
+    if items.len() <= 1 {
         return;
     }
-    for i in (1..indices.len()).rev() {
+    for i in (1..items.len()).rev() {
         let j = rng.range_inclusive(0, i);
-        indices.swap(i, j);
+        items.swap(i, j);
     }
+}
+
+// Shuffle indices in place using the provided RNG.
+pub fn shuffle_indices(indices: &mut [usize], rng: &mut SimpleRng) {
+    shuffle_items(indices, rng);
 }
