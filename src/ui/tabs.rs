@@ -1,9 +1,10 @@
-use super::{AddTool, ExportFormat, MaskFormat, SidePanelResult, UiSettings};
 /*
  * Individual tab rendering logic for the side panel.
  * Contains functions for drawing the "Generate", "Layout", "Add",
  * "Start & End", and "Monsters & Traps" control panels.
  */
+
+use super::{AddTool, ExportFormat, MaskFormat, SidePanelResult, UiSettings};
 
 use crate::seed;
 use eframe::egui;
