@@ -962,10 +962,10 @@ pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: 
         if let Some(room) = layout.rooms.get(room_idx) {
             draw_room_resize_visuals(painter, geometry, room, false);
         }
-    } else if let Some(stair_idx) = app.hover_stair_idx {
-        if let Some(stair) = layout.stairs.get(stair_idx) {
-            draw_staircase_resize_visuals(painter, geometry, stair, false);
-        }
+    } else if let Some(stair_idx) = app.hover_stair_idx
+        && let Some(stair) = layout.stairs.get(stair_idx)
+    {
+        draw_staircase_resize_visuals(painter, geometry, stair, false);
     }
 }
 

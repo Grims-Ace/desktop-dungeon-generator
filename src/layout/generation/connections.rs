@@ -10,6 +10,10 @@ use super::super::utils::{
 };
 use std::collections::HashSet;
 
+pub type Cell = (usize, usize);
+pub type CellEdge = (Cell, Cell);
+pub type RoomBoundary = (usize, usize, Vec<CellEdge>);
+
 pub fn build_room_connection_edges(
     centers: &[(usize, usize)],
     randomness: f32,
@@ -176,9 +180,7 @@ pub fn room_collision_edges(
     edges
 }
 
-pub fn shared_room_boundaries(
-    rooms: &[Room],
-) -> Vec<(usize, usize, Vec<((usize, usize), (usize, usize))>)> {
+pub fn shared_room_boundaries(rooms: &[Room]) -> Vec<RoomBoundary> {
     let mut boundaries = Vec::new();
     for a_idx in 0..rooms.len() {
         for b_idx in (a_idx + 1)..rooms.len() {

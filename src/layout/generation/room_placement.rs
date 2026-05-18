@@ -143,8 +143,8 @@ pub fn placement_order(room_count: usize, room_edges: &[(usize, usize)]) -> Vec<
         }
     }
 
-    for idx in 0..room_count {
-        if !visited[idx] {
+    for (idx, was_visited) in visited.iter().enumerate().take(room_count) {
+        if !was_visited {
             order.push(idx);
         }
     }

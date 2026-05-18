@@ -44,36 +44,36 @@ pub fn apply_doors(
         let start_room = &layout.rooms[corridor.start_room_id];
         let end_room = &layout.rooms[corridor.end_room_id];
 
-        if let Some(edge) = room_exit_edge(&corridor.path, start_room, true) {
-            if seen_edges.insert(edge) {
-                let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
-                layout.doors.push(Door {
-                    from: edge.0,
-                    to: edge.1,
-                    width: corridor.width.max(1),
-                    span_width: true,
-                    locked: place_door && rng.next_f32() <= locked,
-                    archway: !place_door,
-                    secret: false,
-                    manual: false,
-                });
-            }
+        if let Some(edge) = room_exit_edge(&corridor.path, start_room, true)
+            && seen_edges.insert(edge)
+        {
+            let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+            layout.doors.push(Door {
+                from: edge.0,
+                to: edge.1,
+                width: corridor.width.max(1),
+                span_width: true,
+                locked: place_door && rng.next_f32() <= locked,
+                archway: !place_door,
+                secret: false,
+                manual: false,
+            });
         }
 
-        if let Some(edge) = room_exit_edge(&corridor.path, end_room, false) {
-            if seen_edges.insert(edge) {
-                let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
-                layout.doors.push(Door {
-                    from: edge.0,
-                    to: edge.1,
-                    width: corridor.width.max(1),
-                    span_width: true,
-                    locked: place_door && rng.next_f32() <= locked,
-                    archway: !place_door,
-                    secret: false,
-                    manual: false,
-                });
-            }
+        if let Some(edge) = room_exit_edge(&corridor.path, end_room, false)
+            && seen_edges.insert(edge)
+        {
+            let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+            layout.doors.push(Door {
+                from: edge.0,
+                to: edge.1,
+                width: corridor.width.max(1),
+                span_width: true,
+                locked: place_door && rng.next_f32() <= locked,
+                archway: !place_door,
+                secret: false,
+                manual: false,
+            });
         }
 
         for (room_idx, room) in layout.rooms.iter().enumerate() {
@@ -404,6 +404,7 @@ pub fn collect_window_segments(
     segments
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn collect_room_side_segments(
     room_idx: usize,
     room: &Room,

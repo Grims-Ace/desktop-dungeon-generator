@@ -263,10 +263,8 @@ impl eframe::App for DungeonApp {
                 (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
                     && self.hover_level_idx.is_some()
             });
-            if level_delete_requested {
-                if let Some(level_idx) = self.hover_level_idx {
-                    self.delete_level(level_idx);
-                }
+            if level_delete_requested && let Some(level_idx) = self.hover_level_idx {
+                self.delete_level(level_idx);
             }
 
             let resizing = crate::interact::handle_resize(self, ctx, &response, &geometry);
@@ -305,7 +303,7 @@ pub fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
     let level_count = if settings.min_levels == settings.max_levels {
         settings.min_levels
     } else {
-        let range_seed = crate::seed::derive_seed(settings.seed, 0x1E_7E_1_u64);
+        let range_seed = crate::seed::derive_seed(settings.seed, 0x0001_E7E1_u64);
         (range_seed as usize % (settings.max_levels - settings.min_levels + 1))
             + settings.min_levels
     };

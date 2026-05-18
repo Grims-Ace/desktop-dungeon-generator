@@ -5,8 +5,9 @@
  */
 
 use super::types::{
-    BG, BLACK, CORRIDOR, DoorStyle, END_MARKER, ExportGeometry, GRID, MONSTER_MARKER, ROOM, STAIRS,
-    START_MARKER, TRAP_MARKER, WHITE, WINDOW_COLOR, door_render_width, norm_edge,
+    BG, BLACK, CORRIDOR, Cell, CellEdge, DoorStyle, END_MARKER, ExportGeometry, GRID,
+    MONSTER_MARKER, ROOM, STAIRS, START_MARKER, TRAP_MARKER, WHITE, WINDOW_COLOR,
+    door_render_width, norm_edge,
 };
 use super::utils::{collect_scene_data, door_line_points, window_line_points};
 use crate::layout::{AreaMarker, DungeonLayout, Room, Staircase, Window};
@@ -531,9 +532,9 @@ pub fn draw_room_crosshatch(
 pub fn draw_cell_walls(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
-    cells: &HashSet<(usize, usize)>,
-    connected_edges: Option<&HashSet<((usize, usize), (usize, usize))>>,
-    door_edges: &HashSet<((usize, usize), (usize, usize))>,
+    cells: &HashSet<Cell>,
+    connected_edges: Option<&HashSet<CellEdge>>,
+    door_edges: &HashSet<CellEdge>,
     width: f32,
     color: (u8, u8, u8, u8),
 ) {
@@ -683,6 +684,7 @@ pub fn draw_window(
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_line(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -705,6 +707,7 @@ pub fn draw_line(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn stroke_path(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -725,8 +728,10 @@ pub fn stroke_path(
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.0, color.1, color.2, color.3);
 
-    let mut stroke = Stroke::default();
-    stroke.width = width;
+    let mut stroke = Stroke {
+        width,
+        ..Default::default()
+    };
     if let Some((dash_len, gap_len)) = dash {
         stroke.dash = StrokeDash::new(vec![dash_len, gap_len], 0.0);
     }

@@ -98,7 +98,7 @@ pub struct WindowSettings {
     pub allow_internal_windows: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DungeonLayout {
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,
@@ -111,24 +111,6 @@ pub struct DungeonLayout {
     pub monster_markers: Vec<AreaMarker>,
     pub packed_rooms: bool,
     pub stairs: Vec<Staircase>,
-}
-
-impl Default for DungeonLayout {
-    fn default() -> Self {
-        Self {
-            rooms: Vec::new(),
-            corridors: Vec::new(),
-            doors: Vec::new(),
-            windows: Vec::new(),
-            text_labels: Vec::new(),
-            start_markers: Vec::new(),
-            end_markers: Vec::new(),
-            trap_markers: Vec::new(),
-            monster_markers: Vec::new(),
-            packed_rooms: false,
-            stairs: Vec::new(),
-        }
-    }
 }
 
 impl DungeonLayout {

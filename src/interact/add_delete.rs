@@ -55,10 +55,10 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
                 drag.current_cell = (grid_x.floor() as usize, grid_y.floor() as usize);
             }
 
-            if response.drag_stopped() {
-                if let Some(drag) = app.add_corridor_drag.take() {
-                    add_corridor_between(app, drag.start_cell, drag.current_cell);
-                }
+            if response.drag_stopped()
+                && let Some(drag) = app.add_corridor_drag.take()
+            {
+                add_corridor_between(app, drag.start_cell, drag.current_cell);
             }
         }
         AddTool::Staircase => {

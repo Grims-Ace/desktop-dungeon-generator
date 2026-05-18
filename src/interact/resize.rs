@@ -23,27 +23,28 @@ pub fn handle_resize(
         return false;
     }
 
-    if ctx.input(|i| i.pointer.secondary_pressed()) && app.resize_state.is_none() {
-        if let Some(pointer_pos) = response.interact_pointer_pos() {
-            if let Some(text_idx) = text_at_pointer(app, pointer_pos, geometry) {
-                if let Some(state) = start_text_resize(app, text_idx) {
-                    app.push_undo_snapshot();
-                    app.resize_state = Some(ResizeState::Text(state));
-                    return true;
-                }
-            } else if let Some(stair_idx) = stair_at_pointer(app, pointer_pos, geometry) {
-                if let Some(state) = start_staircase_resize(app, stair_idx, pointer_pos, geometry) {
-                    app.push_undo_snapshot();
-                    app.resize_state = Some(ResizeState::Staircase(state));
-                    return true;
-                }
-            } else if let Some(room_idx) = resize_room_at_pointer(app, pointer_pos, geometry) {
-                if let Some(state) = start_resize(app, room_idx, pointer_pos, geometry) {
-                    app.push_undo_snapshot();
-                    app.resize_state = Some(ResizeState::Room(state));
-                    return true;
-                }
+    if ctx.input(|i| i.pointer.secondary_pressed())
+        && app.resize_state.is_none()
+        && let Some(pointer_pos) = response.interact_pointer_pos()
+    {
+        if let Some(text_idx) = text_at_pointer(app, pointer_pos, geometry) {
+            if let Some(state) = start_text_resize(app, text_idx) {
+                app.push_undo_snapshot();
+                app.resize_state = Some(ResizeState::Text(state));
+                return true;
             }
+        } else if let Some(stair_idx) = stair_at_pointer(app, pointer_pos, geometry) {
+            if let Some(state) = start_staircase_resize(app, stair_idx, pointer_pos, geometry) {
+                app.push_undo_snapshot();
+                app.resize_state = Some(ResizeState::Staircase(state));
+                return true;
+            }
+        } else if let Some(room_idx) = resize_room_at_pointer(app, pointer_pos, geometry)
+            && let Some(state) = start_resize(app, room_idx, pointer_pos, geometry)
+        {
+            app.push_undo_snapshot();
+            app.resize_state = Some(ResizeState::Room(state));
+            return true;
         }
     }
 
@@ -51,14 +52,13 @@ pub fn handle_resize(
         if response.dragged_by(egui::PointerButton::Secondary)
             && ctx.input(|i| i.pointer.secondary_down())
             && let Some(pointer_pos) = response.interact_pointer_pos()
+            && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
         {
-            if let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) {
-                let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
-                match state {
-                    ResizeState::Room(state) => resize_room(app, &state, cell),
-                    ResizeState::Text(state) => resize_text(app, &state, cell),
-                    ResizeState::Staircase(state) => resize_staircase(app, &state, cell),
-                }
+            let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+            match state {
+                ResizeState::Room(state) => resize_room(app, &state, cell),
+                ResizeState::Text(state) => resize_text(app, &state, cell),
+                ResizeState::Staircase(state) => resize_staircase(app, &state, cell),
             }
         }
 

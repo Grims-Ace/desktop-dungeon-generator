@@ -5,8 +5,8 @@
  */
 
 use super::types::{
-    BG, CORRIDOR, END_MARKER, ExportGeometry, GRID, MONSTER_MARKER, ROOM, START_MARKER,
-    TRAP_MARKER, WINDOW_COLOR, door_render_width, norm_edge,
+    BG, CORRIDOR, Cell, CellEdge, END_MARKER, ExportGeometry, GRID, MONSTER_MARKER, ROOM,
+    START_MARKER, TRAP_MARKER, WINDOW_COLOR, door_render_width, norm_edge,
 };
 use super::utils::{collect_scene_data, door_line_points, window_line_points};
 use crate::layout::DungeonLayout;
@@ -256,9 +256,9 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
 pub fn append_svg_walls(
     out: &mut String,
     g: &ExportGeometry,
-    cells: &HashSet<(usize, usize)>,
-    connected_edges: Option<&HashSet<((usize, usize), (usize, usize))>>,
-    door_edges: &HashSet<((usize, usize), (usize, usize))>,
+    cells: &HashSet<Cell>,
+    connected_edges: Option<&HashSet<CellEdge>>,
+    door_edges: &HashSet<CellEdge>,
     width: f32,
 ) {
     for &(col, row) in cells {

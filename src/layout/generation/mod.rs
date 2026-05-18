@@ -18,6 +18,7 @@ pub use markers::*;
 pub use passages::*;
 pub use room_placement::*;
 
+#[allow(clippy::too_many_arguments)]
 pub fn generate_layout(
     cols: usize,
     rows: usize,

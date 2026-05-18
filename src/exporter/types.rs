@@ -9,6 +9,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use tiny_skia::Rect;
 
+pub type Cell = (usize, usize);
+pub type CellEdge = (Cell, Cell);
+
 pub const BG: (u8, u8, u8, u8) = (24, 24, 26, 255);
 pub const GRID: (u8, u8, u8, u8) = (130, 130, 130, 255);
 pub const ROOM: (u8, u8, u8, u8) = (70, 120, 160, 255);
@@ -105,11 +108,11 @@ impl ExportGeometry {
 
 #[derive(Default)]
 pub struct SceneData {
-    pub corridor_cells: HashSet<(usize, usize)>,
-    pub corridor_edges: HashSet<((usize, usize), (usize, usize))>,
-    pub room_cells: HashSet<(usize, usize)>,
-    pub room_edges: HashSet<((usize, usize), (usize, usize))>,
-    pub door_edges: HashSet<((usize, usize), (usize, usize))>,
+    pub corridor_cells: HashSet<Cell>,
+    pub corridor_edges: HashSet<CellEdge>,
+    pub room_cells: HashSet<Cell>,
+    pub room_edges: HashSet<CellEdge>,
+    pub door_edges: HashSet<CellEdge>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -144,15 +147,11 @@ pub struct CompositeExportContext<'a> {
     pub door_width: f32,
 }
 
-pub fn norm_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+pub fn norm_edge(a: Cell, b: Cell) -> CellEdge {
     if a <= b { (a, b) } else { (b, a) }
 }
 
-pub fn door_edges_for(
-    door: &Door,
-    cols: usize,
-    rows: usize,
-) -> Vec<((usize, usize), (usize, usize))> {
+pub fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<CellEdge> {
     let mut edges = Vec::new();
     if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
         return edges;

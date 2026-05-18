@@ -430,6 +430,7 @@ pub fn draw_area_marker(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_area_marker_group(
     painter: &egui::Painter,
     geometry: &GridGeometry,

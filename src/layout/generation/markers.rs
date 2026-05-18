@@ -120,6 +120,7 @@ pub fn marker_in_room(
     AreaMarker { cell: (x, y), size }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn assign_extra_markers(
     markers: &mut Vec<AreaMarker>,
     rooms: &[Room],
@@ -399,7 +400,7 @@ pub fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
     if settings.min_stairs_per_level == settings.max_stairs_per_level {
         settings.min_stairs_per_level
     } else {
-        let range_seed = seed::derive_seed(settings.seed, 0x2A_3B_4_u64 + gap_idx as u64);
+        let range_seed = seed::derive_seed(settings.seed, 0x0002_A3B4_u64 + gap_idx as u64);
         (range_seed as usize % (settings.max_stairs_per_level - settings.min_stairs_per_level + 1))
             + settings.min_stairs_per_level
     }
@@ -460,18 +461,14 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &Staircase) -> bo
 pub fn room_to_stair_min_dist(room: &Room, stair: &Staircase) -> usize {
     let dx = if stair.cell.0 + stair.width <= room.x {
         room.x - (stair.cell.0 + stair.width)
-    } else if stair.cell.0 >= room.x + room.width {
-        stair.cell.0 - (room.x + room.width)
     } else {
-        0
+        stair.cell.0.saturating_sub(room.x + room.width)
     };
 
     let dy = if stair.cell.1 + stair.height <= room.y {
         room.y - (stair.cell.1 + stair.height)
-    } else if stair.cell.1 >= room.y + room.height {
-        stair.cell.1 - (room.y + room.height)
     } else {
-        0
+        stair.cell.1.saturating_sub(room.y + room.height)
     };
 
     dx + dy

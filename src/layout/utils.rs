@@ -218,6 +218,7 @@ pub fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     a_left < b_right && a_right > b_left && a_top < b_bottom && a_bottom > b_top
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn rects_overlap(
     ax: usize,
     ay: usize,
