@@ -24,6 +24,7 @@ pub use types::*;
 
 type ProgressSender = mpsc::Sender<ExportEvent>;
 
+// Selects export target.
 pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, String> {
     if settings.export_format == ExportFormat::Folder || settings.export_level_index == 999 {
         let title = if settings.export_level_index == 999 {
@@ -65,6 +66,7 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
     Ok(ExportTarget::File(path))
 }
 
+// Exports to target.
 pub fn export_to_target(
     layouts: &[DungeonLayout],
     settings: &UiSettings,
@@ -112,6 +114,7 @@ pub fn export_to_target(
     }
 }
 
+// Exports image count.
 fn export_image_count(settings: &UiSettings, target: &ExportTarget, level_count: usize) -> usize {
     match target {
         ExportTarget::File(_) => 1,
@@ -122,6 +125,7 @@ fn export_image_count(settings: &UiSettings, target: &ExportTarget, level_count:
     }
 }
 
+// Counts images per level.
 fn composite_images_per_level(settings: &UiSettings) -> usize {
     let base_masks = 12;
     let grid_mask = usize::from(settings.export_show_grid);
@@ -129,10 +133,12 @@ fn composite_images_per_level(settings: &UiSettings) -> usize {
     base_masks + grid_mask + composite
 }
 
+// Sends an export progress update to the UI channel.
 fn report_progress(progress_tx: &ProgressSender, completed: usize, total: usize) {
     let _ = progress_tx.send(ExportEvent::Progress(ExportProgress { completed, total }));
 }
 
+// Exports level images to folder.
 fn export_level_images_to_folder(
     layouts: &[DungeonLayout],
     settings: &UiSettings,
@@ -155,6 +161,7 @@ fn export_level_images_to_folder(
     })
 }
 
+// Saves layout to file.
 fn save_layout_to_file(
     layout: &DungeonLayout,
     settings: &UiSettings,
@@ -182,6 +189,7 @@ fn save_layout_to_file(
     Ok(())
 }
 
+// Exports composite masks for levels.
 fn export_composite_masks_for_levels(
     layouts: &[DungeonLayout],
     settings: &UiSettings,
@@ -265,6 +273,7 @@ fn export_composite_masks_for_levels(
     Ok(())
 }
 
+// Saves composite image.
 fn save_composite_image(
     context: &CompositeExportContext<'_>,
     settings: &UiSettings,
@@ -285,6 +294,7 @@ fn save_composite_image(
     Ok(())
 }
 
+// Renders mask pixmap.
 fn render_mask_pixmap(
     context: &CompositeExportContext<'_>,
     task: MaskTask,
@@ -441,6 +451,7 @@ fn render_mask_pixmap(
     Ok(result)
 }
 
+// Creates an empty pixmap for a named export mask.
 fn blank_mask(g: &ExportGeometry, name: &str) -> Result<Pixmap, String> {
     let mut pixmap = Pixmap::new(g.width, g.height)
         .ok_or_else(|| format!("Failed to allocate {name} mask canvas"))?;
@@ -448,6 +459,7 @@ fn blank_mask(g: &ExportGeometry, name: &str) -> Result<Pixmap, String> {
     Ok(pixmap)
 }
 
+// Fills marker mask.
 fn fill_marker_mask(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -458,6 +470,7 @@ fn fill_marker_mask(
     }
 }
 
+// Saves mask image.
 fn save_mask_image(
     folder: &std::path::Path,
     stem: &str,
@@ -472,6 +485,7 @@ fn save_mask_image(
     Ok(())
 }
 
+// Selects image format.
 fn mask_image_format(format: MaskFormat) -> ImageFormat {
     match format {
         MaskFormat::Png => ImageFormat::Png,

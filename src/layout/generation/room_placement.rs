@@ -8,6 +8,7 @@ use super::super::types::Room;
 use super::super::utils::{SimpleRng, rooms_overlap, rooms_touch, shuffle_indices};
 use std::collections::VecDeque;
 
+// Generates room sizes.
 pub fn generate_room_sizes(
     target_room_count: usize,
     cols: usize,
@@ -48,6 +49,7 @@ pub fn generate_room_sizes(
     sizes
 }
 
+// Generates random room center points inside the grid.
 pub fn random_centers(
     count: usize,
     cols: usize,
@@ -64,6 +66,7 @@ pub fn random_centers(
     centers
 }
 
+// Places packed rooms.
 pub fn place_packed_rooms(
     room_sizes: &[(usize, usize)],
     room_edges: &[(usize, usize)],
@@ -116,6 +119,7 @@ pub fn place_packed_rooms(
     placed.into_iter().flatten().collect()
 }
 
+// Computes the order used to place packed rooms.
 pub fn placement_order(room_count: usize, room_edges: &[(usize, usize)]) -> Vec<usize> {
     if room_count == 0 {
         return Vec::new();
@@ -152,6 +156,7 @@ pub fn placement_order(room_count: usize, room_edges: &[(usize, usize)]) -> Vec<
     order
 }
 
+// Tries to place packed room.
 pub fn try_place_packed_room(
     room_idx: usize,
     room_sizes: &[(usize, usize)],
@@ -214,6 +219,7 @@ pub fn try_place_packed_room(
     None
 }
 
+// Builds room candidates.
 pub fn packed_room_candidates(
     anchor: &Room,
     width: usize,
@@ -261,6 +267,7 @@ pub fn packed_room_candidates(
     candidates
 }
 
+// Shuffles rooms with the deterministic layout RNG.
 pub fn shuffle_rooms(rooms: &mut [Room], rng: &mut SimpleRng) {
     if rooms.len() <= 1 {
         return;

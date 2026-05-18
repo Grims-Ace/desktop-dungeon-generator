@@ -10,6 +10,7 @@ use crate::seed;
 use crate::ui::UiSettings;
 use std::collections::HashSet;
 
+// Populates random markers.
 pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
     layout.start_markers.clear();
     layout.end_markers.clear();
@@ -86,6 +87,7 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
     layout
 }
 
+// Generates range inclusive.
 pub fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
     let min = min.max(1);
     let max = max.max(min);
@@ -93,6 +95,7 @@ pub fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize 
     min + (seed_value as usize % span)
 }
 
+// Computes in room.
 pub fn marker_in_room(
     room: &Room,
     min_size: usize,
@@ -120,6 +123,7 @@ pub fn marker_in_room(
     AreaMarker { cell: (x, y), size }
 }
 
+// Handles assign extra markers.
 #[allow(clippy::too_many_arguments)]
 pub fn assign_extra_markers(
     markers: &mut Vec<AreaMarker>,
@@ -149,6 +153,7 @@ pub fn assign_extra_markers(
     }
 }
 
+// Finds room pair.
 pub fn farthest_room_pair(
     rooms: &[Room],
     available_start_rooms: &[usize],
@@ -182,6 +187,7 @@ pub fn farthest_room_pair(
     best
 }
 
+// Computes distance sq.
 pub fn room_distance_sq(a: &Room, b: &Room) -> usize {
     let ac = a.center_cell();
     let bc = b.center_cell();
@@ -190,12 +196,14 @@ pub fn room_distance_sq(a: &Room, b: &Room) -> usize {
     dx * dx + dy * dy
 }
 
+// Removes a room id from the available marker placement list.
 pub fn consume_room(available_rooms: &mut Vec<usize>, room_idx: usize) {
     if let Some(pos) = available_rooms.iter().position(|&idx| idx == room_idx) {
         available_rooms.remove(pos);
     }
 }
 
+// Picks room index.
 pub fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value: u64) -> usize {
     if !available_rooms.is_empty() {
         available_rooms[seed_value as usize % available_rooms.len()]
@@ -204,6 +212,7 @@ pub fn pick_room_index(available_rooms: &[usize], room_count: usize, seed_value:
     }
 }
 
+// Populates random traps.
 pub fn populate_random_traps(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
     layout.trap_markers = populate_random_area_markers(
         &layout,
@@ -217,6 +226,7 @@ pub fn populate_random_traps(mut layout: DungeonLayout, settings: &UiSettings) -
     layout
 }
 
+// Populates random monsters.
 pub fn populate_random_monsters(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
     layout.monster_markers = populate_random_area_markers(
         &layout,
@@ -230,6 +240,7 @@ pub fn populate_random_monsters(mut layout: DungeonLayout, settings: &UiSettings
     layout
 }
 
+// Populates random area markers.
 pub fn populate_random_area_markers(
     layout: &DungeonLayout,
     master_seed: u64,
@@ -272,6 +283,7 @@ pub fn populate_random_area_markers(
     markers
 }
 
+// Appends room markers.
 pub fn append_room_markers(
     markers: &mut Vec<AreaMarker>,
     room: &Room,
@@ -295,6 +307,7 @@ pub fn append_room_markers(
     }
 }
 
+// Appends corridor markers.
 pub fn append_corridor_markers(
     markers: &mut Vec<AreaMarker>,
     corridor: &Corridor,
@@ -317,10 +330,12 @@ pub fn append_corridor_markers(
     }
 }
 
+// Checks whether passes frequency roll.
 pub fn passes_frequency_roll(area_seed: u64, frequency_percent: usize) -> bool {
     (area_seed % 100) < frequency_percent as u64
 }
 
+// Picks random corridor cell.
 pub fn pick_random_corridor_cell(corridor: &Corridor, seed_value: u64) -> Option<(usize, usize)> {
     if corridor.path.is_empty() {
         return None;
@@ -329,6 +344,7 @@ pub fn pick_random_corridor_cell(corridor: &Corridor, seed_value: u64) -> Option
     Some(corridor.path[idx])
 }
 
+// Populates staircase transitions between generated levels.
 pub fn populate_stairs(
     mut layouts: Vec<DungeonLayout>,
     settings: &UiSettings,
@@ -396,6 +412,7 @@ pub fn populate_stairs(
     result
 }
 
+// Gets stair count.
 pub fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
     if settings.min_stairs_per_level == settings.max_stairs_per_level {
         settings.min_stairs_per_level
@@ -406,6 +423,7 @@ pub fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
     }
 }
 
+// Ensures stair in room.
 pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &Staircase) -> bool {
     let stair_x = stair.cell.0;
     let stair_y = stair.cell.1;
@@ -458,6 +476,7 @@ pub fn ensure_stair_in_room(layout: &mut DungeonLayout, stair: &Staircase) -> bo
     }
 }
 
+// Computes to stair min dist.
 pub fn room_to_stair_min_dist(room: &Room, stair: &Staircase) -> usize {
     let dx = if stair.cell.0 + stair.width <= room.x {
         room.x - (stair.cell.0 + stair.width)
@@ -474,6 +493,7 @@ pub fn room_to_stair_min_dist(room: &Room, stair: &Staircase) -> usize {
     dx + dy
 }
 
+// Picks stair positions.
 pub fn pick_stair_positions(
     layout: &DungeonLayout,
     settings: &UiSettings,
@@ -548,6 +568,7 @@ pub fn pick_stair_positions(
         .collect()
 }
 
+// Checks whether has start or end on bottom row.
 pub fn has_start_or_end_on_bottom_row(
     room: &Room,
     start_markers: &[AreaMarker],
@@ -563,6 +584,7 @@ pub fn has_start_or_end_on_bottom_row(
     false
 }
 
+// Generates stair size.
 pub fn random_stair_size(settings: &UiSettings, seed_value: u64) -> (usize, usize) {
     let w_span = settings
         .max_stair_width
@@ -590,10 +612,12 @@ pub struct StairShuffleRng {
 }
 
 impl StairShuffleRng {
+    // Creates a new instance with the given inputs.
     pub fn new(seed: u64) -> Self {
         Self { state: seed }
     }
 
+    // Generates the next pseudo-random 32-bit value.
     pub fn next_u32(&mut self) -> u32 {
         self.state = self
             .state

@@ -14,6 +14,7 @@ use crate::ui::UiSettings;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 
+// Builds the complete SVG document for a dungeon layout.
 pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let wall_w = (g.cell / 2.5).max(1.0);
@@ -253,6 +254,7 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
     s
 }
 
+// Appends svg walls.
 pub fn append_svg_walls(
     out: &mut String,
     g: &ExportGeometry,
@@ -329,6 +331,7 @@ pub fn append_svg_walls(
     }
 }
 
+// Appends svg area marker.
 pub fn append_svg_area_marker(
     out: &mut String,
     g: &ExportGeometry,
@@ -419,6 +422,7 @@ pub fn append_svg_area_marker(
     }
 }
 
+// Appends svg area marker group.
 pub fn append_svg_area_marker_group(
     out: &mut String,
     g: &ExportGeometry,

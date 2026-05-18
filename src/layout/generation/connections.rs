@@ -14,6 +14,7 @@ pub type Cell = (usize, usize);
 pub type CellEdge = (Cell, Cell);
 pub type RoomBoundary = (usize, usize, Vec<CellEdge>);
 
+// Builds room connection edges.
 pub fn build_room_connection_edges(
     centers: &[(usize, usize)],
     randomness: f32,
@@ -73,6 +74,7 @@ pub fn build_room_connection_edges(
     edges
 }
 
+// Orders core rooms.
 pub fn ordered_core_rooms(
     core_rooms: &[usize],
     centers: &[(usize, usize)],
@@ -107,6 +109,7 @@ pub fn ordered_core_rooms(
     ordered
 }
 
+// Pushes unique room edge.
 pub fn push_unique_room_edge(
     a: usize,
     b: usize,
@@ -122,6 +125,7 @@ pub fn push_unique_room_edge(
     }
 }
 
+// Computes exit edge.
 pub fn room_exit_edge(
     path: &[(usize, usize)],
     room: &Room,
@@ -151,6 +155,7 @@ pub fn room_exit_edge(
     None
 }
 
+// Computes collision edges.
 pub fn room_collision_edges(
     path: &[(usize, usize)],
     room: &Room,
@@ -180,6 +185,7 @@ pub fn room_collision_edges(
     edges
 }
 
+// Finds room boundaries.
 pub fn shared_room_boundaries(rooms: &[Room]) -> Vec<RoomBoundary> {
     let mut boundaries = Vec::new();
     for a_idx in 0..rooms.len() {

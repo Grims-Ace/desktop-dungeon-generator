@@ -17,6 +17,7 @@ use crate::layout::{
 use crate::ui::AddTool;
 use eframe::egui;
 
+// Handles add tool.
 pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry: &GridGeometry) {
     if app.settings.add_tool != AddTool::None && response.secondary_clicked() {
         app.settings.add_tool = AddTool::None;
@@ -122,6 +123,7 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
     }
 }
 
+// Deletes at pointer.
 pub fn delete_at_pointer(app: &mut DungeonApp, pointer_pos: egui::Pos2, geometry: &GridGeometry) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -236,6 +238,7 @@ pub fn delete_at_pointer(app: &mut DungeonApp, pointer_pos: egui::Pos2, geometry
     }
 }
 
+// Adds room at cell.
 pub fn add_room_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     app.push_undo_snapshot();
     if app.settings.active_level_index >= app.levels.len() {
@@ -275,6 +278,7 @@ pub fn add_room_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     app.refresh_doors();
 }
 
+// Adds corridor between.
 pub fn add_corridor_between(app: &mut DungeonApp, start: (usize, usize), end: (usize, usize)) {
     app.push_undo_snapshot();
     if app.settings.active_level_index >= app.levels.len() {
@@ -319,6 +323,7 @@ pub fn add_corridor_between(app: &mut DungeonApp, start: (usize, usize), end: (u
     app.refresh_doors();
 }
 
+// Adds text at cell.
 pub fn add_text_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     app.push_undo_snapshot();
     if app.settings.active_level_index >= app.levels.len() {
@@ -351,6 +356,7 @@ pub fn add_text_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     });
 }
 
+// Adds marker at cell.
 pub fn add_marker_at_cell(app: &mut DungeonApp, cell: (usize, usize), kind: MarkerKind) {
     app.push_undo_snapshot();
     if app.settings.active_level_index >= app.levels.len() {
@@ -374,6 +380,7 @@ pub fn add_marker_at_cell(app: &mut DungeonApp, cell: (usize, usize), kind: Mark
     }
 }
 
+// Adds staircase at cell.
 pub fn add_staircase_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     app.push_undo_snapshot();
     if app.settings.active_level_index >= app.levels.len() {
@@ -416,6 +423,7 @@ pub fn add_staircase_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
     }
 }
 
+// Deletes a room and removes dependent generated elements.
 pub fn delete_room(app: &mut DungeonApp, room_idx: usize) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -441,6 +449,7 @@ pub fn delete_room(app: &mut DungeonApp, room_idx: usize) {
     app.refresh_doors();
 }
 
+// Adds door at pointer.
 pub fn add_door_at_pointer(
     app: &mut DungeonApp,
     pointer_pos: egui::Pos2,
@@ -525,6 +534,7 @@ pub fn add_door_at_pointer(
     app.suppressed_auto_door_edges.remove(&target);
 }
 
+// Checks whether manual door edge allowed.
 pub fn manual_door_edge_allowed(
     a_room: Option<usize>,
     b_room: Option<usize>,

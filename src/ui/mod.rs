@@ -19,6 +19,7 @@ pub enum Tab {
 }
 
 impl Default for Tab {
+    // Provides default settings for this type.
     fn default() -> Self {
         Self::Generate
     }
@@ -34,12 +35,14 @@ pub enum ExportFormat {
 }
 
 impl Default for ExportFormat {
+    // Provides default settings for this type.
     fn default() -> Self {
         Self::Png
     }
 }
 
 impl ExportFormat {
+    // Returns the file extension for this format.
     pub fn extension(self) -> &'static str {
         match self {
             ExportFormat::Png => "png",
@@ -50,6 +53,7 @@ impl ExportFormat {
         }
     }
 
+    // Returns the user-facing label for this option.
     pub fn label(self) -> &'static str {
         match self {
             ExportFormat::Png => ".png",
@@ -60,6 +64,7 @@ impl ExportFormat {
         }
     }
 
+    // Reports whether this format supports resolution scaling.
     pub fn supports_resolution(self) -> bool {
         !matches!(self, ExportFormat::Svg)
     }
@@ -73,12 +78,14 @@ pub enum MaskFormat {
 }
 
 impl Default for MaskFormat {
+    // Provides default settings for this type.
     fn default() -> Self {
         Self::Png
     }
 }
 
 impl MaskFormat {
+    // Returns the file extension for this format.
     pub fn extension(self) -> &'static str {
         match self {
             MaskFormat::Png => "png",
@@ -87,6 +94,7 @@ impl MaskFormat {
         }
     }
 
+    // Returns the user-facing label for this option.
     pub fn label(self) -> &'static str {
         match self {
             MaskFormat::Png => ".png",
@@ -169,6 +177,7 @@ pub struct UiSettings {
 }
 
 impl Default for UiSettings {
+    // Provides default settings for this type.
     fn default() -> Self {
         UiSettings {
             seed: 0,
@@ -270,6 +279,7 @@ pub struct SidePanelResult {
     pub new_level_clicked: bool,
 }
 
+// Draws side panel.
 pub fn draw_side_panel(
     ctx: &egui::Context,
     settings: &mut UiSettings,
@@ -343,6 +353,7 @@ pub fn draw_side_panel(
     result
 }
 
+// Draws legend panel.
 pub fn draw_legend_panel(ctx: &egui::Context, settings: &mut UiSettings) -> bool {
     let mut composition_mode_changed = false;
     use egui::Color32;
@@ -418,6 +429,7 @@ pub fn draw_legend_panel(ctx: &egui::Context, settings: &mut UiSettings) -> bool
     composition_mode_changed
 }
 
+// Draws level tabs.
 pub fn draw_level_tabs(
     ui: &mut egui::Ui,
     level_count: usize,

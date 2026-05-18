@@ -28,6 +28,7 @@ pub struct GridGeometry {
     pub rows: usize,
 }
 
+// Draws the editable grid and returns its screen geometry.
 pub fn draw_grid(
     painter: &egui::Painter,
     area: egui::Rect,
@@ -82,6 +83,7 @@ pub fn draw_grid(
     }
 }
 
+// Handles update hover targets.
 pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry: &GridGeometry) {
     if app.drag_state.is_some() || app.resize_state.is_some() || app.add_corridor_drag.is_some() {
         return;
@@ -158,6 +160,7 @@ pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry:
     }
 }
 
+// Computes edge at pointer.
 pub fn door_edge_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -210,6 +213,7 @@ pub fn door_edge_at_pointer(
     Some(((ax as usize, ay as usize), (bx as usize, by as usize)))
 }
 
+// Computes at pointer.
 pub fn room_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -236,6 +240,7 @@ pub fn room_at_pointer(
     None
 }
 
+// Computes at pointer.
 pub fn text_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -254,6 +259,7 @@ pub fn text_at_pointer(
         .position(|label| label.cell == clicked)
 }
 
+// Computes at pointer.
 pub fn marker_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -298,6 +304,7 @@ pub fn marker_at_pointer(
         })
 }
 
+// Computes drag at pointer.
 pub fn marker_drag_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -349,6 +356,7 @@ pub fn marker_drag_at_pointer(
     }
 }
 
+// Handles stair at pointer.
 pub fn stair_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -369,6 +377,7 @@ pub fn stair_at_pointer(
     })
 }
 
+// Handles stair drag at pointer.
 pub fn stair_drag_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -390,6 +399,7 @@ pub fn stair_drag_at_pointer(
     })
 }
 
+// Resizes room at pointer.
 pub fn resize_room_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -421,6 +431,7 @@ pub fn resize_room_at_pointer(
     None
 }
 
+// Computes drag at pointer.
 pub fn corridor_drag_at_pointer(
     app: &DungeonApp,
     pointer_pos: egui::Pos2,
@@ -445,6 +456,7 @@ pub fn corridor_drag_at_pointer(
     })
 }
 
+// Converts to grid.
 pub fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Option<(f32, f32)> {
     if !geometry.rect.contains(pointer_pos) {
         return None;
@@ -455,6 +467,7 @@ pub fn pointer_to_grid(pointer_pos: egui::Pos2, geometry: &GridGeometry) -> Opti
     Some((x, y))
 }
 
+// Reroutes path through cell.
 pub fn reroute_path_through_cell(
     original_path: &[(usize, usize)],
     original_cell: (usize, usize),
@@ -512,6 +525,7 @@ pub fn reroute_path_through_cell(
     Some(full_path)
 }
 
+// Simplifies path loops.
 pub fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
     let mut out = Vec::new();
     for &cell in path.iter() {
@@ -524,6 +538,7 @@ pub fn simplify_path_loops(path: &mut Vec<(usize, usize)>) {
     *path = out;
 }
 
+// Resizes hit cells.
 pub fn resize_hit_cells(
     room: &layout::Room,
     room_idx: usize,
@@ -587,6 +602,7 @@ pub fn resize_hit_cells(
     cells
 }
 
+// Computes edges for.
 pub fn door_edges_for(
     door: &layout::Door,
     cols: usize,
@@ -628,6 +644,7 @@ pub fn door_edges_for(
     edges
 }
 
+// Computes render width.
 pub fn door_render_width(door: &layout::Door) -> usize {
     if door.span_width {
         door.width.max(1)
@@ -636,6 +653,7 @@ pub fn door_render_width(door: &layout::Door) -> usize {
     }
 }
 
+// Computes render width.
 pub fn window_render_width(window: &layout::Window) -> usize {
     if window.span_width {
         window.width.max(1)
@@ -644,10 +662,12 @@ pub fn window_render_width(window: &layout::Window) -> usize {
     }
 }
 
+// Normalizes a cell edge so either endpoint order compares equal.
 pub fn normalized_edge(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if a <= b { (a, b) } else { (b, a) }
 }
 
+// Returns the screen center point for a grid cell.
 pub fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos2 {
     egui::pos2(
         geometry.rect.left() + (col as f32 + 0.5) * geometry.cell_size,
@@ -655,6 +675,7 @@ pub fn cell_center(geometry: &GridGeometry, col: usize, row: usize) -> egui::Pos
     )
 }
 
+// Returns the screen rectangle for a grid cell.
 pub fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect {
     let left = geometry.rect.left() + col as f32 * geometry.cell_size;
     let top = geometry.rect.top() + row as f32 * geometry.cell_size;
@@ -664,6 +685,7 @@ pub fn cell_rect(geometry: &GridGeometry, col: usize, row: usize) -> egui::Rect 
     )
 }
 
+// Computes the screen rectangle occupied by an area marker.
 pub fn marker_rect(marker: &layout::AreaMarker, geometry: &GridGeometry) -> egui::Rect {
     let left = geometry.rect.left() + marker.cell.0 as f32 * geometry.cell_size;
     let top = geometry.rect.top() + marker.cell.1 as f32 * geometry.cell_size;
@@ -676,6 +698,7 @@ pub fn marker_rect(marker: &layout::AreaMarker, geometry: &GridGeometry) -> egui
     )
 }
 
+// Computes contains cell.
 pub fn marker_contains_cell(marker: Option<&layout::AreaMarker>, cell: (usize, usize)) -> bool {
     let Some(marker) = marker else {
         return false;
@@ -686,6 +709,7 @@ pub fn marker_contains_cell(marker: Option<&layout::AreaMarker>, cell: (usize, u
         && cell.1 < marker.cell.1 + marker.size
 }
 
+// Computes marker origin.
 pub fn centered_marker_origin(
     cell: (usize, usize),
     size: usize,
@@ -702,6 +726,7 @@ pub fn centered_marker_origin(
     )
 }
 
+// Draws add overlay.
 pub fn draw_add_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
     if app.settings.add_tool != AddTool::Corridor {
         return;
@@ -717,6 +742,7 @@ pub fn draw_add_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &Gr
     crate::rendering::draw_dashed_line(painter, start, end, stroke, 8.0, 6.0);
 }
 
+// Draws add tool ghost.
 pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
     let tool = app.settings.add_tool;
     if tool == AddTool::None || tool == AddTool::Corridor {
@@ -915,6 +941,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
     }
 }
 
+// Draws resize overlay.
 pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -969,6 +996,7 @@ pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: 
     }
 }
 
+// Draws room resize visuals.
 pub fn draw_room_resize_visuals(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -1013,6 +1041,7 @@ pub fn draw_room_resize_visuals(
     }
 }
 
+// Draws staircase resize visuals.
 pub fn draw_staircase_resize_visuals(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -1045,6 +1074,7 @@ pub fn draw_staircase_resize_visuals(
     }
 }
 
+// Draws corridor hover overlay.
 pub fn draw_corridor_hover_overlay(
     app: &DungeonApp,
     painter: &egui::Painter,
@@ -1071,6 +1101,7 @@ pub fn draw_corridor_hover_overlay(
     }
 }
 
+// Draws door hover overlay.
 pub fn draw_door_hover_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
     let Some(idx) = app.hover_door_idx else {
         return;
@@ -1096,6 +1127,7 @@ pub fn draw_door_hover_overlay(app: &DungeonApp, painter: &egui::Painter, geomet
     );
 }
 
+// Draws resize handle.
 pub fn draw_resize_handle(
     painter: &egui::Painter,
     corner: egui::Pos2,

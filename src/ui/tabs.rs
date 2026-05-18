@@ -787,6 +787,7 @@ pub fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut S
     }
 }
 
+// Draws start and end tab.
 pub fn draw_start_and_end_tab(
     ui: &mut egui::Ui,
     settings: &mut UiSettings,
@@ -869,6 +870,7 @@ pub fn draw_start_and_end_tab(
     ui.label("Markers are generated inside rooms. Matching start/end indices are paired as far apart as possible.");
 }
 
+// Draws monsters and traps tab.
 pub fn draw_monsters_and_traps_tab(
     ui: &mut egui::Ui,
     settings: &mut UiSettings,
@@ -932,6 +934,7 @@ pub fn draw_monsters_and_traps_tab(
     );
 }
 
+// Draws usize slider row.
 pub fn draw_usize_slider_row(
     ui: &mut egui::Ui,
     result: &mut SidePanelResult,

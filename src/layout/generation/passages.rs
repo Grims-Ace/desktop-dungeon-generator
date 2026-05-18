@@ -14,6 +14,7 @@ use super::connections::{room_collision_edges, room_exit_edge, shared_room_bound
 use crate::seed;
 use std::collections::HashSet;
 
+// Applies generated doors and archways to room-corridor transitions.
 pub fn apply_doors(
     layout: &mut DungeonLayout,
     seed: u64,
@@ -139,6 +140,7 @@ pub fn apply_doors(
     apply_secret_doors(layout, seed, settings);
 }
 
+// Applies packed room doors.
 pub fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
     let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
     let door_chance = ((settings.frequency_percent.min(100) as f32) / 100.0)
@@ -175,6 +177,7 @@ pub fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: 
     apply_secret_doors(layout, seed, settings);
 }
 
+// Applies secret doors.
 pub fn apply_secret_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
     let secret_percent = settings.secret_percent.min(100);
     let chance = (secret_percent as f32) / 100.0;
@@ -206,6 +209,7 @@ pub fn apply_secret_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorS
     }
 }
 
+// Computes is secret eligible for rooms.
 pub fn door_is_secret_eligible_for_rooms(
     layout: &DungeonLayout,
     room_door_map: &[Vec<usize>],
@@ -230,6 +234,7 @@ pub fn door_is_secret_eligible_for_rooms(
     true
 }
 
+// Computes to door indices.
 pub fn room_to_door_indices(layout: &DungeonLayout) -> Vec<Vec<usize>> {
     let mut room_door_map = vec![Vec::new(); layout.rooms.len()];
     for (door_idx, door) in layout.doors.iter().enumerate() {
@@ -242,6 +247,7 @@ pub fn room_to_door_indices(layout: &DungeonLayout) -> Vec<Vec<usize>> {
     room_door_map
 }
 
+// Handles secret room ids.
 pub fn secret_room_ids(layout: &DungeonLayout) -> HashSet<usize> {
     let mut secret_rooms = HashSet::new();
     for door in layout.doors.iter().filter(|door| door.secret) {
@@ -254,10 +260,12 @@ pub fn secret_room_ids(layout: &DungeonLayout) -> HashSet<usize> {
     secret_rooms
 }
 
+// Computes touches room.
 pub fn door_touches_room(door: &Door, room: &Room) -> bool {
     cell_in_room(door.from, room) || cell_in_room(door.to, room)
 }
 
+// Computes directly connects rooms.
 pub fn door_directly_connects_rooms(layout: &DungeonLayout, door_idx: usize) -> bool {
     let Some(door) = layout.doors.get(door_idx) else {
         return false;
@@ -273,6 +281,7 @@ pub fn door_directly_connects_rooms(layout: &DungeonLayout, door_idx: usize) -> 
     touching_rooms.len() >= 2
 }
 
+// Builds in room.
 pub fn cell_in_room(cell: (usize, usize), room: &Room) -> bool {
     cell.0 >= room.x
         && cell.0 < room.x + room.width
@@ -280,6 +289,7 @@ pub fn cell_in_room(cell: (usize, usize), room: &Room) -> bool {
         && cell.1 < room.y + room.height
 }
 
+// Applies generated windows to eligible room boundaries.
 pub fn apply_windows(
     layout: &mut DungeonLayout,
     seed: u64,
@@ -341,6 +351,7 @@ pub enum WindowTarget {
     Room(usize),
 }
 
+// Collects window segments.
 pub fn collect_window_segments(
     layout: &DungeonLayout,
     cols: usize,
@@ -404,6 +415,7 @@ pub fn collect_window_segments(
     segments
 }
 
+// Collects room side segments.
 #[allow(clippy::too_many_arguments)]
 pub fn collect_room_side_segments(
     room_idx: usize,
@@ -467,6 +479,7 @@ pub fn collect_room_side_segments(
     push_window_segment(current_target, side, &mut current_cells, segments);
 }
 
+// Pushes window segment.
 pub fn push_window_segment(
     target: Option<WindowTarget>,
     side: WindowSide,
@@ -488,6 +501,7 @@ pub fn push_window_segment(
     });
 }
 
+// Finds the grid cell outside a room side.
 pub fn outward_neighbor(
     cell: (usize, usize),
     side: WindowSide,
@@ -502,6 +516,7 @@ pub fn outward_neighbor(
     }
 }
 
+// Selects segment cell.
 pub fn select_segment_cell(
     cells: &[(usize, usize)],
     width: usize,

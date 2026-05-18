@@ -181,6 +181,7 @@ pub fn corridor_cells(layout: &DungeonLayout, cols: usize, rows: usize) -> HashS
     cells
 }
 
+// Computes index at cell.
 pub fn room_index_at_cell(rooms: &[Room], cell: (usize, usize)) -> Option<usize> {
     rooms.iter().position(|room| {
         cell.0 >= room.x
@@ -218,6 +219,7 @@ pub fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     a_left < b_right && a_right > b_left && a_top < b_bottom && a_bottom > b_top
 }
 
+// Checks whether rects overlap.
 #[allow(clippy::too_many_arguments)]
 pub fn rects_overlap(
     ax: usize,
@@ -237,14 +239,17 @@ pub fn rects_overlap(
     ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
 }
 
+// Checks whether rooms overlap.
 pub fn rooms_overlap(a: &Room, b: &Room) -> bool {
     rects_overlap(a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height)
 }
 
+// Checks whether rooms touch.
 pub fn rooms_touch(a: &Room, b: &Room) -> bool {
     !shared_boundary_edges(a, b).is_empty()
 }
 
+// Finds boundary edges.
 pub fn shared_boundary_edges(a: &Room, b: &Room) -> Vec<((usize, usize), (usize, usize))> {
     let mut edges = Vec::new();
 
@@ -277,6 +282,7 @@ pub fn shared_boundary_edges(a: &Room, b: &Room) -> Vec<((usize, usize), (usize,
     edges
 }
 
+// Finds opening width.
 pub fn shared_opening_width(a: &Room, b: &Room, span: usize, default_width: usize) -> usize {
     let max_width = if a.x + a.width == b.x || b.x + b.width == a.x {
         a.height.min(b.height)

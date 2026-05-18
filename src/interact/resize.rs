@@ -13,6 +13,7 @@ use crate::layout::{rects_overlap, rooms_overlap};
 use crate::ui::AddTool;
 use eframe::egui;
 
+// Handles secondary-button resize gestures for resizable layout elements.
 pub fn handle_resize(
     app: &mut DungeonApp,
     ctx: &egui::Context,
@@ -71,6 +72,7 @@ pub fn handle_resize(
     false
 }
 
+// Starts text resize.
 pub fn start_text_resize(app: &DungeonApp, text_idx: usize) -> Option<TextResizeState> {
     if app.settings.active_level_index >= app.levels.len() {
         return None;
@@ -85,6 +87,7 @@ pub fn start_text_resize(app: &DungeonApp, text_idx: usize) -> Option<TextResize
     })
 }
 
+// Starts a room resize from a pointer position.
 pub fn start_resize(
     app: &DungeonApp,
     room_idx: usize,
@@ -117,6 +120,7 @@ pub fn start_resize(
     })
 }
 
+// Starts staircase resize.
 pub fn start_staircase_resize(
     app: &DungeonApp,
     stair_idx: usize,
@@ -149,6 +153,7 @@ pub fn start_staircase_resize(
     })
 }
 
+// Resizes a room and reroutes affected corridors.
 pub fn resize_room(app: &mut DungeonApp, state: &RoomResizeState, target_cell: (usize, usize)) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -207,6 +212,7 @@ pub fn resize_room(app: &mut DungeonApp, state: &RoomResizeState, target_cell: (
     }
 }
 
+// Resizes a text label based on the drag target cell.
 pub fn resize_text(app: &mut DungeonApp, state: &TextResizeState, target_cell: (usize, usize)) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -225,6 +231,7 @@ pub fn resize_text(app: &mut DungeonApp, state: &TextResizeState, target_cell: (
     label.font_size = new_size as u16;
 }
 
+// Resizes a staircase while clamping it to the grid.
 pub fn resize_staircase(
     app: &mut DungeonApp,
     state: &StaircaseResizeState,

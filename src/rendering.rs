@@ -13,6 +13,7 @@ use eframe::egui;
 use egui::{Color32, Stroke};
 use std::collections::HashSet;
 
+// Draws the full dungeon layout into the interactive canvas.
 pub fn draw_layout(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -325,6 +326,7 @@ pub fn draw_layout(
     }
 }
 
+// Draws a staircase marker into the interactive canvas.
 pub fn draw_staircase(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -380,6 +382,7 @@ pub fn draw_staircase(
     }
 }
 
+// Computes label rect.
 pub fn text_label_rect(geometry: &GridGeometry, label: &crate::layout::TextLabel) -> egui::Rect {
     let center = cell_center(geometry, label.cell.0, label.cell.1);
     let font_size = label.font_size as f32;
@@ -389,6 +392,7 @@ pub fn text_label_rect(geometry: &GridGeometry, label: &crate::layout::TextLabel
     egui::Rect::from_center_size(center, egui::vec2(width, height))
 }
 
+// Draws area marker.
 pub fn draw_area_marker(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -430,6 +434,7 @@ pub fn draw_area_marker(
     );
 }
 
+// Draws area marker group.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_area_marker_group(
     painter: &egui::Painter,
@@ -461,6 +466,7 @@ pub fn draw_area_marker_group(
     }
 }
 
+// Draws wall segment.
 pub fn draw_wall_segment(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -490,6 +496,7 @@ pub fn draw_wall_segment(
     }
 }
 
+// Computes edges from cells.
 pub fn corridor_edges_from_cells(
     corridor_cells: &HashSet<(usize, usize)>,
 ) -> HashSet<((usize, usize), (usize, usize))> {
@@ -507,6 +514,7 @@ pub fn corridor_edges_from_cells(
     edges
 }
 
+// Computes edges from rooms.
 pub fn room_edges_from_rooms(
     rooms: &[crate::layout::Room],
 ) -> HashSet<((usize, usize), (usize, usize))> {
@@ -538,6 +546,7 @@ pub enum DoorLineStyle {
     DashDotDot,
 }
 
+// Draws door line.
 pub fn draw_door_line(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -574,6 +583,7 @@ pub fn draw_door_line(
     }
 }
 
+// Draws window line.
 pub fn draw_window_line(
     painter: &egui::Painter,
     geometry: &GridGeometry,
@@ -625,6 +635,7 @@ pub fn draw_window_line(
     }
 }
 
+// Draws styled line.
 pub fn draw_styled_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -644,6 +655,7 @@ pub fn draw_styled_line(
     }
 }
 
+// Draws dashed line.
 pub fn draw_dashed_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -672,6 +684,7 @@ pub fn draw_dashed_line(
     }
 }
 
+// Draws dotted line.
 pub fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2, stroke: Stroke) {
     let dx = to.x - from.x;
     let dy = to.y - from.y;
@@ -692,6 +705,7 @@ pub fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos
     }
 }
 
+// Draws dash dot line.
 pub fn draw_dash_dot_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -723,6 +737,7 @@ pub fn draw_dash_dot_line(
     }
 }
 
+// Draws dash dot dot line.
 pub fn draw_dash_dot_dot_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -761,6 +776,7 @@ pub fn draw_dash_dot_dot_line(
     }
 }
 
+// Draws room crosshatch.
 pub fn draw_room_crosshatch(
     painter: &egui::Painter,
     geometry: &GridGeometry,

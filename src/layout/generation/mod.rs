@@ -18,6 +18,7 @@ pub use markers::*;
 pub use passages::*;
 pub use room_placement::*;
 
+// Generates a complete dungeon layout from generation settings.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_layout(
     cols: usize,

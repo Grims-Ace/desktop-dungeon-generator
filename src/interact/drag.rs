@@ -14,6 +14,7 @@ use crate::layout::{blocked_room_cells, shortest_path_cells};
 use crate::ui::AddTool;
 use eframe::egui;
 
+// Handles active drag gestures for rooms, corridors, markers, stairs, and text.
 pub fn handle_drag(
     app: &mut DungeonApp,
     ctx: &egui::Context,
@@ -80,6 +81,7 @@ pub fn handle_drag(
     }
 }
 
+// Drags room to pointer.
 pub fn drag_room_to_pointer(
     app: &mut DungeonApp,
     drag: RoomDragState,
@@ -121,6 +123,7 @@ pub fn drag_room_to_pointer(
     app.refresh_doors();
 }
 
+// Drags text to pointer.
 pub fn drag_text_to_pointer(
     app: &mut DungeonApp,
     drag: TextDragState,
@@ -152,6 +155,7 @@ pub fn drag_text_to_pointer(
     app.levels[app.settings.active_level_index].text_labels[drag.text_idx].cell = target;
 }
 
+// Reroutes corridors for room.
 pub fn reroute_corridors_for_room(app: &mut DungeonApp, room_idx: usize) {
     if app.settings.active_level_index >= app.levels.len() {
         return;
@@ -181,6 +185,7 @@ pub fn reroute_corridors_for_room(app: &mut DungeonApp, room_idx: usize) {
     }
 }
 
+// Drags corridor to pointer.
 pub fn drag_corridor_to_pointer(
     app: &mut DungeonApp,
     drag: CorridorDragState,
@@ -225,6 +230,7 @@ pub fn drag_corridor_to_pointer(
     app.refresh_doors();
 }
 
+// Drags marker to pointer.
 pub fn drag_marker_to_pointer(
     app: &mut DungeonApp,
     drag: MarkerDragState,
@@ -258,6 +264,7 @@ pub fn drag_marker_to_pointer(
     marker.cell = (target_x.min(max_x), target_y.min(max_y));
 }
 
+// Drags stair to pointer.
 pub fn drag_stair_to_pointer(
     app: &mut DungeonApp,
     drag: StaircaseDragState,

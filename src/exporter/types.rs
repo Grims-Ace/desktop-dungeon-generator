@@ -66,6 +66,7 @@ pub struct ExportGeometry {
 }
 
 impl ExportGeometry {
+    // Creates a new instance with the given inputs.
     pub fn new(cols: usize, rows: usize) -> Self {
         let cell = 64.0;
         let pad = 0.0;
@@ -81,14 +82,17 @@ impl ExportGeometry {
         }
     }
 
+    // Returns the left edge of the export canvas.
     pub fn left(&self) -> f32 {
         self.pad
     }
 
+    // Returns the top edge of the export canvas.
     pub fn top(&self) -> f32 {
         self.pad
     }
 
+    // Returns the pixel rectangle for a grid cell.
     pub fn cell_rect(&self, col: usize, row: usize) -> Option<Rect> {
         Rect::from_xywh(
             self.left() + col as f32 * self.cell,
@@ -98,6 +102,7 @@ impl ExportGeometry {
         )
     }
 
+    // Returns the pixel center point for a grid cell.
     pub fn cell_center(&self, col: usize, row: usize) -> (f32, f32) {
         (
             self.left() + (col as f32 + 0.5) * self.cell,
@@ -147,10 +152,12 @@ pub struct CompositeExportContext<'a> {
     pub door_width: f32,
 }
 
+// Normalizes a cell edge so either endpoint order compares equal.
 pub fn norm_edge(a: Cell, b: Cell) -> CellEdge {
     if a <= b { (a, b) } else { (b, a) }
 }
 
+// Computes edges for.
 pub fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<CellEdge> {
     let mut edges = Vec::new();
     if door.from.0.abs_diff(door.to.0) + door.from.1.abs_diff(door.to.1) != 1 {
@@ -188,6 +195,7 @@ pub fn door_edges_for(door: &Door, cols: usize, rows: usize) -> Vec<CellEdge> {
     edges
 }
 
+// Computes render width.
 pub fn door_render_width(door: &Door) -> usize {
     if door.span_width {
         door.width.max(1)
@@ -196,6 +204,7 @@ pub fn door_render_width(door: &Door) -> usize {
     }
 }
 
+// Computes render width.
 pub fn window_render_width(window: &Window) -> usize {
     if window.span_width {
         window.width.max(1)

@@ -56,6 +56,7 @@ pub struct DungeonApp {
 }
 
 impl Default for DungeonApp {
+    // Provides default settings for this type.
     fn default() -> Self {
         let settings = settings::load_settings().unwrap_or_default();
         let mut app = Self {
@@ -89,6 +90,7 @@ impl Default for DungeonApp {
 }
 
 impl Drop for DungeonApp {
+    // Cleans up background resources when the app is dropped.
     fn drop(&mut self) {
         if let Err(err) = settings::save_settings(&self.settings) {
             eprintln!("Failed to save settings: {err}");
@@ -97,6 +99,7 @@ impl Drop for DungeonApp {
 }
 
 impl eframe::App for DungeonApp {
+    // Runs one UI frame and handles app interaction.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let panel_result = draw_side_panel(
             ctx,
@@ -299,6 +302,7 @@ impl eframe::App for DungeonApp {
     }
 }
 
+// Generates all levels.
 pub fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
     let level_count = if settings.min_levels == settings.max_levels {
         settings.min_levels
@@ -315,6 +319,7 @@ pub fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
     levels
 }
 
+// Generates a single dungeon level from the UI settings.
 pub fn generate_level(settings: &UiSettings, level_index: usize) -> DungeonLayout {
     let level_seed = crate::seed::derive_seed(settings.seed, level_index as u64);
     let layout = layout::generate_layout(
@@ -337,6 +342,7 @@ pub fn generate_level(settings: &UiSettings, level_index: usize) -> DungeonLayou
     populate_random_markers(layout, settings)
 }
 
+// Clamps dependent settings.
 pub fn clamp_dependent_settings(settings: &mut UiSettings) {
     if settings.min_room_size > settings.max_room_size {
         settings.max_room_size = settings.min_room_size;
@@ -377,6 +383,7 @@ pub fn clamp_dependent_settings(settings: &mut UiSettings) {
 }
 
 impl DungeonApp {
+    // Clears hover targets.
     pub fn clear_hover_targets(&mut self) {
         self.hover_room_idx = None;
         self.hover_corridor_idx = None;
@@ -387,6 +394,7 @@ impl DungeonApp {
         self.hover_stair_idx = None;
     }
 
+    // Resets transient state.
     pub fn reset_transient_state(&mut self) {
         self.drag_state = None;
         self.add_corridor_drag = None;
@@ -395,6 +403,7 @@ impl DungeonApp {
         self.pending_delete = false;
     }
 
+    // Captures the current app state for undo history.
     pub fn snapshot(&self) -> AppSnapshot {
         AppSnapshot {
             settings: self.settings.clone(),
@@ -403,6 +412,7 @@ impl DungeonApp {
         }
     }
 
+    // Pushes undo snapshot.
     pub fn push_undo_snapshot(&mut self) {
         let snapshot = self.snapshot();
         if self.undo_stack.last() == Some(&snapshot) {
@@ -415,6 +425,7 @@ impl DungeonApp {
         self.redo_stack.clear();
     }
 
+    // Restores a saved app state snapshot.
     pub fn restore_snapshot(&mut self, snapshot: AppSnapshot) {
         self.settings = snapshot.settings;
         self.levels = snapshot.levels;
@@ -422,6 +433,7 @@ impl DungeonApp {
         self.reset_transient_state();
     }
 
+    // Restores the previous undo snapshot. undo.
     pub fn undo(&mut self) {
         let Some(snapshot) = self.undo_stack.pop() else {
             return;
@@ -430,6 +442,7 @@ impl DungeonApp {
         self.restore_snapshot(snapshot);
     }
 
+    // Restores the next redo snapshot. redo.
     pub fn redo(&mut self) {
         let Some(snapshot) = self.redo_stack.pop() else {
             return;
@@ -438,6 +451,7 @@ impl DungeonApp {
         self.restore_snapshot(snapshot);
     }
 
+    // Clears all generated layout content and resets editing state.
     pub fn clear_layout(&mut self) {
         if self.settings.active_level_index >= self.levels.len() {
             return;
@@ -448,6 +462,7 @@ impl DungeonApp {
         self.reset_transient_state();
     }
 
+    // Switches to composition layout.
     pub fn enter_composition_layout(&mut self) {
         self.levels = vec![DungeonLayout::empty(
             self.settings.pack_rooms_without_corridors,
@@ -458,6 +473,7 @@ impl DungeonApp {
         self.reset_transient_state();
     }
 
+    // Regenerates every level from the current settings.
     pub fn regenerate_layout(&mut self) {
         self.drag_state = None;
         self.suppressed_auto_door_edges.clear();
@@ -468,6 +484,7 @@ impl DungeonApp {
         }
     }
 
+    // Deletes a level and keeps the active level index valid.
     pub fn delete_level(&mut self, level_idx: usize) {
         if self.levels.len() <= 1 {
             return;
@@ -483,6 +500,7 @@ impl DungeonApp {
         self.reset_transient_state();
     }
 
+    // Regenerates one level while preserving manual annotations where possible.
     pub fn refresh_level(&mut self, level_idx: usize) {
         if level_idx >= self.levels.len() {
             return;
@@ -534,6 +552,7 @@ impl DungeonApp {
         );
     }
 
+    // Recomputes staircase links across the current levels.
     pub fn refresh_stairs(&mut self) {
         let results = populate_stairs(self.levels.clone(), &self.settings);
         self.levels = results.iter().map(|(layout, _)| layout.clone()).collect();
@@ -545,6 +564,7 @@ impl DungeonApp {
         }
     }
 
+    // Recomputes generated doors while keeping manual doors.
     pub fn refresh_doors(&mut self) {
         if self.settings.active_level_index >= self.levels.len() {
             return;
@@ -573,6 +593,7 @@ impl DungeonApp {
     }
 }
 
+// Computes settings from ui.
 pub fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
     DoorSettings {
         frequency_percent: settings.door_frequency_percent,
@@ -583,6 +604,7 @@ pub fn door_settings_from_ui(settings: &UiSettings) -> DoorSettings {
     }
 }
 
+// Computes settings from ui.
 pub fn window_settings_from_ui(settings: &UiSettings) -> WindowSettings {
     WindowSettings {
         enabled: settings.windows_enabled,

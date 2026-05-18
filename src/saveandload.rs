@@ -19,6 +19,7 @@ pub struct DungeonSave {
     pub svgs: Vec<String>,
 }
 
+// Saves dungeon state to a user-selected JSON file.
 pub fn save_dungeon(
     settings: &UiSettings,
     layouts: Vec<DungeonLayout>,
@@ -45,6 +46,7 @@ pub fn save_dungeon(
     Ok(path)
 }
 
+// Loads dungeon state from a user-selected JSON file.
 pub fn load_dungeon() -> Result<DungeonSave, String> {
     let path = FileDialog::new()
         .set_title("Load Dungeon State")

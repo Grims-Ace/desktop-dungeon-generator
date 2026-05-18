@@ -9,6 +9,7 @@ use crate::layout::{DungeonLayout, Room, Window, WindowSide, corridor_cells};
 use crate::ui::UiSettings;
 use std::collections::HashSet;
 
+// Collects scene data.
 pub fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> SceneData {
     let mut scene = SceneData::default();
 
@@ -33,6 +34,7 @@ pub fn collect_scene_data(layout: &DungeonLayout, settings: &UiSettings) -> Scen
     scene
 }
 
+// Computes edges from cells.
 pub fn corridor_edges_from_cells(
     corridor_cells: &HashSet<(usize, usize)>,
 ) -> HashSet<((usize, usize), (usize, usize))> {
@@ -50,6 +52,7 @@ pub fn corridor_edges_from_cells(
     edges
 }
 
+// Computes edges from rooms.
 pub fn room_edges_from_rooms(rooms: &[Room]) -> HashSet<((usize, usize), (usize, usize))> {
     let mut edges = HashSet::new();
     for room in rooms {
@@ -69,6 +72,7 @@ pub fn room_edges_from_rooms(rooms: &[Room]) -> HashSet<((usize, usize), (usize,
     edges
 }
 
+// Computes line points.
 pub fn door_line_points(
     g: &ExportGeometry,
     a: (usize, usize),
@@ -102,6 +106,7 @@ pub fn door_line_points(
     }
 }
 
+// Computes line points.
 pub fn window_line_points(g: &ExportGeometry, window: &Window) -> Option<(f32, f32, f32, f32)> {
     let width_cells = window_render_width(window).max(1) as isize;
     let min_offset = -((width_cells - 1) / 2);

@@ -218,6 +218,7 @@ pub fn draw_dotted_line(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos
     }
 }
 
+// Draws dash dot line.
 pub fn draw_dash_dot_line(
     painter: &egui::Painter,
     from: egui::Pos2,
@@ -249,6 +250,7 @@ pub fn draw_dash_dot_line(
     }
 }
 
+// Draws dash dot dot line.
 pub fn draw_dash_dot_dot_line(
     painter: &egui::Painter,
     from: egui::Pos2,

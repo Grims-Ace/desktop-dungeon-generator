@@ -16,12 +16,14 @@ use image::{DynamicImage, RgbaImage, imageops::FilterType};
 use std::collections::HashSet;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
+// Renders a dungeon layout into a raster pixmap.
 pub fn render_pixmap(layout: &DungeonLayout, settings: &UiSettings) -> Result<Pixmap, String> {
     let g = ExportGeometry::new(settings.cols, settings.rows);
     let scene = collect_scene_data(layout, settings);
     render_pixmap_with_scene(layout, settings, &g, &scene)
 }
 
+// Renders pixmap with scene.
 pub fn render_pixmap_with_scene(
     layout: &DungeonLayout,
     settings: &UiSettings,
@@ -150,6 +152,7 @@ pub fn render_pixmap_with_scene(
     Ok(pixmap)
 }
 
+// Fills the entire pixmap with a background color.
 pub fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.0, color.1, color.2, color.3);
@@ -160,6 +163,7 @@ pub fn fill_bg(pixmap: &mut Pixmap, color: (u8, u8, u8, u8)) {
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Draws grid color.
 pub fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, u8, u8)) {
     let left = g.left();
     let top = g.top();
@@ -185,6 +189,7 @@ pub fn draw_grid_color(pixmap: &mut Pixmap, g: &ExportGeometry, color: (u8, u8, 
     }
 }
 
+// Fills rect cell.
 pub fn fill_rect_cell(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -200,6 +205,7 @@ pub fn fill_rect_cell(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Fills rect room.
 pub fn fill_rect_room(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -220,6 +226,7 @@ pub fn fill_rect_room(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Fills rect marker.
 pub fn fill_rect_marker(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -239,6 +246,7 @@ pub fn fill_rect_marker(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Draws area marker.
 pub fn draw_area_marker(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -374,6 +382,7 @@ pub fn draw_area_marker(
     }
 }
 
+// Fills rect staircase.
 pub fn fill_rect_staircase(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -393,6 +402,7 @@ pub fn fill_rect_staircase(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Draws a staircase marker into the raster export.
 pub fn draw_staircase(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -451,6 +461,7 @@ pub fn draw_staircase(
     }
 }
 
+// Draws staircase group.
 pub fn draw_staircase_group(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -463,6 +474,7 @@ pub fn draw_staircase_group(
     }
 }
 
+// Draws area marker group.
 pub fn draw_area_marker_group(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -476,6 +488,7 @@ pub fn draw_area_marker_group(
     }
 }
 
+// Draws a filled circular dot at a pixel position.
 pub fn draw_dot(pixmap: &mut Pixmap, cx: f32, cy: f32, radius: f32, color: (u8, u8, u8, u8)) {
     let mut pb = PathBuilder::new();
     pb.push_circle(cx, cy, radius);
@@ -493,6 +506,7 @@ pub fn draw_dot(pixmap: &mut Pixmap, cx: f32, cy: f32, radius: f32, color: (u8, 
     );
 }
 
+// Draws room crosshatch.
 pub fn draw_room_crosshatch(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -529,6 +543,7 @@ pub fn draw_room_crosshatch(
     }
 }
 
+// Draws cell walls.
 pub fn draw_cell_walls(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -611,6 +626,7 @@ pub fn draw_cell_walls(
     }
 }
 
+// Draws wall segment.
 pub fn draw_wall_segment(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -647,6 +663,7 @@ pub fn draw_wall_segment(
     pixmap.fill_rect(rect, &paint, Transform::identity(), None);
 }
 
+// Snaps even width.
 pub fn snap_even_width(value: f32) -> f32 {
     let mut w = value.round().max(1.0);
     if (w as u32) % 2 == 1 {
@@ -655,6 +672,7 @@ pub fn snap_even_width(value: f32) -> f32 {
     w
 }
 
+// Draws a styled door line onto the pixmap.
 pub fn draw_door(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -670,6 +688,7 @@ pub fn draw_door(
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
 }
 
+// Draws a styled window line onto the pixmap.
 pub fn draw_window(
     pixmap: &mut Pixmap,
     g: &ExportGeometry,
@@ -684,6 +703,7 @@ pub fn draw_window(
     draw_line(pixmap, x1, y1, x2, y2, width, color, style);
 }
 
+// Draws a solid or patterned line segment.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_line(
     pixmap: &mut Pixmap,
@@ -707,6 +727,7 @@ pub fn draw_line(
     }
 }
 
+// Strokes a path segment with an optional dash pattern.
 #[allow(clippy::too_many_arguments)]
 pub fn stroke_path(
     pixmap: &mut Pixmap,
@@ -739,6 +760,7 @@ pub fn stroke_path(
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
+// Handles dotted line.
 pub fn dotted_line(
     pixmap: &mut Pixmap,
     x1: f32,
@@ -766,6 +788,7 @@ pub fn dotted_line(
     }
 }
 
+// Handles raster image from pixmap.
 pub fn raster_image_from_pixmap(
     pixmap: &Pixmap,
     settings: &UiSettings,
@@ -782,6 +805,7 @@ pub fn raster_image_from_pixmap(
     Ok(img)
 }
 
+// Handles raster mask image from pixmap.
 pub fn raster_mask_image_from_pixmap(
     pixmap: &Pixmap,
     settings: &UiSettings,
@@ -805,6 +829,7 @@ pub fn raster_mask_image_from_pixmap(
     Ok(DynamicImage::ImageRgba8(out))
 }
 
+// Handles raster target size.
 pub fn raster_target_size(settings: &UiSettings) -> (u32, u32) {
     let width = settings.export_width.clamp(1, 10_000);
     let mut height = settings.export_height.clamp(1, 10_000);
