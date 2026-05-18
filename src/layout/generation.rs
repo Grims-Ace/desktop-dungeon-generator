@@ -1,3 +1,10 @@
+/*
+ * High-level procedural generation algorithms.
+ * Contains the logic for building room connection graphs,
+ * placing packed rooms, and populating random markers, traps,
+ * monsters, and staircase transitions between levels.
+ */
+
 use super::types::{
     AreaMarker, Corridor, Door, DoorSettings, DungeonLayout, Room, Staircase, Window,
     WindowSettings, WindowSide,

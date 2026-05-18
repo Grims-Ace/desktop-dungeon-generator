@@ -1,3 +1,9 @@
+/*
+ * Core data structures for the dungeon layout.
+ * Defines structs for Rooms, Corridors, Doors, Windows, Stairs,
+ * TextLabels, and the master DungeonLayout container.
+ */
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

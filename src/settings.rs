@@ -1,3 +1,9 @@
+/*
+ * Application-level persistent configuration.
+ * Manages the loading and saving of UiSettings to the system's
+ * local data directory.
+ */
+
 use std::fs;
 use std::io;
 use std::path::PathBuf;

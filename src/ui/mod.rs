@@ -1,3 +1,8 @@
+/*
+ * The primary UI module. Defines the UiSettings structure and
+ * manages the side panel layout, legend panel, and level selection tabs.
+ * Serves as the entry point for all UI-related rendering.
+ */
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 

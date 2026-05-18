@@ -1,3 +1,9 @@
+/*
+ * Canvas drawing logic for the dungeon layout.
+ * Provides functions to render rooms, corridors, walls, doors, windows,
+ * and various markers using egui's Painter API.
+ */
+
 use crate::interact::{
     GridGeometry, HoverMarker, MarkerKind, cell_center, cell_rect, door_edges_for,
     door_render_width, marker_rect, normalized_edge, window_render_width,

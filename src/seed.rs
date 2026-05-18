@@ -1,3 +1,9 @@
+/*
+ * Deterministic seed management.
+ * Provides functions to generate random master seeds and
+ * derive sub-seeds for specific procedural generation steps.
+ */
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Generate a random master seed from time and process id.

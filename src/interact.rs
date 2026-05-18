@@ -1,3 +1,12 @@
+/*
+ * Manages user interaction and grid-based logic for the dungeon canvas.
+ * Includes logic for:
+ *   - Dragging and moving rooms, corridors, markers, and text.
+ *   - Resizing rooms, text, and staircases.
+ *   - Handling "Add" tool operations (placing new rooms, doors, etc.).
+ *   - Hit testing and hover detection for all dungeon elements.
+ */
+
 use crate::app::{DungeonApp, ManualDoorKind};
 use crate::layout::{
     self, blocked_room_cells, corridor_cells, rects_overlap, room_index_at_cell, rooms_overlap,

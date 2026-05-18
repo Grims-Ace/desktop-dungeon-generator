@@ -1,3 +1,9 @@
+/*
+ * Entry point for the Desktop Dungeon Generator.
+ * Handles application initialization, module declarations,
+ * and starts the eframe/egui event loop.
+ */
+
 mod app;
 mod exporter;
 mod interact;

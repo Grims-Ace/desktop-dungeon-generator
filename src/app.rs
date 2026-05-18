@@ -1,3 +1,9 @@
+/*
+ * Contains the core DungeonApp struct and its eframe::App implementation.
+ * This file manages the application lifecycle, main state, undo/redo stacks,
+ * and high-level level management (generation, deletion, and refreshing).
+ */
+
 use std::collections::HashSet;
 use std::sync::mpsc;
 use std::thread;

@@ -1,3 +1,10 @@
+/*
+ * Image and vector export module.
+ * Handles building SVG representations of dungeon levels and
+ * exporting them to various formats (PNG, JPEG, WebP, SVG)
+ * via a background thread to maintain UI responsiveness.
+ */
+
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::path::PathBuf;

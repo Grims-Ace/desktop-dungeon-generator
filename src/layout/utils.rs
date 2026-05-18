@@ -1,3 +1,9 @@
+/*
+ * Geometric utilities and low-level layout helpers.
+ * Provides logic for Manhattan distance, room overlap testing,
+ * BFS-based shortest pathfinding, and custom deterministic RNG.
+ */
+
 use super::types::{DungeonLayout, Room};
 use std::collections::{HashSet, VecDeque};
 

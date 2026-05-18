@@ -1,3 +1,9 @@
+/*
+ * Reusable UI components and drawing helpers.
+ * Includes logic for legend entries (standard and colorblind-friendly)
+ *   and custom line styling (dashed, dotted, dash-dot patterns).
+ */
+
 use eframe::egui;
 use egui::{Color32, Stroke};
 
