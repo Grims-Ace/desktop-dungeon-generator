@@ -737,51 +737,50 @@ pub fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut S
                 ui.label("No additional options for this tool.");
             }
         }
-        ui.add_space(8.0);
-        ui.label(RichText::new("Instructions:").italics());
+        ui.add_space(12.0);
+        ui.label(RichText::new("Controls").strong());
+        ui.add_space(4.0);
         match settings.add_tool {
             AddTool::Room => {
-                ui.label("Click to place a room at the grid cell.");
+                ui.label("Left-click to place a room of the specified size.");
             }
             AddTool::Corridor => {
-                ui.label("Click-drag to place a corridor between two cells.");
+                ui.label("Left-click and drag from one room to another to create a corridor.");
             }
             AddTool::Staircase => {
-                ui.label(
-                    "Click the grid to place stairs (visible on current and adjacent levels).",
-                );
+                ui.label("Left-click to place stairs connecting the current and adjacent levels.");
             }
             AddTool::Archway => {
-                ui.label("Click a valid room or corridor edge to place an archway.");
+                ui.label("Left-click or drag along room/corridor edges to place archways.");
             }
             AddTool::Door => {
-                ui.label("Click a room/corridor edge to place a door.");
+                ui.label("Left-click or drag along room/corridor edges to place doors.");
             }
             AddTool::LockedDoor => {
-                ui.label("Click a room/corridor edge to place a locked door.");
+                ui.label("Left-click or drag along room/corridor edges to place locked doors.");
             }
             AddTool::SecretDoor => {
-                ui.label("Click a room/corridor edge to place a secret door.");
+                ui.label("Left-click or drag along room/corridor edges to place secret doors.");
             }
             AddTool::Text => {
-                ui.label("Click a grid cell to place the text label.");
+                ui.label("Left-click to place the text label (edit text in options above).");
             }
             AddTool::StartMarker => {
-                ui.label("Click the grid to place the start marker.");
+                ui.label("Left-click to place a start marker of the specified size.");
             }
             AddTool::EndMarker => {
-                ui.label("Click the grid to place the end marker.");
+                ui.label("Left-click to place an end marker of the specified size.");
             }
             AddTool::TrapMarker => {
-                ui.label("Click the grid to place a trap marker.");
+                ui.label("Left-click to place a trap marker of the specified size.");
             }
             AddTool::MonsterMarker => {
-                ui.label("Click the grid to place a monster marker.");
+                ui.label("Left-click to place a monster marker of the specified size.");
             }
             _ => {}
         }
         ui.add_space(4.0);
-        ui.label("Left click to place, Right click/Escape to cancel.");
+        ui.label(RichText::new("Right-click to cancel tool.").small());
     } else {
         ui.label("Select a tool above to start building manually.");
     }
