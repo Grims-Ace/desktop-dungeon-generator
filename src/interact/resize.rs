@@ -9,9 +9,10 @@ use super::{
     stair_at_pointer, text_at_pointer,
 };
 use crate::app::DungeonApp;
-use crate::layout::{rects_overlap, rooms_overlap};
+use crate::layout::{self, rects_overlap, rooms_overlap};
 use crate::ui::AddTool;
 use eframe::egui;
+use egui::{Color32, Stroke};
 
 // Handles secondary-button resize gestures for resizable layout elements.
 pub fn handle_resize(
@@ -323,5 +324,197 @@ pub fn resize_staircase(
         s.original_stair.cell = new_stair_cell;
         s.original_stair.width = new_stair_width;
         s.original_stair.height = new_stair_height;
+    }
+}
+
+// Draws resize overlay.
+pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
+    if app.settings.active_level_index >= app.levels.len() {
+        return;
+    }
+    let layout = &app.levels[app.settings.active_level_index];
+
+    if let Some(state) = &app.resize_state {
+        match state {
+            ResizeState::Text(state) => {
+                if let Some(label) = layout.text_labels.get(state.text_idx) {
+                    let rect = crate::rendering::text_label_rect(geometry, label).expand(3.0);
+                    painter.rect_stroke(
+                        rect,
+                        0.0,
+                        Stroke::new(2.0, Color32::from_gray(180)),
+                        egui::StrokeKind::Middle,
+                    );
+                }
+            }
+            ResizeState::Room(state) => {
+                if let Some(room) = layout.rooms.get(state.room_idx) {
+                    draw_room_resize_visuals(painter, geometry, room, true);
+                }
+            }
+            ResizeState::Staircase(state) => {
+                if let Some(stair) = layout.stairs.get(state.stair_idx) {
+                    draw_staircase_resize_visuals(painter, geometry, stair, true);
+                }
+            }
+        }
+        return;
+    }
+
+    if let Some(text_idx) = app.hover_text_idx {
+        if let Some(label) = layout.text_labels.get(text_idx) {
+            let rect = crate::rendering::text_label_rect(geometry, label).expand(3.0);
+            painter.rect_stroke(
+                rect,
+                0.0,
+                Stroke::new(2.0, Color32::from_gray(180)),
+                egui::StrokeKind::Middle,
+            );
+        }
+    } else if let Some(room_idx) = app.hover_room_idx {
+        if let Some(room) = layout.rooms.get(room_idx) {
+            draw_room_resize_visuals(painter, geometry, room, false);
+        }
+    } else if let Some(stair_idx) = app.hover_stair_idx
+        && let Some(stair) = layout.stairs.get(stair_idx)
+    {
+        draw_staircase_resize_visuals(painter, geometry, stair, false);
+    }
+}
+
+// Draws room resize visuals.
+pub fn draw_room_resize_visuals(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    room: &layout::Room,
+    show_handles: bool,
+) {
+    let color = Color32::from_gray(170);
+    let stroke = Stroke::new(1.5, color);
+
+    let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
+    let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
+    let right = left + room.width as f32 * geometry.cell_size;
+    let bottom = top + room.height as f32 * geometry.cell_size;
+
+    let tl = egui::pos2(left, top);
+    let tr = egui::pos2(right, top);
+    let br = egui::pos2(right, bottom);
+    let bl = egui::pos2(left, bottom);
+
+    crate::rendering::draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
+
+    let font = egui::FontId::proportional(12.0);
+    let center_top = egui::pos2((left + right) * 0.5, top - 10.0);
+    let center_left = egui::pos2(left - 12.0, (top + bottom) * 0.5);
+    painter.text(
+        center_top,
+        egui::Align2::CENTER_CENTER,
+        "<->",
+        font.clone(),
+        color,
+    );
+    painter.text(center_left, egui::Align2::CENTER_CENTER, "^v", font, color);
+
+    if show_handles {
+        draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
+        draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
+        draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
+        draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+    }
+}
+
+// Draws staircase resize visuals.
+pub fn draw_staircase_resize_visuals(
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+    stair: &layout::Staircase,
+    show_handles: bool,
+) {
+    let color = Color32::from_gray(170);
+    let stroke = Stroke::new(1.5, color);
+
+    let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
+    let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
+    let right = left + stair.width as f32 * geometry.cell_size;
+    let bottom = top + stair.height as f32 * geometry.cell_size;
+
+    let tl = egui::pos2(left, top);
+    let tr = egui::pos2(right, top);
+    let br = egui::pos2(right, bottom);
+    let bl = egui::pos2(left, bottom);
+
+    crate::rendering::draw_dashed_line(painter, tl, tr, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, tr, br, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, br, bl, stroke, 6.0, 6.0);
+    crate::rendering::draw_dashed_line(painter, bl, tl, stroke, 6.0, 6.0);
+
+    if show_handles {
+        draw_resize_handle(painter, tl, ResizeCorner::TopLeft, color);
+        draw_resize_handle(painter, tr, ResizeCorner::TopRight, color);
+        draw_resize_handle(painter, br, ResizeCorner::BottomRight, color);
+        draw_resize_handle(painter, bl, ResizeCorner::BottomLeft, color);
+    }
+}
+
+// Draws resize handle.
+pub fn draw_resize_handle(
+    painter: &egui::Painter,
+    corner: egui::Pos2,
+    which: ResizeCorner,
+    color: Color32,
+) {
+    let size = 10.0;
+    let half = size * 0.5;
+    let rect = egui::Rect::from_center_size(corner, egui::vec2(size, size));
+    painter.rect_filled(rect, 2.0, Color32::from_gray(30));
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, color), egui::StrokeKind::Middle);
+
+    let center = corner;
+    let stroke = Stroke::new(1.0, color);
+    match which {
+        ResizeCorner::TopLeft => {
+            painter.line_segment(
+                [center, egui::pos2(center.x - half + 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y - half + 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::TopRight => {
+            painter.line_segment(
+                [center, egui::pos2(center.x + half - 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y - half + 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::BottomLeft => {
+            painter.line_segment(
+                [center, egui::pos2(center.x - half + 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y + half - 2.0)],
+                stroke,
+            );
+        }
+        ResizeCorner::BottomRight => {
+            painter.line_segment(
+                [center, egui::pos2(center.x + half - 2.0, center.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [center, egui::pos2(center.x, center.y + half - 2.0)],
+                stroke,
+            );
+        }
     }
 }

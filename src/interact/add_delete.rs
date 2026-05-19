@@ -5,8 +5,8 @@
  */
 
 use super::{
-    AddCorridorDrag, GridGeometry, HoverMarker, MarkerKind, centered_marker_origin,
-    corridor_drag_at_pointer, door_edge_at_pointer, door_edges_for, marker_at_pointer,
+    AddCorridorDrag, GridGeometry, HoverMarker, MarkerKind, cell_center, centered_marker_origin,
+    corridor_drag_at_pointer, door_edge_at_pointer, door_edges_for, marker_at_pointer, marker_rect,
     normalized_edge, pointer_to_grid, room_at_pointer, stair_at_pointer, text_at_pointer,
 };
 use crate::app::{DungeonApp, ManualDoorKind};
@@ -16,6 +16,7 @@ use crate::layout::{
 };
 use crate::ui::AddTool;
 use eframe::egui;
+use egui::{Color32, Stroke};
 
 // Handles add tool.
 pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry: &GridGeometry) {
@@ -548,4 +549,219 @@ pub fn manual_door_edge_allowed(
     let a_is_feature = a_room.is_some() || a_in_corridor;
     let b_is_feature = b_room.is_some() || b_in_corridor;
     a_is_feature || b_is_feature
+}
+
+// Draws add overlay.
+pub fn draw_add_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
+    if app.settings.add_tool != AddTool::Corridor {
+        return;
+    }
+    let Some(drag) = &app.add_corridor_drag else {
+        return;
+    };
+
+    let start = cell_center(geometry, drag.start_cell.0, drag.start_cell.1);
+    let end = cell_center(geometry, drag.current_cell.0, drag.current_cell.1);
+    let stroke = Stroke::new(2.0, Color32::WHITE);
+    painter.circle_filled(start, 3.0, Color32::WHITE);
+    crate::rendering::draw_dashed_line(painter, start, end, stroke, 8.0, 6.0);
+}
+
+// Draws add tool ghost.
+pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
+    let tool = app.settings.add_tool;
+    if tool == AddTool::None || tool == AddTool::Corridor {
+        return;
+    }
+
+    let Some(pointer_pos) = painter.ctx().pointer_hover_pos() else {
+        return;
+    };
+    let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry) else {
+        return;
+    };
+    let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
+
+    let ghost_alpha = 0.35;
+
+    match tool {
+        AddTool::Room => {
+            let width = app.settings.add_room_width.max(1);
+            let height = app.settings.add_room_height.max(1);
+            let max_x = app.settings.cols.saturating_sub(cell.0);
+            let max_y = app.settings.rows.saturating_sub(cell.1);
+            let w = width.min(max_x).max(1);
+            let h = height.min(max_y).max(1);
+
+            let left = geometry.rect.left() + cell.0 as f32 * geometry.cell_size;
+            let top = geometry.rect.top() + cell.1 as f32 * geometry.cell_size;
+            let right = left + w as f32 * geometry.cell_size;
+            let bottom = top + h as f32 * geometry.cell_size;
+            let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+
+            let fill = Color32::from_rgb(70, 120, 160).gamma_multiply(ghost_alpha);
+            painter.rect_filled(rect, 4.0, fill);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(
+                    1.5,
+                    Color32::from_rgb(150, 200, 240).gamma_multiply(ghost_alpha + 0.3),
+                ),
+                egui::StrokeKind::Middle,
+            );
+        }
+        AddTool::Text => {
+            let text = app.settings.add_text_value.trim();
+            if text.is_empty() {
+                return;
+            }
+            let font_size = app.settings.add_text_font_size.max(8);
+            let rect = crate::rendering::text_label_rect(
+                geometry,
+                &layout::TextLabel {
+                    cell,
+                    text: text.to_string(),
+                    font_size,
+                },
+            );
+
+            let fill = Color32::from_rgb(50, 50, 70).gamma_multiply(ghost_alpha);
+            painter.rect_filled(rect.expand(4.0), 4.0, fill);
+            painter.rect_stroke(
+                rect.expand(4.0),
+                4.0,
+                Stroke::new(
+                    1.0,
+                    Color32::from_rgb(180, 180, 220).gamma_multiply(ghost_alpha + 0.2),
+                ),
+                egui::StrokeKind::Middle,
+            );
+
+            let color = Color32::WHITE.gamma_multiply(ghost_alpha + 0.1);
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                egui::FontId::proportional(font_size as f32),
+                color,
+            );
+        }
+        AddTool::StartMarker
+        | AddTool::EndMarker
+        | AddTool::TrapMarker
+        | AddTool::MonsterMarker => {
+            let size = app.settings.add_marker_size.max(1);
+            let origin = centered_marker_origin(cell, size, app.settings.cols, app.settings.rows);
+
+            let rect = marker_rect(&layout::AreaMarker { cell: origin, size }, geometry);
+
+            let base_color = match tool {
+                AddTool::StartMarker => Color32::from_rgb(60, 220, 200),
+                AddTool::EndMarker => Color32::from_rgb(240, 90, 90),
+                AddTool::TrapMarker => Color32::from_rgb(150, 80, 230),
+                AddTool::MonsterMarker => Color32::from_rgb(200, 50, 50),
+                _ => Color32::WHITE,
+            };
+
+            let fill = base_color.gamma_multiply(ghost_alpha);
+            painter.rect_filled(rect, 4.0, fill);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(
+                    1.5,
+                    Color32::from_rgb(255, 255, 255).gamma_multiply(ghost_alpha + 0.2),
+                ),
+                egui::StrokeKind::Middle,
+            );
+
+            let label = match tool {
+                AddTool::StartMarker => "S",
+                AddTool::EndMarker => "E",
+                AddTool::TrapMarker => "T",
+                AddTool::MonsterMarker => "M",
+                _ => "?",
+            };
+            let text_color = Color32::WHITE.gamma_multiply(ghost_alpha + 0.15);
+            let font_size = (geometry.cell_size * size as f32 * 0.5).clamp(14.0, 72.0);
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(font_size),
+                text_color,
+            );
+        }
+        AddTool::Staircase => {
+            let width = app.settings.add_stair_width.max(1);
+            let height = app.settings.add_stair_height.max(1);
+            let max_x = app.settings.cols.saturating_sub(cell.0);
+            let max_y = app.settings.rows.saturating_sub(cell.1);
+            let w = width.min(max_x).max(1);
+            let h = height.min(max_y).max(1);
+
+            let left = geometry.rect.left() + cell.0 as f32 * geometry.cell_size;
+            let top = geometry.rect.top() + cell.1 as f32 * geometry.cell_size;
+            let right = left + w as f32 * geometry.cell_size;
+            let bottom = top + h as f32 * geometry.cell_size;
+            let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+
+            let fill = Color32::from_rgb(200, 150, 50).gamma_multiply(ghost_alpha);
+            painter.rect_filled(rect, 4.0, fill);
+            painter.rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(
+                    1.5,
+                    Color32::from_rgb(220, 180, 80).gamma_multiply(ghost_alpha + 0.2),
+                ),
+                egui::StrokeKind::Middle,
+            );
+
+            let steps = (h as f32 * 2.0).round() as usize;
+            let step_height = (rect.height() / (steps as f32)).max(1.0);
+            let line_color = Color32::from_rgb(150, 100, 30).gamma_multiply(ghost_alpha + 0.15);
+            for i in 0..steps {
+                let y = rect.top() + (i as f32 * step_height) + step_height * 0.5;
+                painter.line_segment(
+                    [
+                        egui::pos2(rect.left() + 2.0, y),
+                        egui::pos2(rect.right() - 2.0, y),
+                    ],
+                    Stroke::new(1.5, line_color),
+                );
+            }
+        }
+        AddTool::Archway | AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
+            if let Some((edge_a, edge_b)) = door_edge_at_pointer(app, pointer_pos, geometry) {
+                let door_width_cells = 1;
+                let style = match tool {
+                    AddTool::Archway => crate::rendering::DoorLineStyle::Dotted,
+                    AddTool::Door => crate::rendering::DoorLineStyle::LongDash,
+                    AddTool::LockedDoor => crate::rendering::DoorLineStyle::ShortDash,
+                    AddTool::SecretDoor => crate::rendering::DoorLineStyle::DashDotDot,
+                    _ => crate::rendering::DoorLineStyle::Solid,
+                };
+                let color = match tool {
+                    AddTool::Archway => Color32::from_rgb(230, 140, 60),
+                    AddTool::Door => Color32::from_rgb(80, 200, 120),
+                    AddTool::LockedDoor => Color32::from_rgb(220, 70, 70),
+                    AddTool::SecretDoor => Color32::from_rgb(170, 80, 170),
+                    _ => Color32::WHITE,
+                };
+                let ghost_color = color.gamma_multiply(ghost_alpha);
+                crate::rendering::draw_door_line(
+                    painter,
+                    geometry,
+                    edge_a,
+                    edge_b,
+                    door_width_cells,
+                    Stroke::new((geometry.cell_size / 5.0).max(1.0), ghost_color),
+                    style,
+                );
+            }
+        }
+        AddTool::None | AddTool::Corridor => {}
+    }
 }

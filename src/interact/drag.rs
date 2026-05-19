@@ -5,14 +5,15 @@
 
 use super::{
     CorridorDragState, DragState, GridGeometry, MarkerDragState, MarkerKind, RoomDragState,
-    StaircaseDragState, TextDragState, corridor_drag_at_pointer, marker_drag_at_pointer,
-    pointer_to_grid, reroute_path_through_cell, room_at_pointer, stair_drag_at_pointer,
-    text_at_pointer,
+    StaircaseDragState, TextDragState, cell_center, corridor_drag_at_pointer, door_render_width,
+    marker_drag_at_pointer, pointer_to_grid, reroute_path_through_cell, room_at_pointer,
+    stair_drag_at_pointer, text_at_pointer,
 };
 use crate::app::DungeonApp;
 use crate::layout::{blocked_room_cells, shortest_path_cells};
 use crate::ui::AddTool;
 use eframe::egui;
+use egui::{Color32, Stroke};
 
 // Handles active drag gestures for rooms, corridors, markers, stairs, and text.
 pub fn handle_drag(
@@ -326,4 +327,57 @@ pub fn drag_stair_to_pointer(
     if let Some(DragState::Staircase(ref mut d)) = app.drag_state {
         d.original_cell = new_cell;
     }
+}
+
+// Draws corridor hover overlay.
+pub fn draw_corridor_hover_overlay(
+    app: &DungeonApp,
+    painter: &egui::Painter,
+    geometry: &GridGeometry,
+) {
+    let Some(idx) = app.hover_corridor_idx else {
+        return;
+    };
+    if app.settings.active_level_index >= app.levels.len() {
+        return;
+    }
+    let layout = &app.levels[app.settings.active_level_index];
+
+    let Some(corridor) = layout.corridors.get(idx) else {
+        return;
+    };
+
+    let color = Color32::from_gray(170);
+    let stroke = Stroke::new(2.0, color);
+    for pair in corridor.path.windows(2) {
+        let a = cell_center(geometry, pair[0].0, pair[0].1);
+        let b = cell_center(geometry, pair[1].0, pair[1].1);
+        crate::rendering::draw_dashed_line(painter, a, b, stroke, 6.0, 6.0);
+    }
+}
+
+// Draws door hover overlay.
+pub fn draw_door_hover_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
+    let Some(idx) = app.hover_door_idx else {
+        return;
+    };
+    if app.settings.active_level_index >= app.levels.len() {
+        return;
+    }
+    let layout = &app.levels[app.settings.active_level_index];
+
+    let Some(door) = layout.doors.get(idx) else {
+        return;
+    };
+    let color = Color32::from_gray(200);
+    let stroke = Stroke::new(2.0, color);
+    crate::rendering::draw_door_line(
+        painter,
+        geometry,
+        door.from,
+        door.to,
+        door_render_width(door),
+        stroke,
+        crate::rendering::DoorLineStyle::LongDash,
+    );
 }
