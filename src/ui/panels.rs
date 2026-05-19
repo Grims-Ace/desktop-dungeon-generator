@@ -56,6 +56,12 @@ pub fn draw_side_panel(
                     {
                         settings.active_tab = Tab::Add;
                     }
+                    if ui
+                        .selectable_label(settings.active_tab == Tab::ExportSave, "Export/Save")
+                        .clicked()
+                    {
+                        settings.active_tab = Tab::ExportSave;
+                    }
                 });
                 ui.separator();
 
@@ -73,6 +79,13 @@ pub fn draw_side_panel(
                         tabs::draw_monsters_and_traps_tab(ui, settings, &mut result)
                     }
                     Tab::Add => tabs::draw_add_tab(ui, settings, &mut result),
+                    Tab::ExportSave => tabs::draw_export_save_tab(
+                        ui,
+                        settings,
+                        &mut result,
+                        export_progress,
+                        num_levels,
+                    ),
                 }
             });
         });

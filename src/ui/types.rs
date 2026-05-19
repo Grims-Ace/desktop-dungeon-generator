@@ -12,6 +12,7 @@ pub enum Tab {
     StartAndEnd,
     MonstersAndTraps,
     Add,
+    ExportSave,
 }
 
 impl Default for Tab {

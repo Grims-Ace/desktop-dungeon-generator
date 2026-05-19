@@ -15,10 +15,9 @@ pub fn draw_generate_tab(
     ui: &mut egui::Ui,
     settings: &mut UiSettings,
     result: &mut SidePanelResult,
-    export_progress: Option<(usize, usize)>,
-    num_levels: usize,
+    _export_progress: Option<(usize, usize)>,
+    _num_levels: usize,
 ) {
-    let export_in_progress = export_progress.is_some();
     ui.label(RichText::new("Grid Settings").strong());
     ui.add_space(8.0);
 
@@ -77,10 +76,18 @@ pub fn draw_generate_tab(
             result.clear_clicked = true;
         }
     });
+}
 
-    ui.add_space(12.0);
-    ui.separator();
-    ui.add_space(8.0);
+// Render the Export/Save tab controls.
+pub fn draw_export_save_tab(
+    ui: &mut egui::Ui,
+    settings: &mut UiSettings,
+    result: &mut SidePanelResult,
+    export_progress: Option<(usize, usize)>,
+    num_levels: usize,
+) {
+    let export_in_progress = export_progress.is_some();
+
     ui.label(RichText::new("Dungeon Files").strong());
     ui.add_space(8.0);
 
