@@ -11,7 +11,11 @@ use eframe::egui;
 
 // Handles update hover targets.
 pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry: &GridGeometry) {
-    if app.drag_state.is_some() || app.resize_state.is_some() || app.add_corridor_drag.is_some() {
+    if app.drag_state.is_some()
+        || app.resize_state.is_some()
+        || app.add_corridor_drag.is_some()
+        || app.add_door_drag.is_some()
+    {
         return;
     }
 

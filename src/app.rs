@@ -9,7 +9,9 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::exporter;
-use crate::interact::{AddCorridorDrag, DragState, HoverMarker, ResizeState, draw_grid};
+use crate::interact::{
+    AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, ResizeState, draw_grid,
+};
 use crate::layout::{
     self, DoorSettings, DungeonLayout, WindowSettings, populate_random_markers, populate_stairs,
 };
@@ -45,6 +47,7 @@ pub struct DungeonApp {
     pub export_progress: Option<exporter::ExportProgress>,
     pub pending_delete: bool,
     pub add_corridor_drag: Option<AddCorridorDrag>,
+    pub add_door_drag: Option<AddDoorDrag>,
     pub resize_state: Option<ResizeState>,
     pub hover_room_idx: Option<usize>,
     pub hover_corridor_idx: Option<usize>,
@@ -70,6 +73,7 @@ impl Default for DungeonApp {
             export_progress: None,
             pending_delete: false,
             add_corridor_drag: None,
+            add_door_drag: None,
             resize_state: None,
             hover_room_idx: None,
             hover_corridor_idx: None,
@@ -398,6 +402,7 @@ impl DungeonApp {
     pub fn reset_transient_state(&mut self) {
         self.drag_state = None;
         self.add_corridor_drag = None;
+        self.add_door_drag = None;
         self.resize_state = None;
         self.clear_hover_targets();
         self.pending_delete = false;

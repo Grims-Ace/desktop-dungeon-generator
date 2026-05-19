@@ -4,6 +4,7 @@
  */
 
 use crate::layout;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct RoomDragState {
@@ -36,6 +37,12 @@ pub struct CorridorDragState {
 pub struct AddCorridorDrag {
     pub start_cell: (usize, usize),
     pub current_cell: (usize, usize),
+}
+
+#[derive(Debug, Clone)]
+pub struct AddDoorDrag {
+    pub painted_edges: HashSet<((usize, usize), (usize, usize))>,
+    pub snapshot_taken: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

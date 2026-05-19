@@ -5,9 +5,10 @@
  */
 
 use super::{
-    AddCorridorDrag, GridGeometry, HoverMarker, MarkerKind, cell_center, centered_marker_origin,
-    corridor_drag_at_pointer, door_edge_at_pointer, door_edges_for, marker_at_pointer, marker_rect,
-    normalized_edge, pointer_to_grid, room_at_pointer, stair_at_pointer, text_at_pointer,
+    AddCorridorDrag, AddDoorDrag, GridGeometry, HoverMarker, MarkerKind, cell_center,
+    centered_marker_origin, corridor_drag_at_pointer, door_edge_at_pointer, door_edges_for,
+    marker_at_pointer, marker_rect, normalized_edge, pointer_to_grid, room_at_pointer,
+    stair_at_pointer, text_at_pointer,
 };
 use crate::app::{DungeonApp, ManualDoorKind};
 use crate::layout::{
@@ -23,12 +24,14 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
     if app.settings.add_tool != AddTool::None && response.secondary_clicked() {
         app.settings.add_tool = AddTool::None;
         app.add_corridor_drag = None;
+        app.add_door_drag = None;
         return;
     }
 
     match app.settings.add_tool {
         AddTool::Room => {
             app.add_corridor_drag = None;
+            app.add_door_drag = None;
             if response.clicked()
                 && let Some(pointer_pos) = response.interact_pointer_pos()
                 && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
@@ -38,6 +41,7 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
             }
         }
         AddTool::Corridor => {
+            app.add_door_drag = None;
             if response.drag_started()
                 && let Some(pointer_pos) = response.interact_pointer_pos()
                 && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
@@ -65,6 +69,7 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
         }
         AddTool::Staircase => {
             app.add_corridor_drag = None;
+            app.add_door_drag = None;
             if response.clicked()
                 && let Some(pointer_pos) = response.interact_pointer_pos()
                 && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
@@ -75,21 +80,11 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
         }
         AddTool::Archway | AddTool::Door | AddTool::LockedDoor | AddTool::SecretDoor => {
             app.add_corridor_drag = None;
-            if response.clicked()
-                && let Some(pointer_pos) = response.interact_pointer_pos()
-            {
-                let kind = match app.settings.add_tool {
-                    AddTool::Archway => ManualDoorKind::Archway,
-                    AddTool::Door => ManualDoorKind::Regular,
-                    AddTool::LockedDoor => ManualDoorKind::Locked,
-                    AddTool::SecretDoor => ManualDoorKind::Secret,
-                    _ => unreachable!(),
-                };
-                add_door_at_pointer(app, pointer_pos, geometry, kind);
-            }
+            handle_add_door_tool(app, response, geometry);
         }
         AddTool::Text => {
             app.add_corridor_drag = None;
+            app.add_door_drag = None;
             if response.clicked()
                 && let Some(pointer_pos) = response.interact_pointer_pos()
                 && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
@@ -103,6 +98,7 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
         | AddTool::TrapMarker
         | AddTool::MonsterMarker => {
             app.add_corridor_drag = None;
+            app.add_door_drag = None;
             if response.clicked()
                 && let Some(pointer_pos) = response.interact_pointer_pos()
                 && let Some((grid_x, grid_y)) = pointer_to_grid(pointer_pos, geometry)
@@ -120,7 +116,85 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
         }
         AddTool::None => {
             app.add_corridor_drag = None;
+            app.add_door_drag = None;
         }
+    }
+}
+
+// Handles click-and-drag painting for manual door tools.
+pub fn handle_add_door_tool(
+    app: &mut DungeonApp,
+    response: &egui::Response,
+    geometry: &GridGeometry,
+) {
+    let Some(kind) = manual_door_kind_from_tool(app.settings.add_tool) else {
+        app.add_door_drag = None;
+        return;
+    };
+
+    if response.drag_started() {
+        app.add_door_drag = Some(AddDoorDrag {
+            painted_edges: Default::default(),
+            snapshot_taken: false,
+        });
+    }
+
+    if (response.drag_started() || response.dragged() || response.clicked())
+        && let Some(pointer_pos) = response.interact_pointer_pos()
+    {
+        paint_door_at_pointer(app, pointer_pos, geometry, kind);
+    }
+
+    if response.drag_stopped() {
+        app.add_door_drag = None;
+    }
+}
+
+// Converts the active add tool into a manual door kind.
+pub fn manual_door_kind_from_tool(tool: AddTool) -> Option<ManualDoorKind> {
+    match tool {
+        AddTool::Archway => Some(ManualDoorKind::Archway),
+        AddTool::Door => Some(ManualDoorKind::Regular),
+        AddTool::LockedDoor => Some(ManualDoorKind::Locked),
+        AddTool::SecretDoor => Some(ManualDoorKind::Secret),
+        _ => None,
+    }
+}
+
+// Paints one door edge during a manual door drag.
+pub fn paint_door_at_pointer(
+    app: &mut DungeonApp,
+    pointer_pos: egui::Pos2,
+    geometry: &GridGeometry,
+    kind: ManualDoorKind,
+) {
+    let Some(edge) = door_edge_at_pointer(app, pointer_pos, geometry) else {
+        return;
+    };
+    let target = normalized_edge(edge.0, edge.1);
+
+    if let Some(drag) = &app.add_door_drag
+        && drag.painted_edges.contains(&target)
+    {
+        return;
+    }
+
+    let needs_snapshot = app
+        .add_door_drag
+        .as_ref()
+        .map(|drag| !drag.snapshot_taken)
+        .unwrap_or(true);
+    if needs_snapshot {
+        app.push_undo_snapshot();
+        if let Some(drag) = &mut app.add_door_drag {
+            drag.snapshot_taken = true;
+        }
+    }
+
+    if add_door_at_edge(app, edge, kind)
+        && let Some(drag) = &mut app.add_door_drag
+    {
+        drag.painted_edges.insert(target);
     }
 }
 
@@ -450,22 +524,16 @@ pub fn delete_room(app: &mut DungeonApp, room_idx: usize) {
     app.refresh_doors();
 }
 
-// Adds door at pointer.
-pub fn add_door_at_pointer(
+// Adds or updates a manual door on a specific cell edge.
+pub fn add_door_at_edge(
     app: &mut DungeonApp,
-    pointer_pos: egui::Pos2,
-    geometry: &GridGeometry,
+    edge: ((usize, usize), (usize, usize)),
     kind: ManualDoorKind,
-) {
+) -> bool {
     if app.settings.active_level_index >= app.levels.len() {
-        return;
+        return false;
     }
 
-    let Some(edge) = door_edge_at_pointer(app, pointer_pos, geometry) else {
-        return;
-    };
-
-    app.push_undo_snapshot();
     let layout = &mut app.levels[app.settings.active_level_index];
 
     let target = normalized_edge(edge.0, edge.1);
@@ -509,7 +577,7 @@ pub fn add_door_at_pointer(
             app.suppressed_auto_door_edges.remove(&edge);
         }
         layout.doors.extend(spawned);
-        return;
+        return true;
     }
 
     let corridor_cells = corridor_cells(layout, app.settings.cols, app.settings.rows);
@@ -519,7 +587,7 @@ pub fn add_door_at_pointer(
     let b_in_corridor = corridor_cells.contains(&edge.1);
 
     if !manual_door_edge_allowed(a_room, b_room, a_in_corridor, b_in_corridor) {
-        return;
+        return false;
     }
 
     layout.doors.push(layout::Door {
@@ -533,6 +601,7 @@ pub fn add_door_at_pointer(
         manual: true,
     });
     app.suppressed_auto_door_edges.remove(&target);
+    true
 }
 
 // Checks whether manual door edge allowed.
