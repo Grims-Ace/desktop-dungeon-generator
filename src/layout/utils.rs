@@ -201,6 +201,41 @@ pub fn shared_opening_width(a: &Room, b: &Room, span: usize, default_width: usiz
     default_width.max(1).min(span).min(max_width.max(1))
 }
 
+// Returns true if the edge between cell a and cell b is on the perimeter of at least one room.
+pub fn is_room_boundary_edge(rooms: &[Room], a: (usize, usize), b: (usize, usize)) -> bool {
+    for room in rooms {
+        let rx_start = room.x;
+        let rx_end = room.x + room.width;
+        let ry_start = room.y;
+        let ry_end = room.y + room.height;
+
+        // But since we have overlapping rooms, we check if this specific edge is one of the 4 perimeters of THIS room.
+
+        let horizontal = a.1 == b.1 && a.0.abs_diff(b.0) == 1;
+        let vertical = a.0 == b.0 && a.1.abs_diff(b.1) == 1;
+        if horizontal {
+            let left = a.0.min(b.0);
+            let right = a.0.max(b.0);
+            let y = a.1;
+            if y >= ry_start && y < ry_end {
+                if right == rx_start || left == rx_end - 1 {
+                    return true;
+                }
+            }
+        } else if vertical {
+            let top = a.1.min(b.1);
+            let bottom = a.1.max(b.1);
+            let x = a.0;
+            if x >= rx_start && x < rx_end {
+                if bottom == ry_start || top == ry_end - 1 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 // Compute the shortest grid path between two cells using BFS.
 pub fn shortest_path_cells(
     start: (usize, usize),

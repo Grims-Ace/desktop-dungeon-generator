@@ -572,12 +572,11 @@ pub fn add_door_at_edge(
     }
 
     let corridor_cells = corridor_cells(layout, app.settings.cols, app.settings.rows);
-    let a_room = room_index_at_cell(&layout.rooms, edge.0);
-    let b_room = room_index_at_cell(&layout.rooms, edge.1);
     let a_in_corridor = corridor_cells.contains(&edge.0);
     let b_in_corridor = corridor_cells.contains(&edge.1);
+    let is_boundary = layout::is_room_boundary_edge(&layout.rooms, edge.0, edge.1);
 
-    if !manual_door_edge_allowed(a_room, b_room, a_in_corridor, b_in_corridor) {
+    if !manual_door_edge_allowed(is_boundary, a_in_corridor, b_in_corridor) {
         return false;
     }
 
@@ -597,18 +596,11 @@ pub fn add_door_at_edge(
 
 // Checks whether manual door edge allowed.
 pub fn manual_door_edge_allowed(
-    a_room: Option<usize>,
-    b_room: Option<usize>,
+    is_room_boundary: bool,
     a_in_corridor: bool,
     b_in_corridor: bool,
 ) -> bool {
-    if matches!((a_room, b_room), (Some(a), Some(b)) if a == b) {
-        return false;
-    }
-
-    let a_is_feature = a_room.is_some() || a_in_corridor;
-    let b_is_feature = b_room.is_some() || b_in_corridor;
-    a_is_feature || b_is_feature
+    is_room_boundary || a_in_corridor || b_in_corridor
 }
 
 // Draws add overlay.
