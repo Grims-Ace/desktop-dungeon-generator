@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::exporter;
-use crate::interact::{
+use crate::interact::{MultiDragState, MultiResizeState, SelectedItem, SelectionBoxDrag, 
     AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, ResizeState, draw_grid,
 };
 use crate::layout::{
@@ -57,6 +57,10 @@ pub struct DungeonApp {
     pub hover_level_idx: Option<usize>,
     pub hover_stair_idx: Option<usize>,
     pub rename_level_state: Option<(usize, String)>,
+    pub selection: Vec<SelectedItem>,
+    pub selection_box_drag: Option<SelectionBoxDrag>,
+    pub multi_drag_state: Option<MultiDragState>,
+    pub multi_resize_state: Option<MultiResizeState>,
 }
 
 impl Default for DungeonApp {
@@ -84,6 +88,10 @@ impl Default for DungeonApp {
             hover_level_idx: None,
             hover_stair_idx: None,
             rename_level_state: None,
+            selection: Vec::new(),
+            selection_box_drag: None,
+            multi_drag_state: None,
+            multi_resize_state: None,
         };
         if app.settings.composition_mode {
             app.enter_composition_layout();
@@ -308,8 +316,13 @@ impl eframe::App for DungeonApp {
                 self.delete_level(level_idx);
             }
 
-            let resizing = crate::interact::handle_resize(self, ctx, &response, &geometry);
-            if !resizing {
+            let multi_consumed = crate::interact::handle_multi_select(self, ctx, &response, &geometry);
+            let resizing = if !multi_consumed {
+                crate::interact::handle_resize(self, ctx, &response, &geometry)
+            } else {
+                false
+            };
+            if !resizing && !multi_consumed {
                 crate::interact::handle_drag(self, ctx, &response, &geometry);
             }
             crate::interact::handle_add_tool(self, &response, &geometry);
@@ -318,6 +331,10 @@ impl eframe::App for DungeonApp {
                     crate::interact::delete_at_pointer(self, pointer_pos, &geometry);
                 }
                 self.pending_delete = false;
+        self.selection.clear();
+        self.selection_box_drag = None;
+        self.multi_drag_state = None;
+        self.multi_resize_state = None;
             }
 
             if self.settings.active_level_index < self.levels.len() {
@@ -373,6 +390,8 @@ impl eframe::App for DungeonApp {
             crate::interact::draw_resize_overlay(self, &painter, &geometry);
             crate::interact::draw_corridor_hover_overlay(self, &painter, &geometry);
             crate::interact::draw_door_hover_overlay(self, &painter, &geometry);
+            crate::interact::draw_selection_highlights(self, &painter, &geometry);
+            crate::interact::draw_selection_box(self, &painter, &geometry);
         });
     }
 }
@@ -478,6 +497,10 @@ impl DungeonApp {
         self.resize_state = None;
         self.clear_hover_targets();
         self.pending_delete = false;
+        self.selection.clear();
+        self.selection_box_drag = None;
+        self.multi_drag_state = None;
+        self.multi_resize_state = None;
     }
 
     // Captures the current app state for undo history.

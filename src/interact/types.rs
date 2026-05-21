@@ -53,7 +53,7 @@ pub enum ResizeCorner {
     BottomRight,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MarkerKind {
     Start,
     End,
@@ -115,4 +115,44 @@ pub enum ResizeState {
     Room(RoomResizeState),
     Text(TextResizeState),
     Staircase(StaircaseResizeState),
+}
+
+// ---- Multi-selection types ----
+
+/// Identifies a single selectable item in the dungeon layout.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SelectedItem {
+    Room(usize),
+    Text(usize),
+    Staircase(usize),
+    Marker(MarkerKind, usize),
+}
+
+/// State while the user is rubber-band selecting (left-click drag on empty space).
+#[derive(Debug, Clone)]
+pub struct SelectionBoxDrag {
+    /// Grid-space start corner of the selection rectangle.
+    pub start_cell: (f32, f32),
+    /// Grid-space current corner of the selection rectangle (tracks the pointer).
+    pub current_cell: (f32, f32),
+}
+
+/// State while dragging a multi-selection with the left mouse button.
+#[derive(Debug, Clone)]
+pub struct MultiDragState {
+    /// Grid-space position when the drag started (used to compute delta).
+    pub start_grid: (f32, f32),
+    /// Snapshot of each selected item's original position at drag start.
+    pub origins: Vec<(SelectedItem, (isize, isize))>,
+}
+
+/// State while resizing a multi-selection with the right mouse button.
+#[derive(Debug, Clone)]
+pub struct MultiResizeState {
+    /// Grid-space position when the resize started.
+    pub start_grid: (f32, f32),
+    /// Snapshot of each selected item's original size at resize start.
+    /// For rooms/staircases: (x, y, width, height).
+    /// For text: (cell_x, cell_y, font_size as width, 0).
+    pub origins: Vec<(SelectedItem, (isize, isize, isize, isize))>,
 }

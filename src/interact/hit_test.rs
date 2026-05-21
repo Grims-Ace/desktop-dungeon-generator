@@ -15,6 +15,9 @@ pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry:
         || app.resize_state.is_some()
         || app.add_corridor_drag.is_some()
         || app.add_door_drag.is_some()
+        || app.selection_box_drag.is_some()
+        || app.multi_drag_state.is_some()
+        || app.multi_resize_state.is_some()
     {
         return;
     }
