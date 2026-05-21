@@ -96,6 +96,7 @@ impl Default for DungeonApp {
 impl Drop for DungeonApp {
     // Cleans up background resources when the app is dropped.
     fn drop(&mut self) {
+        self.settings.overlay_level_index = None;
         if let Err(err) = settings::save_settings(&self.settings) {
             eprintln!("Failed to save settings: {err}");
         }

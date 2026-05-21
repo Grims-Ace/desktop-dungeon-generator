@@ -374,10 +374,20 @@ pub fn corridor_drag_at_pointer(
     }
     let layout = &app.levels[app.settings.active_level_index];
 
-    let corridor_index = layout
-        .corridors
-        .iter()
-        .position(|corridor| corridor.path.contains(&clicked))?;
+    let mut room_cells = std::collections::HashSet::new();
+    for room in &layout.rooms {
+        for x in room.x..(room.x + room.width) {
+            for y in room.y..(room.y + room.height) {
+                room_cells.insert((x, y));
+            }
+        }
+    }
+
+    let corridor_index = layout.corridors.iter().position(|corridor| {
+        corridor
+            .cells(app.settings.cols, app.settings.rows, &room_cells)
+            .contains(&clicked)
+    })?;
 
     Some(CorridorDragState {
         corridor_index,

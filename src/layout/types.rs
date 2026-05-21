@@ -31,6 +31,119 @@ pub struct Corridor {
     pub width: usize,
 }
 
+impl Corridor {
+    // Return all cells belonging to this corridor given the grid size and room cells to exclude.
+    pub fn cells(
+        &self,
+        cols: usize,
+        rows: usize,
+        room_cells: &std::collections::HashSet<(usize, usize)>,
+    ) -> std::collections::HashSet<(usize, usize)> {
+        let mut cells = std::collections::HashSet::new();
+        if cols == 0 || rows == 0 {
+            return cells;
+        }
+
+        let width = self.width.max(1);
+        let min_offset = -((width as isize - 1) / 2);
+        let max_offset = width as isize / 2;
+
+        if self.path.len() == 1 {
+            let (x, y) = self.path[0];
+            for dy in min_offset..=max_offset {
+                let ny = y as isize + dy;
+                if ny < 0 || ny >= rows as isize {
+                    continue;
+                }
+                let cell = (x, ny as usize);
+                if !room_cells.contains(&cell) {
+                    cells.insert(cell);
+                }
+            }
+            return cells;
+        }
+
+        for pair in self.path.windows(2) {
+            let a = pair[0];
+            let b = pair[1];
+            if a == b {
+                continue;
+            }
+
+            if a.0 != b.0 {
+                let x0 = a.0.min(b.0);
+                let x1 = a.0.max(b.0);
+                let y = a.1 as isize;
+                for x in x0..=x1 {
+                    for dy in min_offset..=max_offset {
+                        let ny = y + dy;
+                        if ny < 0 || ny >= rows as isize {
+                            continue;
+                        }
+                        let cell = (x, ny as usize);
+                        if !room_cells.contains(&cell) {
+                            cells.insert(cell);
+                        }
+                    }
+                }
+            } else {
+                let y0 = a.1.min(b.1);
+                let y1 = a.1.max(b.1);
+                let x = a.0 as isize;
+                for y in y0..=y1 {
+                    for dx in min_offset..=max_offset {
+                        let nx = x + dx;
+                        if nx < 0 || nx >= cols as isize {
+                            continue;
+                        }
+                        let cell = (nx as usize, y);
+                        if !room_cells.contains(&cell) {
+                            cells.insert(cell);
+                        }
+                    }
+                }
+            }
+        }
+
+        for turn in self.path.windows(3) {
+            let prev = turn[0];
+            let corner = turn[1];
+            let next = turn[2];
+            let incoming = (
+                corner.0 as isize - prev.0 as isize,
+                corner.1 as isize - prev.1 as isize,
+            );
+            let outgoing = (
+                next.0 as isize - corner.0 as isize,
+                next.1 as isize - corner.1 as isize,
+            );
+            if incoming == outgoing {
+                continue;
+            }
+
+            for dx in min_offset..=max_offset {
+                let nx = corner.0 as isize + dx;
+                if nx < 0 || nx >= cols as isize {
+                    continue;
+                }
+                for dy in min_offset..=max_offset {
+                    let ny = corner.1 as isize + dy;
+                    if ny < 0 || ny >= rows as isize {
+                        continue;
+                    }
+
+                    let cell = (nx as usize, ny as usize);
+                    if !room_cells.contains(&cell) {
+                        cells.insert(cell);
+                    }
+                }
+            }
+        }
+
+        cells
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Door {
     pub from: (usize, usize),
