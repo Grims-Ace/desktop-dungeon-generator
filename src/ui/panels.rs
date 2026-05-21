@@ -169,16 +169,23 @@ pub fn draw_legend_panel(ctx: &egui::Context, settings: &mut UiSettings) -> bool
     composition_mode_changed
 }
 
+use crate::layout::DungeonLayout;
+
 // Draws level tabs.
 pub fn draw_level_tabs(
     ui: &mut egui::Ui,
-    level_count: usize,
+    levels: &[DungeonLayout],
     active_level_index: &mut usize,
+    rename_level_state: &mut Option<(usize, String)>,
 ) -> Option<usize> {
     let mut hovered_level_idx = None;
     ui.horizontal(|ui| {
-        for level_idx in 0..level_count {
-            let label = format!("Level {}", level_idx + 1);
+        for (level_idx, level) in levels.iter().enumerate() {
+            let label = if level.name.is_empty() {
+                format!("Level {}", level_idx + 1)
+            } else {
+                level.name.clone()
+            };
             let is_active = *active_level_index == level_idx;
             let response = ui.selectable_label(is_active, label);
             if response.hovered() {
@@ -186,6 +193,9 @@ pub fn draw_level_tabs(
             }
             if response.clicked() {
                 *active_level_index = level_idx;
+            }
+            if response.double_clicked() {
+                *rename_level_state = Some((level_idx, level.name.clone()));
             }
         }
     });

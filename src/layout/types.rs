@@ -213,6 +213,7 @@ pub struct WindowSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DungeonLayout {
+    pub name: String,
     pub rooms: Vec<Room>,
     pub corridors: Vec<Corridor>,
     pub doors: Vec<Door>,

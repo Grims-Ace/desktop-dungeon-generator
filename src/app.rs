@@ -56,6 +56,7 @@ pub struct DungeonApp {
     pub hover_marker: Option<HoverMarker>,
     pub hover_level_idx: Option<usize>,
     pub hover_stair_idx: Option<usize>,
+    pub rename_level_state: Option<(usize, String)>,
 }
 
 impl Default for DungeonApp {
@@ -82,6 +83,7 @@ impl Default for DungeonApp {
             hover_marker: None,
             hover_level_idx: None,
             hover_stair_idx: None,
+            rename_level_state: None,
         };
         if app.settings.composition_mode {
             app.enter_composition_layout();
@@ -170,9 +172,9 @@ impl eframe::App for DungeonApp {
         } else if panel_result.new_level_clicked {
             self.push_undo_snapshot();
             if self.settings.composition_mode {
-                self.levels.push(DungeonLayout::empty(
-                    self.settings.pack_rooms_without_corridors,
-                ));
+                let mut layout = DungeonLayout::empty(self.settings.pack_rooms_without_corridors);
+                layout.name = format!("Level {}", self.levels.len() + 1);
+                self.levels.push(layout);
             } else {
                 self.levels
                     .push(generate_level(&self.settings, self.levels.len()));
@@ -257,9 +259,40 @@ impl eframe::App for DungeonApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.hover_level_idx =
-                draw_level_tabs(ui, self.levels.len(), &mut self.settings.active_level_index);
+            self.hover_level_idx = draw_level_tabs(
+                ui,
+                &self.levels,
+                &mut self.settings.active_level_index,
+                &mut self.rename_level_state,
+            );
             ui.separator();
+
+            if let Some((level_idx, mut name)) = self.rename_level_state.take() {
+                let mut open = true;
+                egui::Window::new("Rename Level")
+                    .collapsible(false)
+                    .resizable(false)
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            let res = ui.text_edit_singleline(&mut name);
+                            if ui.button("Rename").clicked()
+                                || (res.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                            {
+                                if level_idx < self.levels.len() {
+                                    self.levels[level_idx].name = name.clone();
+                                    self.rename_level_state = None;
+                                }
+                            }
+                        });
+                    });
+
+                if open {
+                    self.rename_level_state = Some((level_idx, name));
+                }
+            }
 
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
@@ -364,7 +397,7 @@ pub fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
 // Generates a single dungeon level from the UI settings.
 pub fn generate_level(settings: &UiSettings, level_index: usize) -> DungeonLayout {
     let level_seed = crate::seed::derive_seed(settings.seed, level_index as u64);
-    let layout = layout::generate_layout(
+    let mut layout = layout::generate_layout(
         settings.cols,
         settings.rows,
         settings.room_count,
@@ -380,6 +413,7 @@ pub fn generate_level(settings: &UiSettings, level_index: usize) -> DungeonLayou
         door_settings_from_ui(settings),
         window_settings_from_ui(settings),
     );
+    layout.name = format!("Level {}", level_index + 1);
 
     populate_random_markers(layout, settings)
 }
