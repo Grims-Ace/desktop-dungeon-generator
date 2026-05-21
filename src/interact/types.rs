@@ -73,6 +73,7 @@ pub enum HoverMarker {
 pub struct RoomResizeState {
     pub room_idx: usize,
     pub original_room: layout::Room,
+    pub current_room: layout::Room,
     pub resize_corner: ResizeCorner,
 }
 
@@ -98,12 +99,14 @@ pub struct TextResizeState {
     pub text_idx: usize,
     pub origin_cell: (usize, usize),
     pub original_font_size: u16,
+    pub current_font_size: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct StaircaseResizeState {
     pub stair_idx: usize,
     pub original_stair: layout::Staircase,
+    pub current_stair: layout::Staircase,
     pub resize_corner: ResizeCorner,
 }
 

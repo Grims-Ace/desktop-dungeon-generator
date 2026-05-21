@@ -58,13 +58,18 @@ pub fn handle_resize(
         {
             let cell = (grid_x.floor() as usize, grid_y.floor() as usize);
             match state {
-                ResizeState::Room(state) => resize_room(app, &state, cell),
-                ResizeState::Text(state) => resize_text(app, &state, cell),
-                ResizeState::Staircase(state) => resize_staircase(app, &state, cell),
+                ResizeState::Room(ref state) => update_room_ghost(app, state, cell),
+                ResizeState::Text(ref state) => update_text_ghost(app, state, cell),
+                ResizeState::Staircase(ref state) => update_staircase_ghost(app, state, cell),
             }
         }
 
         if ctx.input(|i| i.pointer.button_released(egui::PointerButton::Secondary)) {
+            match state {
+                ResizeState::Room(ref state) => apply_room_resize(app, state),
+                ResizeState::Text(ref state) => apply_text_resize(app, state),
+                ResizeState::Staircase(ref state) => apply_staircase_resize(app, state),
+            }
             app.resize_state = None;
         }
         return true;
@@ -85,6 +90,7 @@ pub fn start_text_resize(app: &DungeonApp, text_idx: usize) -> Option<TextResize
         text_idx,
         origin_cell: label.cell,
         original_font_size: label.font_size,
+        current_font_size: label.font_size,
     })
 }
 
@@ -116,7 +122,8 @@ pub fn start_resize(
 
     Some(RoomResizeState {
         room_idx,
-        original_room,
+        original_room: original_room.clone(),
+        current_room: original_room,
         resize_corner,
     })
 }
@@ -149,18 +156,18 @@ pub fn start_staircase_resize(
 
     Some(StaircaseResizeState {
         stair_idx,
-        original_stair,
+        original_stair: original_stair.clone(),
+        current_stair: original_stair,
         resize_corner,
     })
 }
 
-// Resizes a room and reroutes affected corridors.
-pub fn resize_room(app: &mut DungeonApp, state: &RoomResizeState, target_cell: (usize, usize)) {
-    if app.settings.active_level_index >= app.levels.len() {
-        return;
-    }
-    let layout = &mut app.levels[app.settings.active_level_index];
-
+// Updates room ghost dimensions during resize.
+pub fn update_room_ghost(
+    app: &mut DungeonApp,
+    state: &RoomResizeState,
+    target_cell: (usize, usize),
+) {
     let cols = app.settings.cols.max(1);
     let rows = app.settings.rows.max(1);
 
@@ -194,54 +201,74 @@ pub fn resize_room(app: &mut DungeonApp, state: &RoomResizeState, target_cell: (
         return;
     }
 
-    if layout
-        .rooms
-        .iter()
-        .enumerate()
-        .any(|(idx, room)| idx != state.room_idx && rooms_overlap(&new_room, room))
-    {
-        return;
+    if let Some(layout) = app.levels.get(app.settings.active_level_index) {
+        if layout
+            .rooms
+            .iter()
+            .enumerate()
+            .any(|(idx, room)| idx != state.room_idx && rooms_overlap(&new_room, room))
+        {
+            return;
+        }
     }
 
-    if let Some(room) = layout.rooms.get_mut(state.room_idx) {
+    if let Some(ResizeState::Room(ref mut s)) = app.resize_state {
+        s.current_room = new_room;
+    }
+}
+
+// Applies final room resize.
+pub fn apply_room_resize(app: &mut DungeonApp, state: &RoomResizeState) {
+    if app.settings.active_level_index >= app.levels.len() {
+        return;
+    }
+    let room_idx = state.room_idx;
+    let new_room = state.current_room.clone();
+    let layout = &mut app.levels[app.settings.active_level_index];
+
+    if let Some(room) = layout.rooms.get_mut(room_idx) {
         room.x = new_room.x;
         room.y = new_room.y;
         room.width = new_room.width;
         room.height = new_room.height;
-        reroute_corridors_for_room(app, state.room_idx);
+        reroute_corridors_for_room(app, room_idx);
         app.refresh_doors();
     }
 }
 
-// Resizes a text label based on the drag target cell.
-pub fn resize_text(app: &mut DungeonApp, state: &TextResizeState, target_cell: (usize, usize)) {
-    if app.settings.active_level_index >= app.levels.len() {
-        return;
-    }
-    let layout = &mut app.levels[app.settings.active_level_index];
-
-    let Some(label) = layout.text_labels.get_mut(state.text_idx) else {
-        app.resize_state = None;
-        return;
-    };
-
+// Updates text ghost font size.
+pub fn update_text_ghost(
+    app: &mut DungeonApp,
+    state: &TextResizeState,
+    target_cell: (usize, usize),
+) {
     let dx = target_cell.0 as isize - state.origin_cell.0 as isize;
     let dy = target_cell.1 as isize - state.origin_cell.1 as isize;
     let delta_cells = if dx.abs() >= dy.abs() { dx } else { -dy };
     let new_size = (state.original_font_size as isize + (delta_cells * 4)).clamp(8, 96);
-    label.font_size = new_size as u16;
+
+    if let Some(ResizeState::Text(ref mut s)) = app.resize_state {
+        s.current_font_size = new_size as u16;
+    }
 }
 
-// Resizes a staircase while clamping it to the grid.
-pub fn resize_staircase(
+// Applies final text resize.
+pub fn apply_text_resize(app: &mut DungeonApp, state: &TextResizeState) {
+    if app.settings.active_level_index >= app.levels.len() {
+        return;
+    }
+    let layout = &mut app.levels[app.settings.active_level_index];
+    if let Some(label) = layout.text_labels.get_mut(state.text_idx) {
+        label.font_size = state.current_font_size;
+    }
+}
+
+// Updates staircase ghost dimensions.
+pub fn update_staircase_ghost(
     app: &mut DungeonApp,
     state: &StaircaseResizeState,
     target_cell: (usize, usize),
 ) {
-    if app.settings.active_level_index >= app.levels.len() {
-        return;
-    }
-
     let cols = app.settings.cols.max(1);
     let rows = app.settings.rows.max(1);
 
@@ -269,22 +296,36 @@ pub fn resize_staircase(
         return;
     }
 
-    let active_layout = &app.levels[app.settings.active_level_index];
-    if active_layout.stairs.iter().enumerate().any(|(idx, stair)| {
-        idx != state.stair_idx
-            && rects_overlap(
-                new_stair_cell.0,
-                new_stair_cell.1,
-                new_stair_width,
-                new_stair_height,
-                stair.cell.0,
-                stair.cell.1,
-                stair.width,
-                stair.height,
-            )
-    }) {
-        return;
+    if let Some(active_layout) = app.levels.get(app.settings.active_level_index) {
+        if active_layout.stairs.iter().enumerate().any(|(idx, stair)| {
+            idx != state.stair_idx
+                && rects_overlap(
+                    new_stair_cell.0,
+                    new_stair_cell.1,
+                    new_stair_width,
+                    new_stair_height,
+                    stair.cell.0,
+                    stair.cell.1,
+                    stair.width,
+                    stair.height,
+                )
+        }) {
+            return;
+        }
     }
+
+    if let Some(ResizeState::Staircase(ref mut s)) = app.resize_state {
+        s.current_stair.cell = new_stair_cell;
+        s.current_stair.width = new_stair_width;
+        s.current_stair.height = new_stair_height;
+    }
+}
+
+// Applies final staircase resize.
+pub fn apply_staircase_resize(app: &mut DungeonApp, state: &StaircaseResizeState) {
+    let new_stair_cell = state.current_stair.cell;
+    let new_stair_width = state.current_stair.width;
+    let new_stair_height = state.current_stair.height;
 
     if app.settings.sync_stairs_across_levels {
         for layout in &mut app.levels {
@@ -319,12 +360,6 @@ pub fn resize_staircase(
             }
         }
     }
-
-    if let Some(ResizeState::Staircase(ref mut s)) = app.resize_state {
-        s.original_stair.cell = new_stair_cell;
-        s.original_stair.width = new_stair_width;
-        s.original_stair.height = new_stair_height;
-    }
 }
 
 // Draws resize overlay.
@@ -338,24 +373,56 @@ pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: 
         match state {
             ResizeState::Text(state) => {
                 if let Some(label) = layout.text_labels.get(state.text_idx) {
-                    let rect = crate::rendering::text_label_rect(geometry, label).expand(3.0);
+                    let mut ghost_label = label.clone();
+                    ghost_label.font_size = state.current_font_size;
+                    let rect =
+                        crate::rendering::text_label_rect(geometry, &ghost_label).expand(3.0);
                     painter.rect_stroke(
                         rect,
                         0.0,
                         Stroke::new(2.0, Color32::from_gray(180)),
                         egui::StrokeKind::Middle,
                     );
+                    let pos = crate::interact::cell_center(
+                        geometry,
+                        ghost_label.cell.0,
+                        ghost_label.cell.1,
+                    );
+                    painter.text(
+                        pos,
+                        egui::Align2::CENTER_CENTER,
+                        &ghost_label.text,
+                        egui::FontId::proportional(ghost_label.font_size as f32),
+                        Color32::from_gray(200).gamma_multiply(0.5),
+                    );
                 }
             }
             ResizeState::Room(state) => {
-                if let Some(room) = layout.rooms.get(state.room_idx) {
-                    draw_room_resize_visuals(painter, geometry, room, true);
-                }
+                crate::rendering::draw_layout(
+                    painter,
+                    geometry,
+                    &crate::layout::DungeonLayout {
+                        rooms: vec![state.current_room.clone()],
+                        ..crate::layout::DungeonLayout::empty(false)
+                    },
+                    app.settings.colorblind_mode,
+                    None,
+                    None,
+                    None,
+                    0.5,
+                );
+                draw_room_resize_visuals(painter, geometry, &state.current_room, true);
             }
             ResizeState::Staircase(state) => {
-                if let Some(stair) = layout.stairs.get(state.stair_idx) {
-                    draw_staircase_resize_visuals(painter, geometry, stair, true);
-                }
+                crate::rendering::draw_staircase(
+                    painter,
+                    geometry,
+                    &state.current_stair,
+                    app.settings.colorblind_mode,
+                    false,
+                    0.5,
+                );
+                draw_staircase_resize_visuals(painter, geometry, &state.current_stair, true);
             }
         }
         return;
