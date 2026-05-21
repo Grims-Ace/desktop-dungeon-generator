@@ -321,15 +321,16 @@ fn render_mask_pixmap(
                 context.wall_width,
                 WHITE,
             );
-            raster::draw_cell_walls(
-                &mut pixmap,
-                g,
-                &scene.room_cells,
-                Some(&scene.room_edges),
-                &scene.door_edges,
-                context.wall_width,
-                WHITE,
-            );
+            for room in &layout.rooms {
+                raster::draw_room_walls(
+                    &mut pixmap,
+                    g,
+                    room,
+                    &scene.door_edges,
+                    context.wall_width,
+                    WHITE,
+                );
+            }
             ("walls_mask", pixmap)
         }
         MaskTask::Doors => {

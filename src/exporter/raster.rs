@@ -65,15 +65,10 @@ pub fn render_pixmap_with_scene(
         wall_w,
         BLACK,
     );
-    draw_cell_walls(
-        &mut pixmap,
-        g,
-        &scene.room_cells,
-        Some(&scene.room_edges),
-        &scene.door_edges,
-        wall_w,
-        BLACK,
-    );
+
+    for room in &layout.rooms {
+        draw_room_walls(&mut pixmap, g, room, &scene.door_edges, wall_w, BLACK);
+    }
 
     for door in &layout.doors {
         let (color, style) = if settings.colorblind_mode {
@@ -538,6 +533,101 @@ pub fn draw_room_crosshatch(
                     color,
                     DoorStyle::Solid,
                 );
+            }
+        }
+    }
+}
+
+// Draws room walls.
+pub fn draw_room_walls(
+    pixmap: &mut Pixmap,
+    g: &ExportGeometry,
+    room: &Room,
+    door_edges: &HashSet<CellEdge>,
+    width: f32,
+    color: (u8, u8, u8, u8),
+) {
+    for rx in 0..room.width {
+        for ry in 0..room.height {
+            let col = room.x + rx;
+            let row = room.y + ry;
+            let left = (col, row);
+            let right = (col + 1, row);
+            let top = (col, row);
+            let bottom = (col, row + 1);
+
+            if rx == 0 {
+                let neighbor = col.checked_sub(1).map(|x| (x, row));
+                let suppressed = neighbor
+                    .map(|n| door_edges.contains(&norm_edge(left, n)))
+                    .unwrap_or(false);
+                if !suppressed {
+                    if let Some(rect) = g.cell_rect(col, row) {
+                        draw_wall_segment(
+                            pixmap,
+                            rect.left(),
+                            rect.top(),
+                            rect.left(),
+                            rect.bottom(),
+                            width,
+                            color,
+                        );
+                    }
+                }
+            }
+
+            if rx == room.width - 1 {
+                let suppressed = door_edges.contains(&norm_edge(left, right));
+                if !suppressed {
+                    if let Some(rect) = g.cell_rect(col, row) {
+                        draw_wall_segment(
+                            pixmap,
+                            rect.right(),
+                            rect.top(),
+                            rect.right(),
+                            rect.bottom(),
+                            width,
+                            color,
+                        );
+                    }
+                }
+            }
+
+            if ry == 0 {
+                let neighbor = row.checked_sub(1).map(|y| (col, y));
+                let suppressed = neighbor
+                    .map(|n| door_edges.contains(&norm_edge(top, n)))
+                    .unwrap_or(false);
+                if !suppressed {
+                    if let Some(rect) = g.cell_rect(col, row) {
+                        draw_wall_segment(
+                            pixmap,
+                            rect.left(),
+                            rect.top(),
+                            rect.right(),
+                            rect.top(),
+                            width,
+                            color,
+                        );
+                    }
+                }
+            }
+
+            if ry == room.height - 1 {
+                let suppressed = door_edges.contains(&norm_edge(top, bottom));
+                if !suppressed {
+                    if let Some(rect) = g.cell_rect(col, row) {
+                        draw_wall_segment(
+                            pixmap,
+                            rect.left(),
+                            rect.bottom(),
+                            rect.right(),
+                            rect.bottom(),
+                            width,
+                            color,
+                        );
+                    }
+                }
             }
         }
     }

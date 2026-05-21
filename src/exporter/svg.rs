@@ -122,14 +122,10 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
         &scene.door_edges,
         wall_w,
     );
-    append_svg_walls(
-        &mut s,
-        &g,
-        &scene.room_cells,
-        Some(&scene.room_edges),
-        &scene.door_edges,
-        wall_w,
-    );
+
+    for room in &layout.rooms {
+        append_svg_room_walls(&mut s, &g, room, &scene.door_edges, wall_w);
+    }
 
     for door in &layout.doors {
         let (color, dash) = if settings.colorblind_mode {
@@ -252,6 +248,86 @@ pub fn build_svg(layout: &DungeonLayout, settings: &UiSettings) -> String {
 
     s.push_str("</svg>\n");
     s
+}
+
+// Appends svg room walls.
+pub fn append_svg_room_walls(
+    out: &mut String,
+    g: &ExportGeometry,
+    room: &crate::layout::Room,
+    door_edges: &HashSet<CellEdge>,
+    width: f32,
+) {
+    for rx in 0..room.width {
+        for ry in 0..room.height {
+            let col = room.x + rx;
+            let row = room.y + ry;
+            let left = g.left() + col as f32 * g.cell;
+            let top = g.top() + row as f32 * g.cell;
+            let right = left + g.cell;
+            let bottom = top + g.cell;
+
+            if rx == 0 {
+                let neighbor = col.checked_sub(1).map(|x| (x, row));
+                let suppressed = neighbor
+                    .map(|n| door_edges.contains(&norm_edge((col, row), n)))
+                    .unwrap_or(false);
+                if !suppressed {
+                    let _ = writeln!(
+                        out,
+                        "<rect x='{}' y='{}' width='{width}' height='{}' fill='black'/>",
+                        left - (width * 0.5),
+                        top - (width * 0.5),
+                        (bottom - top) + width
+                    );
+                }
+            }
+
+            if rx == room.width - 1 {
+                let neighbor = (col + 1, row);
+                let suppressed = door_edges.contains(&norm_edge((col, row), neighbor));
+                if !suppressed {
+                    let _ = writeln!(
+                        out,
+                        "<rect x='{}' y='{}' width='{width}' height='{}' fill='black'/>",
+                        right - (width * 0.5),
+                        top - (width * 0.5),
+                        (bottom - top) + width
+                    );
+                }
+            }
+
+            if ry == 0 {
+                let neighbor = row.checked_sub(1).map(|y| (col, y));
+                let suppressed = neighbor
+                    .map(|n| door_edges.contains(&norm_edge((col, row), n)))
+                    .unwrap_or(false);
+                if !suppressed {
+                    let _ = writeln!(
+                        out,
+                        "<rect x='{}' y='{}' width='{}' height='{width}' fill='black'/>",
+                        left - (width * 0.5),
+                        top - (width * 0.5),
+                        (right - left) + width
+                    );
+                }
+            }
+
+            if ry == room.height - 1 {
+                let neighbor = (col, row + 1);
+                let suppressed = door_edges.contains(&norm_edge((col, row), neighbor));
+                if !suppressed {
+                    let _ = writeln!(
+                        out,
+                        "<rect x='{}' y='{}' width='{}' height='{width}' fill='black'/>",
+                        left - (width * 0.5),
+                        bottom - (width * 0.5),
+                        (right - left) + width
+                    );
+                }
+            }
+        }
+    }
 }
 
 // Appends svg walls.
