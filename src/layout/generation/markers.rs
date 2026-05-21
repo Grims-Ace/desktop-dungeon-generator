@@ -22,13 +22,13 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
     }
 
     let start_count = random_range_inclusive(
-        settings.min_start_marker_count,
-        settings.max_start_marker_count,
+        settings.min_start_marker_count.max(1),
+        settings.max_start_marker_count.max(1),
         seed::derive_seed(settings.seed, 10_001),
     );
     let end_count = random_range_inclusive(
-        settings.min_end_marker_count,
-        settings.max_end_marker_count,
+        settings.min_end_marker_count.max(1),
+        settings.max_end_marker_count.max(1),
         seed::derive_seed(settings.seed, 10_002),
     );
     let pair_count = start_count.min(end_count);
@@ -89,7 +89,9 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
 
 // Generates range inclusive.
 pub fn random_range_inclusive(min: usize, max: usize, seed_value: u64) -> usize {
-    let min = min.max(1);
+    if max == 0 {
+        return 0;
+    }
     let max = max.max(min);
     let span = max - min + 1;
     min + (seed_value as usize % span)
