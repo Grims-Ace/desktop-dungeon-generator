@@ -23,13 +23,14 @@ pub fn draw_layout(
     hover_text_idx: Option<usize>,
     hover_marker: Option<HoverMarker>,
     hover_stair_idx: Option<usize>,
+    alpha: f32,
 ) {
     let wall_width_px = (geometry.cell_size / 2.5).max(1.0);
     let door_width_px = (geometry.cell_size / 5.0).max(1.0);
 
-    let room_fill = Color32::from_rgb(70, 120, 160);
-    let corridor_fill = Color32::from_rgb(210, 190, 120);
-    let wall_color = Color32::BLACK;
+    let room_fill = Color32::from_rgb(70, 120, 160).gamma_multiply(alpha);
+    let corridor_fill = Color32::from_rgb(210, 190, 120).gamma_multiply(alpha);
+    let wall_color = Color32::BLACK.gamma_multiply(alpha);
     let corridor_cells_set = corridor_cells(layout, geometry.cols, geometry.rows);
     let corridor_edges_set = corridor_edges_from_cells(&corridor_cells_set);
     let mut room_cells_set = HashSet::new();
@@ -48,7 +49,7 @@ pub fn draw_layout(
             painter.circle_filled(
                 cell_center(geometry, col, row),
                 geometry.cell_size * 0.14,
-                Color32::BLACK,
+                Color32::BLACK.gamma_multiply(alpha),
             );
         }
     }
@@ -129,7 +130,12 @@ pub fn draw_layout(
 
         painter.rect_filled(room_rect, 0.0, room_fill);
         if colorblind_mode {
-            draw_room_crosshatch(painter, geometry, room, Stroke::new(1.5, Color32::BLACK));
+            draw_room_crosshatch(
+                painter,
+                geometry,
+                room,
+                Stroke::new(1.5, Color32::BLACK.gamma_multiply(alpha)),
+            );
         }
     }
 
@@ -231,7 +237,7 @@ pub fn draw_layout(
             door.from,
             door.to,
             door_render_width(door),
-            Stroke::new(door_width_px, color),
+            Stroke::new(door_width_px, color.gamma_multiply(alpha)),
             style,
         );
     }
@@ -246,7 +252,10 @@ pub fn draw_layout(
             painter,
             geometry,
             window,
-            Stroke::new(door_width_px, Color32::from_rgb(70, 130, 220)),
+            Stroke::new(
+                door_width_px,
+                Color32::from_rgb(70, 130, 220).gamma_multiply(alpha),
+            ),
             style,
         );
     }
@@ -256,7 +265,7 @@ pub fn draw_layout(
             painter.rect_stroke(
                 text_label_rect(geometry, label).expand(2.0),
                 0.0,
-                Stroke::new(2.0, Color32::from_rgb(255, 220, 120)),
+                Stroke::new(2.0, Color32::from_rgb(255, 220, 120).gamma_multiply(alpha)),
                 egui::StrokeKind::Middle,
             );
         }
@@ -271,7 +280,7 @@ pub fn draw_layout(
             egui::Align2::CENTER_CENTER,
             &label.text,
             egui::FontId::proportional(label.font_size as f32),
-            color,
+            color.gamma_multiply(alpha),
         );
     }
 
@@ -284,6 +293,7 @@ pub fn draw_layout(
         colorblind_mode,
         hover_marker,
         MarkerKind::Start,
+        alpha,
     );
     draw_area_marker_group(
         painter,
@@ -294,6 +304,7 @@ pub fn draw_layout(
         colorblind_mode,
         hover_marker,
         MarkerKind::End,
+        alpha,
     );
     draw_area_marker_group(
         painter,
@@ -304,6 +315,7 @@ pub fn draw_layout(
         colorblind_mode,
         hover_marker,
         MarkerKind::Trap,
+        alpha,
     );
     draw_area_marker_group(
         painter,
@@ -314,6 +326,7 @@ pub fn draw_layout(
         colorblind_mode,
         hover_marker,
         MarkerKind::Monster,
+        alpha,
     );
 
     for (idx, stair) in layout.stairs.iter().enumerate() {
@@ -323,6 +336,7 @@ pub fn draw_layout(
             stair,
             colorblind_mode,
             hover_stair_idx == Some(idx),
+            alpha,
         );
     }
 }
@@ -334,6 +348,7 @@ pub fn draw_staircase(
     stair: &crate::layout::Staircase,
     colorblind_mode: bool,
     is_hovered: bool,
+    alpha: f32,
 ) {
     let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
     let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
@@ -342,11 +357,11 @@ pub fn draw_staircase(
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
 
     let fill = if is_hovered {
-        Color32::from_rgb(220, 180, 80).gamma_multiply(0.5)
+        Color32::from_rgb(220, 180, 80).gamma_multiply(0.5 * alpha)
     } else if colorblind_mode {
-        Color32::from_rgb(180, 180, 180).gamma_multiply(0.4)
+        Color32::from_rgb(180, 180, 180).gamma_multiply(0.4 * alpha)
     } else {
-        Color32::from_rgb(200, 150, 50).gamma_multiply(0.35)
+        Color32::from_rgb(200, 150, 50).gamma_multiply(0.35 * alpha)
     };
     painter.rect_filled(rect, 4.0, fill);
 
@@ -360,7 +375,10 @@ pub fn draw_staircase(
     painter.rect_stroke(
         rect,
         4.0,
-        Stroke::new(if is_hovered { 3.0 } else { 2.0 }, stroke_color),
+        Stroke::new(
+            if is_hovered { 3.0 } else { 2.0 },
+            stroke_color.gamma_multiply(alpha),
+        ),
         egui::StrokeKind::Middle,
     );
 
@@ -378,7 +396,7 @@ pub fn draw_staircase(
                 egui::pos2(rect.left() + 2.0, y),
                 egui::pos2(rect.right() - 2.0, y),
             ],
-            Stroke::new(1.5, line_color),
+            Stroke::new(1.5, line_color.gamma_multiply(alpha)),
         );
     }
 }
@@ -402,9 +420,10 @@ pub fn draw_area_marker(
     base_color: Color32,
     colorblind_mode: bool,
     hovered: bool,
+    alpha: f32,
 ) {
     let rect = marker_rect(marker, geometry);
-    let fill = base_color.gamma_multiply(if colorblind_mode { 0.22 } else { 0.35 });
+    let fill = base_color.gamma_multiply(if colorblind_mode { 0.22 } else { 0.35 } * alpha);
     let stroke_color = if hovered {
         Color32::from_rgb(255, 220, 120)
     } else if colorblind_mode {
@@ -423,7 +442,10 @@ pub fn draw_area_marker(
     painter.rect_stroke(
         rect,
         4.0,
-        Stroke::new(if hovered { 3.0 } else { 2.0 }, stroke_color),
+        Stroke::new(
+            if hovered { 3.0 } else { 2.0 },
+            stroke_color.gamma_multiply(alpha),
+        ),
         egui::StrokeKind::Middle,
     );
     painter.text(
@@ -431,7 +453,7 @@ pub fn draw_area_marker(
         egui::Align2::CENTER_CENTER,
         label,
         egui::FontId::proportional(font_size),
-        text_color,
+        text_color.gamma_multiply(alpha),
     );
 }
 
@@ -446,6 +468,7 @@ pub fn draw_area_marker_group(
     colorblind_mode: bool,
     hover_marker: Option<HoverMarker>,
     kind: MarkerKind,
+    alpha: f32,
 ) {
     for (idx, marker) in markers.iter().enumerate() {
         let hovered = match (kind, hover_marker) {
@@ -463,6 +486,7 @@ pub fn draw_area_marker_group(
             base_color,
             colorblind_mode,
             hovered,
+            alpha,
         );
     }
 }

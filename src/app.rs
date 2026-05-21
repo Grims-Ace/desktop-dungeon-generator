@@ -295,8 +295,45 @@ impl eframe::App for DungeonApp {
                     self.hover_text_idx,
                     self.hover_marker,
                     self.hover_stair_idx,
+                    1.0,
                 );
             }
+
+            if let Some(overlay_idx) = self.settings.overlay_level_index {
+                if overlay_idx < self.levels.len()
+                    && overlay_idx != self.settings.active_level_index
+                {
+                    draw_layout(
+                        &painter,
+                        &geometry,
+                        &self.levels[overlay_idx],
+                        self.settings.colorblind_mode,
+                        None,
+                        None,
+                        None,
+                        0.4,
+                    );
+                }
+            }
+
+            let overlay_btn_rect = egui::Rect::from_min_size(
+                egui::pos2(canvas.right() - 84.0, canvas.top() + 4.0),
+                egui::vec2(80.0, 24.0),
+            );
+            ui.put(overlay_btn_rect, |ui: &mut egui::Ui| {
+                let is_overlay =
+                    self.settings.overlay_level_index == Some(self.settings.active_level_index);
+                let response = ui.selectable_label(is_overlay, "Overlay");
+                if response.clicked() {
+                    if is_overlay {
+                        self.settings.overlay_level_index = None;
+                    } else {
+                        self.settings.overlay_level_index = Some(self.settings.active_level_index);
+                    }
+                }
+                response
+            });
+
             crate::interact::draw_add_overlay(self, &painter, &geometry);
             crate::interact::draw_add_tool_ghost(self, &painter, &geometry);
             crate::interact::draw_resize_overlay(self, &painter, &geometry);
@@ -501,6 +538,13 @@ impl DungeonApp {
         self.levels.remove(level_idx);
         if self.settings.active_level_index >= self.levels.len() {
             self.settings.active_level_index = self.levels.len() - 1;
+        }
+        if let Some(overlay_idx) = self.settings.overlay_level_index {
+            if overlay_idx == level_idx {
+                self.settings.overlay_level_index = None;
+            } else if overlay_idx > level_idx {
+                self.settings.overlay_level_index = Some(overlay_idx - 1);
+            }
         }
         self.reset_transient_state();
     }
