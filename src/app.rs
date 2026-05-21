@@ -186,6 +186,10 @@ impl eframe::App for DungeonApp {
             } else {
                 self.levels
                     .push(generate_level(&self.settings, self.levels.len()));
+                // Stairs first so markers can be placed away from level transitions.
+                let stair_results = layout::populate_stairs(self.levels.clone(), &self.settings);
+                self.levels = stair_results.into_iter().map(|(l, _)| l).collect();
+                layout::assign_start_end_markers(&mut self.levels, &self.settings);
                 self.refresh_stairs();
             }
             self.settings.active_level_index = self.levels.len() - 1;
@@ -410,6 +414,11 @@ pub fn generate_all_levels(settings: &UiSettings) -> Vec<DungeonLayout> {
     for i in 0..level_count {
         levels.push(generate_level(settings, i));
     }
+    // Populate stairs first so assign_start_end_markers can place start/end
+    // markers as far from the stairs (level transitions) as possible.
+    let stair_results = layout::populate_stairs(levels, settings);
+    let mut levels: Vec<_> = stair_results.into_iter().map(|(l, _)| l).collect();
+    layout::assign_start_end_markers(&mut levels, settings);
     levels
 }
 
@@ -603,6 +612,12 @@ impl DungeonApp {
             } else if overlay_idx > level_idx {
                 self.settings.overlay_level_index = Some(overlay_idx - 1);
             }
+        }
+        if !self.settings.composition_mode {
+            // Stairs first so markers can be placed away from level transitions.
+            let stair_results = layout::populate_stairs(self.levels.clone(), &self.settings);
+            self.levels = stair_results.into_iter().map(|(l, _)| l).collect();
+            layout::assign_start_end_markers(&mut self.levels, &self.settings);
         }
         self.reset_transient_state();
     }

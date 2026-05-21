@@ -10,7 +10,8 @@ use crate::seed;
 use crate::ui::UiSettings;
 use std::collections::HashSet;
 
-// Populates random markers.
+// Populates per-level markers (traps and monsters only).
+// Start/end markers are assigned across levels by assign_start_end_markers in app.rs.
 pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings) -> DungeonLayout {
     layout.start_markers.clear();
     layout.end_markers.clear();
@@ -19,6 +20,33 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
 
     if layout.rooms.is_empty() {
         return layout;
+    }
+
+    layout = populate_random_traps(layout, settings);
+    layout = populate_random_monsters(layout, settings);
+    layout
+}
+
+// Distributes start/end markers across all dungeon levels.
+//
+// Start markers are placed on the first level, as far as possible from that
+// level's stairs (so the player has to traverse the level to reach them).
+// End markers are placed on the last level, as far as possible from that
+// level's stairs. Extra markers beyond the first pair spread to adjacent
+// levels using the same logic.
+//
+// When there is only one level the start is placed at the room farthest from
+// the end (using the original farthest_room_pair logic).
+pub fn assign_start_end_markers(layouts: &mut Vec<DungeonLayout>, settings: &UiSettings) {
+    let num_levels = layouts.len();
+    if num_levels == 0 {
+        return;
+    }
+
+    // Clear any stale markers on all levels first.
+    for layout in layouts.iter_mut() {
+        layout.start_markers.clear();
+        layout.end_markers.clear();
     }
 
     let start_count = random_range_inclusive(
@@ -31,60 +59,168 @@ pub fn populate_random_markers(mut layout: DungeonLayout, settings: &UiSettings)
         settings.max_end_marker_count.max(1),
         seed::derive_seed(settings.seed, 10_002),
     );
-    let pair_count = start_count.min(end_count);
 
-    let mut available_start_rooms: Vec<usize> = (0..layout.rooms.len()).collect();
-    let mut available_end_rooms: Vec<usize> = (0..layout.rooms.len()).collect();
+    if num_levels == 1 {
+        // Single level: place start and end as far apart as possible within it.
+        let layout = &mut layouts[0];
+        if layout.rooms.is_empty() {
+            return;
+        }
+        let all_rooms: Vec<usize> = (0..layout.rooms.len()).collect();
+        let mut available_start = all_rooms.clone();
+        let mut available_end = all_rooms.clone();
 
-    for pair_idx in 0..pair_count {
-        let (start_room_idx, end_room_idx) =
-            farthest_room_pair(&layout.rooms, &available_start_rooms, &available_end_rooms);
-        let start_room = &layout.rooms[start_room_idx];
-        let end_room = &layout.rooms[end_room_idx];
-        layout.start_markers.push(marker_in_room(
-            start_room,
+        let pair_count = start_count.min(end_count);
+        for pair_idx in 0..pair_count {
+            let (si, ei) = farthest_room_pair(&layout.rooms, &available_start, &available_end);
+            layout.start_markers.push(marker_in_room(
+                &layout.rooms[si],
+                settings.min_start_marker_size,
+                settings.max_start_marker_size,
+                seed::derive_seed(settings.seed, 11_000 + pair_idx as u64),
+            ));
+            layout.end_markers.push(marker_in_room(
+                &layout.rooms[ei],
+                settings.min_end_marker_size,
+                settings.max_end_marker_size,
+                seed::derive_seed(settings.seed, 12_000 + pair_idx as u64),
+            ));
+            consume_room(&mut available_start, si);
+            consume_room(&mut available_end, ei);
+        }
+        assign_extra_markers(
+            &mut layout.start_markers,
+            &layout.rooms,
+            &mut available_start,
+            pair_count,
+            start_count,
             settings.min_start_marker_size,
             settings.max_start_marker_size,
-            seed::derive_seed(settings.seed, 11_000 + pair_idx as u64),
-        ));
-        layout.end_markers.push(marker_in_room(
-            end_room,
+            settings.seed,
+            13_000,
+            14_000,
+        );
+        assign_extra_markers(
+            &mut layout.end_markers,
+            &layout.rooms,
+            &mut available_end,
+            pair_count,
+            end_count,
             settings.min_end_marker_size,
             settings.max_end_marker_size,
-            seed::derive_seed(settings.seed, 12_000 + pair_idx as u64),
-        ));
-        consume_room(&mut available_start_rooms, start_room_idx);
-        consume_room(&mut available_end_rooms, end_room_idx);
+            settings.seed,
+            15_000,
+            16_000,
+        );
+        return;
     }
 
-    assign_extra_markers(
-        &mut layout.start_markers,
-        &layout.rooms,
-        &mut available_start_rooms,
-        pair_count,
-        start_count,
-        settings.min_start_marker_size,
-        settings.max_start_marker_size,
-        settings.seed,
-        13_000,
-        14_000,
-    );
-    assign_extra_markers(
-        &mut layout.end_markers,
-        &layout.rooms,
-        &mut available_end_rooms,
-        pair_count,
-        end_count,
-        settings.min_end_marker_size,
-        settings.max_end_marker_size,
-        settings.seed,
-        15_000,
-        16_000,
-    );
+    // Multi-level: starts go on the first level far from its stairs,
+    // ends go on the last level far from its stairs.
+    // Extra markers spill to adjacent levels using the same rule.
+    for idx in 0..start_count {
+        let level_idx = idx.min(num_levels - 1);
+        let layout = &mut layouts[level_idx];
+        if layout.rooms.is_empty() {
+            continue;
+        }
+        // Build a list of rooms sorted by distance from stairs on this level,
+        // farthest first. Rooms with no stair proximity get the whole list.
+        let mut available = rooms_farthest_from_stairs(layout);
+        // Remove rooms already claimed by previously placed start markers.
+        for placed_idx in 0..layout.start_markers.len() {
+            let placed_cell = layout.start_markers[placed_idx].cell;
+            if let Some(pos) = available.iter().position(|&r| {
+                let room = &layout.rooms[r];
+                placed_cell.0 >= room.x && placed_cell.0 < room.x + room.width
+                    && placed_cell.1 >= room.y && placed_cell.1 < room.y + room.height
+            }) {
+                available.remove(pos);
+            }
+        }
+        let room_idx = if available.is_empty() {
+            pick_room_index(&(0..layout.rooms.len()).collect::<Vec<_>>(),
+                layout.rooms.len(), seed::derive_seed(settings.seed, 11_000 + idx as u64))
+        } else {
+            available[0]
+        };
+        let marker = marker_in_room(
+            &layout.rooms[room_idx],
+            settings.min_start_marker_size,
+            settings.max_start_marker_size,
+            seed::derive_seed(settings.seed, 11_500 + idx as u64),
+        );
+        layout.start_markers.push(marker);
+    }
 
-    layout = populate_random_traps(layout, settings);
-    layout = populate_random_monsters(layout, settings);
-    layout
+    for idx in 0..end_count {
+        let level_idx = num_levels.saturating_sub(1 + idx.min(num_levels - 1));
+        let layout = &mut layouts[level_idx];
+        if layout.rooms.is_empty() {
+            continue;
+        }
+        let mut available = rooms_farthest_from_stairs(layout);
+        for placed_idx in 0..layout.end_markers.len() {
+            let placed_cell = layout.end_markers[placed_idx].cell;
+            if let Some(pos) = available.iter().position(|&r| {
+                let room = &layout.rooms[r];
+                placed_cell.0 >= room.x && placed_cell.0 < room.x + room.width
+                    && placed_cell.1 >= room.y && placed_cell.1 < room.y + room.height
+            }) {
+                available.remove(pos);
+            }
+        }
+        let room_idx = if available.is_empty() {
+            pick_room_index(&(0..layout.rooms.len()).collect::<Vec<_>>(),
+                layout.rooms.len(), seed::derive_seed(settings.seed, 12_000 + idx as u64))
+        } else {
+            available[0]
+        };
+        let marker = marker_in_room(
+            &layout.rooms[room_idx],
+            settings.min_end_marker_size,
+            settings.max_end_marker_size,
+            seed::derive_seed(settings.seed, 12_500 + idx as u64),
+        );
+        layout.end_markers.push(marker);
+    }
+}
+
+// Returns room indices sorted by their minimum distance from any staircase on
+// this level, farthest first.  If the level has no stairs all rooms are
+// returned in their natural order (the caller falls back to room-pair logic).
+fn rooms_farthest_from_stairs(layout: &DungeonLayout) -> Vec<usize> {
+    if layout.stairs.is_empty() {
+        return (0..layout.rooms.len()).collect();
+    }
+
+    let mut distances: Vec<(usize, usize)> = layout
+        .rooms
+        .iter()
+        .enumerate()
+        .map(|(idx, room)| {
+            // Minimum squared distance from this room's center to any stair's center.
+            let min_dist = layout
+                .stairs
+                .iter()
+                .map(|stair| {
+                    let stair_cx = stair.cell.0 * 2 + stair.width;
+                    let stair_cy = stair.cell.1 * 2 + stair.height;
+                    let room_cx = room.x * 2 + room.width;
+                    let room_cy = room.y * 2 + room.height;
+                    let dx = stair_cx.abs_diff(room_cx);
+                    let dy = stair_cy.abs_diff(room_cy);
+                    dx * dx + dy * dy
+                })
+                .min()
+                .unwrap_or(0);
+            (idx, min_dist)
+        })
+        .collect();
+
+    // Sort farthest first.
+    distances.sort_by(|a, b| b.1.cmp(&a.1));
+    distances.into_iter().map(|(idx, _)| idx).collect()
 }
 
 // Generates range inclusive.
