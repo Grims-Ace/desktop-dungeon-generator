@@ -259,6 +259,7 @@ pub enum AddTool {
     Door,
     LockedDoor,
     SecretDoor,
+    Window,
     Text,
     StartMarker,
     EndMarker,

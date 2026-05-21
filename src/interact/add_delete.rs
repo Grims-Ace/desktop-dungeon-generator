@@ -81,6 +81,10 @@ pub fn handle_add_tool(app: &mut DungeonApp, response: &egui::Response, geometry
             app.add_corridor_drag = None;
             handle_add_door_tool(app, response, geometry);
         }
+        AddTool::Window => {
+            app.add_corridor_drag = None;
+            handle_add_window_tool(app, response, geometry);
+        }
         AddTool::Text => {
             app.add_corridor_drag = None;
             app.add_door_drag = None;
@@ -147,6 +151,178 @@ pub fn handle_add_door_tool(
     if response.drag_stopped() {
         app.add_door_drag = None;
     }
+}
+
+// Handles click-and-drag painting for manual window tools.
+pub fn handle_add_window_tool(
+    app: &mut DungeonApp,
+    response: &egui::Response,
+    geometry: &GridGeometry,
+) {
+    if response.drag_started() {
+        app.add_door_drag = Some(AddDoorDrag {
+            painted_edges: Default::default(),
+            snapshot_taken: false,
+        });
+    }
+
+    if (response.drag_started() || response.dragged() || response.clicked())
+        && let Some(pointer_pos) = response.interact_pointer_pos()
+    {
+        paint_window_at_pointer(app, pointer_pos, geometry);
+    }
+
+    if response.drag_stopped() {
+        app.add_door_drag = None;
+    }
+}
+
+// Paints one window edge during a manual window drag.
+pub fn paint_window_at_pointer(
+    app: &mut DungeonApp,
+    pointer_pos: egui::Pos2,
+    geometry: &GridGeometry,
+) {
+    let Some(edge) = door_edge_at_pointer(app, pointer_pos, geometry) else {
+        return;
+    };
+    let target = normalized_edge(edge.0, edge.1);
+
+    if let Some(drag) = &app.add_door_drag
+        && drag.painted_edges.contains(&target)
+    {
+        return;
+    }
+
+    let needs_snapshot = app
+        .add_door_drag
+        .as_ref()
+        .map(|drag| !drag.snapshot_taken)
+        .unwrap_or(true);
+    if needs_snapshot {
+        app.push_undo_snapshot();
+        if let Some(drag) = &mut app.add_door_drag {
+            drag.snapshot_taken = true;
+        }
+    }
+
+    if add_window_at_edge(app, edge)
+        && let Some(drag) = &mut app.add_door_drag
+    {
+        drag.painted_edges.insert(target);
+    }
+}
+
+// Adds or updates a manual window on a specific cell edge.
+pub fn add_window_at_edge(app: &mut DungeonApp, edge: ((usize, usize), (usize, usize))) -> bool {
+    if app.settings.active_level_index >= app.levels.len() {
+        return false;
+    }
+
+    let layout = &mut app.levels[app.settings.active_level_index];
+
+    let target = normalized_edge(edge.0, edge.1);
+
+    // Check if a door already exists at this edge
+    if layout.doors.iter().any(|d| {
+        door_edges_for(d, app.settings.cols, app.settings.rows)
+            .iter()
+            .any(|e| normalized_edge(e.0, e.1) == target)
+    }) {
+        return false;
+    }
+
+    // Check if a window already exists at this edge
+    if layout.windows.iter().any(|w| {
+        let win_edge = match w.side {
+            layout::WindowSide::Left => {
+                ((w.cell.0, w.cell.1), (w.cell.0.saturating_sub(1), w.cell.1))
+            }
+            layout::WindowSide::Right => ((w.cell.0, w.cell.1), (w.cell.0 + 1, w.cell.1)),
+            layout::WindowSide::Top => {
+                ((w.cell.0, w.cell.1), (w.cell.0, w.cell.1.saturating_sub(1)))
+            }
+            layout::WindowSide::Bottom => ((w.cell.0, w.cell.1), (w.cell.0, w.cell.1 + 1)),
+        };
+        normalized_edge(win_edge.0, win_edge.1) == target
+    }) {
+        return true;
+    }
+
+    let is_boundary = layout::is_room_boundary_edge(&layout.rooms, edge.0, edge.1);
+
+    // Only allow windows on room boundaries (no corridors for windows usually)
+    if !is_boundary {
+        return false;
+    }
+
+    // Determine cell and side for the window
+    let (cell, side) = if edge.0.0 == edge.1.0 {
+        // Vertical edge
+        let top = edge.0.1.min(edge.1.1);
+        // We need to know which cell is the room cell.
+        let a_in = layout.rooms.iter().any(|r| {
+            edge.0.0 >= r.x
+                && edge.0.0 < r.x + r.width
+                && edge.0.1 >= r.y
+                && edge.0.1 < r.y + r.height
+        });
+        if a_in {
+            (
+                edge.0,
+                if edge.0.1 == top {
+                    layout::WindowSide::Bottom
+                } else {
+                    layout::WindowSide::Top
+                },
+            )
+        } else {
+            (
+                edge.1,
+                if edge.1.1 == top {
+                    layout::WindowSide::Bottom
+                } else {
+                    layout::WindowSide::Top
+                },
+            )
+        }
+    } else {
+        // Horizontal edge
+        let left = edge.0.0.min(edge.1.0);
+        let a_in = layout.rooms.iter().any(|r| {
+            edge.0.0 >= r.x
+                && edge.0.0 < r.x + r.width
+                && edge.0.1 >= r.y
+                && edge.0.1 < r.y + r.height
+        });
+        if a_in {
+            (
+                edge.0,
+                if edge.0.0 == left {
+                    layout::WindowSide::Right
+                } else {
+                    layout::WindowSide::Left
+                },
+            )
+        } else {
+            (
+                edge.1,
+                if edge.1.0 == left {
+                    layout::WindowSide::Right
+                } else {
+                    layout::WindowSide::Left
+                },
+            )
+        }
+    };
+
+    layout.windows.push(layout::Window {
+        cell,
+        side,
+        width: 1,
+        span_width: false,
+    });
+    true
 }
 
 // Converts the active add tool into a manual door kind.
@@ -243,6 +419,8 @@ pub fn delete_at_pointer(app: &mut DungeonApp, pointer_pos: egui::Pos2, geometry
     if let Some(edge) = door_edge_at_pointer(app, pointer_pos, geometry) {
         let target = normalized_edge(edge.0, edge.1);
         let active_index = app.settings.active_level_index;
+
+        // Try deleting a door first
         if let Some(idx) = app.levels[active_index].doors.iter().position(|d| {
             door_edges_for(d, app.settings.cols, app.settings.rows)
                 .iter()
@@ -260,6 +438,25 @@ pub fn delete_at_pointer(app: &mut DungeonApp, pointer_pos: egui::Pos2, geometry
             }
 
             layout.doors.remove(idx);
+            return;
+        }
+
+        // Try deleting a window if no door was found at this edge
+        if let Some(idx) = app.levels[active_index].windows.iter().position(|w| {
+            let win_edge = match w.side {
+                layout::WindowSide::Left => {
+                    ((w.cell.0, w.cell.1), (w.cell.0.saturating_sub(1), w.cell.1))
+                }
+                layout::WindowSide::Right => ((w.cell.0, w.cell.1), (w.cell.0 + 1, w.cell.1)),
+                layout::WindowSide::Top => {
+                    ((w.cell.0, w.cell.1), (w.cell.0, w.cell.1.saturating_sub(1)))
+                }
+                layout::WindowSide::Bottom => ((w.cell.0, w.cell.1), (w.cell.0, w.cell.1 + 1)),
+            };
+            normalized_edge(win_edge.0, win_edge.1) == target
+        }) {
+            app.push_undo_snapshot();
+            app.levels[active_index].windows.remove(idx);
             return;
         }
     }
@@ -811,6 +1008,21 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                     door_width_cells,
                     Stroke::new((geometry.cell_size / 5.0).max(1.0), ghost_color),
                     style,
+                );
+            }
+        }
+        AddTool::Window => {
+            if let Some((edge_a, edge_b)) = door_edge_at_pointer(app, pointer_pos, geometry) {
+                let door_width_px = (geometry.cell_size / 5.0).max(1.0);
+                let ghost_color = Color32::from_rgb(70, 130, 220).gamma_multiply(ghost_alpha);
+                crate::rendering::draw_door_line(
+                    painter,
+                    geometry,
+                    edge_a,
+                    edge_b,
+                    1,
+                    Stroke::new(door_width_px, ghost_color),
+                    crate::rendering::DoorLineStyle::Solid,
                 );
             }
         }

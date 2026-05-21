@@ -689,6 +689,7 @@ pub fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut S
         ui.selectable_value(&mut settings.add_tool, AddTool::Door, "Door");
         ui.selectable_value(&mut settings.add_tool, AddTool::LockedDoor, "Locked");
         ui.selectable_value(&mut settings.add_tool, AddTool::SecretDoor, "Secret");
+        ui.selectable_value(&mut settings.add_tool, AddTool::Window, "Window");
     });
 
     ui.add_space(8.0);
@@ -768,6 +769,9 @@ pub fn draw_add_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mut S
             }
             AddTool::SecretDoor => {
                 ui.label("Left-click or drag along room/corridor edges to place secret doors.");
+            }
+            AddTool::Window => {
+                ui.label("Left-click or drag along room edges to place windows.");
             }
             AddTool::Text => {
                 ui.label("Left-click to place the text label (edit text in options above).");
