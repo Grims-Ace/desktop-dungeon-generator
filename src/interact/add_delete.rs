@@ -12,8 +12,7 @@ use super::{
 };
 use crate::app::{DungeonApp, ManualDoorKind};
 use crate::layout::{
-    self, blocked_room_cells, corridor_cells, room_index_at_cell, rooms_overlap,
-    shortest_path_cells,
+    self, blocked_room_cells, corridor_cells, room_index_at_cell, shortest_path_cells,
 };
 use crate::ui::AddTool;
 use eframe::egui;
@@ -340,14 +339,6 @@ pub fn add_room_at_cell(app: &mut DungeonApp, cell: (usize, usize)) {
         width,
         height,
     };
-
-    if layout
-        .rooms
-        .iter()
-        .any(|room| rooms_overlap(&new_room, room))
-    {
-        return;
-    }
 
     layout.rooms.push(new_room);
     app.refresh_doors();

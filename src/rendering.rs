@@ -4,7 +4,7 @@
  * and various markers using egui's Painter API.
  */
 
-use crate::exporter::utils::{corridor_edges_from_cells, room_edges_from_rooms};
+use crate::exporter::utils::corridor_edges_from_cells;
 use crate::interact::{
     GridGeometry, HoverMarker, MarkerKind, cell_center, cell_rect, door_edges_for,
     door_render_width, marker_rect, normalized_edge, window_render_width,
@@ -34,7 +34,6 @@ pub fn draw_layout(
     let corridor_cells_set = corridor_cells(layout, geometry.cols, geometry.rows);
     let corridor_edges_set = corridor_edges_from_cells(&corridor_cells_set);
     let mut room_cells_set = HashSet::new();
-    let room_edges_set = room_edges_from_rooms(&layout.rooms);
     let mut door_edges_set = HashSet::new();
 
     for door in &layout.doors {
@@ -115,6 +114,7 @@ pub fn draw_layout(
         }
     }
 
+    // First pass: Draw all room fills
     for room in &layout.rooms {
         for x in room.x..(room.x + room.width) {
             for y in room.y..(room.y + room.height) {
@@ -139,72 +139,84 @@ pub fn draw_layout(
         }
     }
 
-    for &(col, row) in &room_cells_set {
-        let rect = cell_rect(geometry, col, row);
-        let right = (col + 1, row);
-        let bottom = (col, row + 1);
-        let left = col.checked_sub(1).map(|x| (x, row));
-        let top = row.checked_sub(1).map(|y| (col, y));
+    // Second pass: Draw all room walls
+    for room in &layout.rooms {
+        for rx in 0..room.width {
+            for ry in 0..room.height {
+                let col = room.x + rx;
+                let row = room.y + ry;
+                let rect = cell_rect(geometry, col, row);
 
-        let left_edge = col == 0
-            || (!room_cells_set.contains(&(col - 1, row))
-                || left
-                    .map(|n| !room_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true))
-                && left
-                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true);
-        if left_edge {
-            draw_wall_segment(
-                painter,
-                egui::pos2(rect.left(), rect.top()),
-                egui::pos2(rect.left(), rect.bottom()),
-                wall_width_px,
-                wall_color,
-            );
-        }
-        if (!room_cells_set.contains(&right)
-            || !room_edges_set.contains(&normalized_edge((col, row), right)))
-            && !door_edges_set.contains(&normalized_edge((col, row), right))
-        {
-            draw_wall_segment(
-                painter,
-                egui::pos2(rect.right(), rect.top()),
-                egui::pos2(rect.right(), rect.bottom()),
-                wall_width_px,
-                wall_color,
-            );
-        }
-        let top_edge = row == 0
-            || (!room_cells_set.contains(&(col, row - 1))
-                || top
-                    .map(|n| !room_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true))
-                && top
-                    .map(|n| !door_edges_set.contains(&normalized_edge((col, row), n)))
-                    .unwrap_or(true);
-        if top_edge {
-            draw_wall_segment(
-                painter,
-                egui::pos2(rect.left(), rect.top()),
-                egui::pos2(rect.right(), rect.top()),
-                wall_width_px,
-                wall_color,
-            );
-        }
-        if (!room_cells_set.contains(&bottom)
-            || !room_edges_set.contains(&normalized_edge((col, row), bottom)))
-            && !door_edges_set.contains(&normalized_edge((col, row), bottom))
-        {
-            draw_wall_segment(
-                painter,
-                egui::pos2(rect.left(), rect.bottom()),
-                egui::pos2(rect.right(), rect.bottom()),
-                wall_width_px,
-                wall_color,
-            );
+                // Left wall of this cell
+                if rx == 0 {
+                    let left_neighbor = col.checked_sub(1).map(|x| (x, row));
+                    let suppressed = left_neighbor
+                        .map(|n| door_edges_set.contains(&normalized_edge((col, row), n)))
+                        .unwrap_or(false);
+                    if !suppressed {
+                        draw_wall_segment(
+                            painter,
+                            egui::pos2(rect.left(), rect.top()),
+                            egui::pos2(rect.left(), rect.bottom()),
+                            wall_width_px,
+                            wall_color,
+                        );
+                    }
+                }
+
+                // Right wall of this cell
+                if rx == room.width - 1 {
+                    let right_neighbor = (col + 1, row);
+                    let suppressed =
+                        door_edges_set.contains(&normalized_edge((col, row), right_neighbor));
+                    if !suppressed {
+                        draw_wall_segment(
+                            painter,
+                            egui::pos2(rect.right(), rect.top()),
+                            egui::pos2(rect.right(), rect.bottom()),
+                            wall_width_px,
+                            wall_color,
+                        );
+                    }
+                }
+
+                // Top wall of this cell
+                if ry == 0 {
+                    let top_neighbor = row.checked_sub(1).map(|y| (col, y));
+                    let suppressed = top_neighbor
+                        .map(|n| door_edges_set.contains(&normalized_edge((col, row), n)))
+                        .unwrap_or(false);
+                    if !suppressed {
+                        draw_wall_segment(
+                            painter,
+                            egui::pos2(rect.left(), rect.top()),
+                            egui::pos2(rect.right(), rect.top()),
+                            wall_width_px,
+                            wall_color,
+                        );
+                    }
+                }
+
+                // Bottom wall of this cell
+                if ry == room.height - 1 {
+                    let bottom_neighbor = (col, row + 1);
+                    let suppressed =
+                        door_edges_set.contains(&normalized_edge((col, row), bottom_neighbor));
+                    if !suppressed {
+                        draw_wall_segment(
+                            painter,
+                            egui::pos2(rect.left(), rect.bottom()),
+                            egui::pos2(rect.right(), rect.bottom()),
+                            wall_width_px,
+                            wall_color,
+                        );
+                    }
+                }
+            }
         }
     }
+
+    // (Remaining text rendering and markers...)
 
     for door in &layout.doors {
         let color = if colorblind_mode {

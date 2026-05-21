@@ -9,7 +9,7 @@ use super::{
     stair_at_pointer, text_at_pointer,
 };
 use crate::app::DungeonApp;
-use crate::layout::{self, rects_overlap, rooms_overlap};
+use crate::layout::{self, rects_overlap};
 use crate::ui::AddTool;
 use eframe::egui;
 use egui::{Color32, Stroke};
@@ -199,17 +199,6 @@ pub fn update_room_ghost(
 
     if new_room.x + new_room.width > cols || new_room.y + new_room.height > rows {
         return;
-    }
-
-    if let Some(layout) = app.levels.get(app.settings.active_level_index) {
-        if layout
-            .rooms
-            .iter()
-            .enumerate()
-            .any(|(idx, room)| idx != state.room_idx && rooms_overlap(&new_room, room))
-        {
-            return;
-        }
     }
 
     if let Some(ResizeState::Room(ref mut s)) = app.resize_state {
