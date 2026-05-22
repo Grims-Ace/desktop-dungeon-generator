@@ -30,11 +30,20 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
         };
         let mut dialog = FileDialog::new().set_title(title);
         if let Some(ref last_path) = settings.last_export_path {
-            dialog = dialog.set_directory(last_path);
+            let path = PathBuf::from(last_path);
+            if path.is_dir() {
+                dialog = dialog.set_directory(path);
+            }
         }
-        let folder = dialog
-            .pick_folder()
-            .ok_or_else(|| "Export canceled".to_string())?;
+
+        #[cfg(target_os = "windows")]
+        let folder = std::thread::spawn(move || dialog.pick_folder())
+            .join()
+            .map_err(|_| "Dialog thread panicked".to_string())?;
+        #[cfg(not(target_os = "windows"))]
+        let folder = dialog.pick_folder();
+
+        let folder = folder.ok_or_else(|| "Export canceled".to_string())?;
         return Ok(ExportTarget::Folder(folder));
     }
 
@@ -48,12 +57,20 @@ pub fn select_export_target(settings: &UiSettings) -> Result<ExportTarget, Strin
         .add_filter(settings.export_format.label(), &[ext]);
 
     if let Some(ref last_path) = settings.last_export_path {
-        dialog = dialog.set_directory(last_path);
+        let path = PathBuf::from(last_path);
+        if path.is_dir() {
+            dialog = dialog.set_directory(path);
+        }
     }
 
-    let mut path = dialog
-        .save_file()
-        .ok_or_else(|| "Export canceled".to_string())?;
+    #[cfg(target_os = "windows")]
+    let path = std::thread::spawn(move || dialog.save_file())
+        .join()
+        .map_err(|_| "Dialog thread panicked".to_string())?;
+    #[cfg(not(target_os = "windows"))]
+    let path = dialog.save_file();
+
+    let mut path = path.ok_or_else(|| "Export canceled".to_string())?;
 
     if path.extension().is_none() {
         path.set_extension(ext);

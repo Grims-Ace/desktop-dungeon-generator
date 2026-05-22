@@ -25,12 +25,19 @@ pub fn save_dungeon(
     layouts: Vec<DungeonLayout>,
     svgs: Vec<String>,
 ) -> Result<PathBuf, String> {
-    let path = FileDialog::new()
+    let dialog = FileDialog::new()
         .set_title("Save Dungeon State")
         .add_filter("Dungeon File", &["dungeon"])
-        .set_file_name("my_dungeon.dungeon")
-        .save_file()
-        .ok_or_else(|| "Save canceled".to_string())?;
+        .set_file_name("my_dungeon.dungeon");
+
+    #[cfg(target_os = "windows")]
+    let path = std::thread::spawn(move || dialog.save_file())
+        .join()
+        .map_err(|_| "Dialog thread panicked".to_string())?;
+    #[cfg(not(target_os = "windows"))]
+    let path = dialog.save_file();
+
+    let path = path.ok_or_else(|| "Save canceled".to_string())?;
 
     let save_data = DungeonSave {
         settings: settings.clone(),
@@ -48,11 +55,18 @@ pub fn save_dungeon(
 
 // Loads dungeon state from a user-selected JSON file.
 pub fn load_dungeon() -> Result<DungeonSave, String> {
-    let path = FileDialog::new()
+    let dialog = FileDialog::new()
         .set_title("Load Dungeon State")
-        .add_filter("Dungeon File", &["dungeon"])
-        .pick_file()
-        .ok_or_else(|| "Load canceled".to_string())?;
+        .add_filter("Dungeon File", &["dungeon"]);
+
+    #[cfg(target_os = "windows")]
+    let path = std::thread::spawn(move || dialog.pick_file())
+        .join()
+        .map_err(|_| "Dialog thread panicked".to_string())?;
+    #[cfg(not(target_os = "windows"))]
+    let path = dialog.pick_file();
+
+    let path = path.ok_or_else(|| "Load canceled".to_string())?;
 
     let content = fs::read_to_string(path).map_err(|e| format!("Failed to read file: {e}"))?;
 

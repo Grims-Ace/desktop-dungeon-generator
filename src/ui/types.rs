@@ -53,11 +53,11 @@ impl ExportFormat {
     // Returns the user-facing label for this option.
     pub fn label(self) -> &'static str {
         match self {
-            ExportFormat::Png => ".png",
-            ExportFormat::Jpeg => ".jpeg",
-            ExportFormat::Webp => ".webp",
-            ExportFormat::Svg => ".svg",
-            ExportFormat::Folder => "Folder (Composite)",
+            ExportFormat::Png => "PNG Image",
+            ExportFormat::Jpeg => "JPEG Image",
+            ExportFormat::Webp => "WebP Image",
+            ExportFormat::Svg => "SVG Vector Graphic",
+            ExportFormat::Folder => "Folder",
         }
     }
 
@@ -94,9 +94,9 @@ impl MaskFormat {
     // Returns the user-facing label for this option.
     pub fn label(self) -> &'static str {
         match self {
-            MaskFormat::Png => ".png",
-            MaskFormat::Jpeg => ".jpeg",
-            MaskFormat::Webp => ".webp",
+            MaskFormat::Png => "PNG Image",
+            MaskFormat::Jpeg => "JPEG Image",
+            MaskFormat::Webp => "WebP Image",
         }
     }
 }
