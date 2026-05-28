@@ -9,16 +9,17 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::exporter;
-use crate::interact::{MultiDragState, MultiResizeState, SelectedItem, SelectionBoxDrag, 
-    AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, ResizeState, draw_grid,
+use crate::interact::{
+    draw_grid, AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, MultiDragState,
+    MultiResizeState, ResizeState, SelectedItem, SelectionBoxDrag,
 };
 use crate::layout::{
-    self, DoorSettings, DungeonLayout, WindowSettings, populate_random_markers, populate_stairs,
+    self, populate_random_markers, populate_stairs, DoorSettings, DungeonLayout, WindowSettings,
 };
 use crate::rendering::draw_layout;
 use crate::saveandload;
 use crate::settings;
-use crate::ui::{AddTool, UiSettings, draw_legend_panel, draw_level_tabs, draw_side_panel};
+use crate::ui::{draw_legend_panel, draw_level_tabs, draw_side_panel, AddTool, UiSettings};
 use eframe::egui;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,7 @@ pub struct DungeonApp {
     pub hover_level_idx: Option<usize>,
     pub hover_stair_idx: Option<usize>,
     pub rename_level_state: Option<(usize, String)>,
+    pub rename_text_state: Option<(usize, String)>,
     pub selection: Vec<SelectedItem>,
     pub selection_box_drag: Option<SelectionBoxDrag>,
     pub multi_drag_state: Option<MultiDragState>,
@@ -88,6 +90,7 @@ impl Default for DungeonApp {
             hover_level_idx: None,
             hover_stair_idx: None,
             rename_level_state: None,
+            rename_text_state: None,
             selection: Vec::new(),
             selection_box_drag: None,
             multi_drag_state: None,
@@ -294,7 +297,10 @@ impl eframe::App for DungeonApp {
                                     && ui.input(|i| i.key_pressed(egui::Key::Enter)))
                             {
                                 if level_idx < self.levels.len() {
-                                    self.levels[level_idx].name = name.clone();
+                                    if self.levels[level_idx].name != name {
+                                        self.push_undo_snapshot();
+                                        self.levels[level_idx].name = name.clone();
+                                    }
                                     self.rename_level_state = None;
                                 }
                             }
@@ -306,11 +312,62 @@ impl eframe::App for DungeonApp {
                 }
             }
 
+            if let Some((text_idx, mut text)) = self.rename_text_state.take() {
+                let mut open = true;
+                egui::Window::new("Rename Text")
+                    .collapsible(false)
+                    .resizable(false)
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Text:");
+                            let res = ui.text_edit_singleline(&mut text);
+                            if ui.button("Rename").clicked()
+                                || (res.lost_focus()
+                                    && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                            {
+                                let changed = self
+                                    .levels
+                                    .get(self.settings.active_level_index)
+                                    .and_then(|l| l.text_labels.get(text_idx))
+                                    .map(|l| l.text != text)
+                                    .unwrap_or(false);
+
+                                if changed {
+                                    self.push_undo_snapshot();
+                                    if let Some(layout) =
+                                        self.levels.get_mut(self.settings.active_level_index)
+                                    {
+                                        if text_idx < layout.text_labels.len() {
+                                            layout.text_labels[text_idx].text = text.clone();
+                                        }
+                                    }
+                                }
+                                self.rename_text_state = None;
+                            }
+                        });
+                    });
+
+                if open {
+                    self.rename_text_state = Some((text_idx, text));
+                }
+            }
+
             let available = ui.available_size_before_wrap();
             let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
             let canvas = response.rect.shrink(12.0);
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             crate::interact::update_hover_targets(self, ctx, &geometry);
+
+            if response.double_clicked() {
+                if let Some(text_idx) = self.hover_text_idx {
+                    if let Some(layout) = self.levels.get(self.settings.active_level_index) {
+                        if let Some(label) = layout.text_labels.get(text_idx) {
+                            self.rename_text_state = Some((text_idx, label.text.clone()));
+                        }
+                    }
+                }
+            }
 
             let level_delete_requested = ctx.input(|i| {
                 (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
@@ -320,7 +377,8 @@ impl eframe::App for DungeonApp {
                 self.delete_level(level_idx);
             }
 
-            let multi_consumed = crate::interact::handle_multi_select(self, ctx, &response, &geometry);
+            let multi_consumed =
+                crate::interact::handle_multi_select(self, ctx, &response, &geometry);
             let resizing = if !multi_consumed {
                 crate::interact::handle_resize(self, ctx, &response, &geometry)
             } else {
@@ -335,10 +393,10 @@ impl eframe::App for DungeonApp {
                     crate::interact::delete_at_pointer(self, pointer_pos, &geometry);
                 }
                 self.pending_delete = false;
-        self.selection.clear();
-        self.selection_box_drag = None;
-        self.multi_drag_state = None;
-        self.multi_resize_state = None;
+                self.selection.clear();
+                self.selection_box_drag = None;
+                self.multi_drag_state = None;
+                self.multi_resize_state = None;
             }
 
             if self.settings.active_level_index < self.levels.len() {
@@ -510,6 +568,7 @@ impl DungeonApp {
         self.selection_box_drag = None;
         self.multi_drag_state = None;
         self.multi_resize_state = None;
+        self.rename_text_state = None;
     }
 
     // Captures the current app state for undo history.

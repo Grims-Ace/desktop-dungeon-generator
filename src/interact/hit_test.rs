@@ -3,8 +3,8 @@
  */
 
 use super::{
-    CorridorDragState, GridGeometry, HoverMarker, MarkerDragState, MarkerKind, StaircaseDragState,
     door_edges_for, marker_contains_cell, normalized_edge, pointer_to_grid, resize_hit_cells,
+    CorridorDragState, GridGeometry, HoverMarker, MarkerDragState, MarkerKind, StaircaseDragState,
 };
 use crate::app::DungeonApp;
 use eframe::egui;
@@ -179,17 +179,19 @@ pub fn text_at_pointer(
     pointer_pos: egui::Pos2,
     geometry: &GridGeometry,
 ) -> Option<usize> {
-    let (grid_x, grid_y) = pointer_to_grid(pointer_pos, geometry)?;
-    let clicked = (grid_x.floor() as usize, grid_y.floor() as usize);
     if app.settings.active_level_index >= app.levels.len() {
         return None;
     }
     let layout = &app.levels[app.settings.active_level_index];
 
-    layout
-        .text_labels
-        .iter()
-        .position(|label| label.cell == clicked)
+    for (idx, label) in layout.text_labels.iter().enumerate().rev() {
+        let rect = crate::rendering::text_label_rect(geometry, label);
+        if rect.contains(pointer_pos) {
+            return Some(idx);
+        }
+    }
+
+    None
 }
 
 // Computes at pointer.
