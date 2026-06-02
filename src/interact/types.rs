@@ -11,6 +11,13 @@ pub struct RoomDragState {
     pub room_idx: usize,
     pub offset_x: f32,
     pub offset_y: f32,
+    pub nested_rooms: Vec<usize>,
+    pub nested_start_markers: Vec<usize>,
+    pub nested_end_markers: Vec<usize>,
+    pub nested_trap_markers: Vec<usize>,
+    pub nested_monster_markers: Vec<usize>,
+    pub nested_text_labels: Vec<usize>,
+    pub nested_stairs: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]

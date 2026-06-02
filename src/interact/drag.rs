@@ -10,7 +10,10 @@ use super::{
     stair_drag_at_pointer, text_at_pointer,
 };
 use crate::app::DungeonApp;
-use crate::layout::{blocked_room_cells, shortest_path_cells};
+use crate::layout::{
+    blocked_room_cells, is_cell_inside, is_marker_inside, is_room_inside, is_stair_inside,
+    shortest_path_cells,
+};
 use crate::ui::AddTool;
 use eframe::egui;
 use egui::{Color32, Stroke};
@@ -57,10 +60,70 @@ pub fn handle_drag(
         && let Some((room_idx, offset_x, offset_y)) = room_at_pointer(app, pointer_pos, geometry)
     {
         app.push_undo_snapshot();
+        let active_idx = app.settings.active_level_index;
+        let layout = &app.levels[active_idx];
+        let outer_room = &layout.rooms[room_idx];
+
+        let mut nested_rooms = Vec::new();
+        for (i, room) in layout.rooms.iter().enumerate() {
+            if i != room_idx && is_room_inside(room, outer_room) {
+                nested_rooms.push(i);
+            }
+        }
+
+        let mut nested_start_markers = Vec::new();
+        for (i, marker) in layout.start_markers.iter().enumerate() {
+            if is_marker_inside(marker, outer_room) {
+                nested_start_markers.push(i);
+            }
+        }
+
+        let mut nested_end_markers = Vec::new();
+        for (i, marker) in layout.end_markers.iter().enumerate() {
+            if is_marker_inside(marker, outer_room) {
+                nested_end_markers.push(i);
+            }
+        }
+
+        let mut nested_trap_markers = Vec::new();
+        for (i, marker) in layout.trap_markers.iter().enumerate() {
+            if is_marker_inside(marker, outer_room) {
+                nested_trap_markers.push(i);
+            }
+        }
+
+        let mut nested_monster_markers = Vec::new();
+        for (i, marker) in layout.monster_markers.iter().enumerate() {
+            if is_marker_inside(marker, outer_room) {
+                nested_monster_markers.push(i);
+            }
+        }
+
+        let mut nested_text_labels = Vec::new();
+        for (i, label) in layout.text_labels.iter().enumerate() {
+            if is_cell_inside(label.cell, outer_room) {
+                nested_text_labels.push(i);
+            }
+        }
+
+        let mut nested_stairs = Vec::new();
+        for (i, stair) in layout.stairs.iter().enumerate() {
+            if is_stair_inside(stair, outer_room) {
+                nested_stairs.push(i);
+            }
+        }
+
         app.drag_state = Some(DragState::Room(RoomDragState {
             room_idx,
             offset_x,
             offset_y,
+            nested_rooms,
+            nested_start_markers,
+            nested_end_markers,
+            nested_trap_markers,
+            nested_monster_markers,
+            nested_text_labels,
+            nested_stairs,
         }));
     }
 
@@ -118,9 +181,72 @@ pub fn drag_room_to_pointer(
         return;
     }
 
-    app.levels[app.settings.active_level_index].rooms[drag.room_idx].x = new_x;
-    app.levels[app.settings.active_level_index].rooms[drag.room_idx].y = new_y;
+    let delta_x = new_x as isize - old_x as isize;
+    let delta_y = new_y as isize - old_y as isize;
+
+    {
+        let level = &mut app.levels[app.settings.active_level_index];
+        level.rooms[drag.room_idx].x = new_x;
+        level.rooms[drag.room_idx].y = new_y;
+
+        for &idx in &drag.nested_rooms {
+            if idx < level.rooms.len() {
+                level.rooms[idx].x = (level.rooms[idx].x as isize + delta_x) as usize;
+                level.rooms[idx].y = (level.rooms[idx].y as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_start_markers {
+            if idx < level.start_markers.len() {
+                level.start_markers[idx].cell.0 =
+                    (level.start_markers[idx].cell.0 as isize + delta_x) as usize;
+                level.start_markers[idx].cell.1 =
+                    (level.start_markers[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_end_markers {
+            if idx < level.end_markers.len() {
+                level.end_markers[idx].cell.0 =
+                    (level.end_markers[idx].cell.0 as isize + delta_x) as usize;
+                level.end_markers[idx].cell.1 =
+                    (level.end_markers[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_trap_markers {
+            if idx < level.trap_markers.len() {
+                level.trap_markers[idx].cell.0 =
+                    (level.trap_markers[idx].cell.0 as isize + delta_x) as usize;
+                level.trap_markers[idx].cell.1 =
+                    (level.trap_markers[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_monster_markers {
+            if idx < level.monster_markers.len() {
+                level.monster_markers[idx].cell.0 =
+                    (level.monster_markers[idx].cell.0 as isize + delta_x) as usize;
+                level.monster_markers[idx].cell.1 =
+                    (level.monster_markers[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_text_labels {
+            if idx < level.text_labels.len() {
+                level.text_labels[idx].cell.0 =
+                    (level.text_labels[idx].cell.0 as isize + delta_x) as usize;
+                level.text_labels[idx].cell.1 =
+                    (level.text_labels[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+        for &idx in &drag.nested_stairs {
+            if idx < level.stairs.len() {
+                level.stairs[idx].cell.0 = (level.stairs[idx].cell.0 as isize + delta_x) as usize;
+                level.stairs[idx].cell.1 = (level.stairs[idx].cell.1 as isize + delta_y) as usize;
+            }
+        }
+    }
+
     reroute_corridors_for_room(app, drag.room_idx);
+    for &idx in &drag.nested_rooms {
+        reroute_corridors_for_room(app, idx);
+    }
     app.refresh_doors();
 }
 

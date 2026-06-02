@@ -128,6 +128,38 @@ pub fn overlaps_with_padding(a: &Room, b: &Room, padding: usize) -> bool {
     a_left < b_right && a_right > b_left && a_top < b_bottom && a_bottom > b_top
 }
 
+// Test whether one room is completely inside another.
+pub fn is_room_inside(inner: &Room, outer: &Room) -> bool {
+    inner.x >= outer.x
+        && inner.x + inner.width <= outer.x + outer.width
+        && inner.y >= outer.y
+        && inner.y + inner.height <= outer.y + outer.height
+}
+
+// Test whether a cell is inside a room.
+pub fn is_cell_inside(cell: (usize, usize), room: &Room) -> bool {
+    cell.0 >= room.x
+        && cell.0 < room.x + room.width
+        && cell.1 >= room.y
+        && cell.1 < room.y + room.height
+}
+
+// Test whether an area marker is completely inside a room.
+pub fn is_marker_inside(marker: &crate::layout::AreaMarker, room: &Room) -> bool {
+    marker.cell.0 >= room.x
+        && marker.cell.0 + marker.size <= room.x + room.width
+        && marker.cell.1 >= room.y
+        && marker.cell.1 + marker.size <= room.y + room.height
+}
+
+// Test whether a staircase is completely inside a room.
+pub fn is_stair_inside(stair: &crate::layout::Staircase, room: &Room) -> bool {
+    stair.cell.0 >= room.x
+        && stair.cell.0 + stair.width <= room.x + room.width
+        && stair.cell.1 >= room.y
+        && stair.cell.1 + stair.height <= room.y + room.height
+}
+
 // Checks whether rects overlap.
 #[allow(clippy::too_many_arguments)]
 pub fn rects_overlap(
