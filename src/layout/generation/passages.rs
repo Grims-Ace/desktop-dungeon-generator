@@ -11,8 +11,23 @@ use super::super::utils::{
     SimpleRng, corridor_cells, normalized_cell_edge, room_index_at_cell, shared_opening_width,
 };
 use super::connections::{room_collision_edges, room_exit_edge, shared_room_boundaries};
+use crate::exporter::types::door_edges_for;
 use crate::seed;
 use std::collections::HashSet;
+
+// Helper to get a stable RNG for a specific edge to keep generation static.
+fn get_stable_rng(
+    master_seed: u64,
+    edge: ((usize, usize), (usize, usize)),
+    salt: u64,
+) -> SimpleRng {
+    let mut h = edge.0.0 as u64;
+    h = h.wrapping_mul(31).wrapping_add(edge.0.1 as u64);
+    h = h.wrapping_mul(31).wrapping_add(edge.1.0 as u64);
+    h = h.wrapping_mul(31).wrapping_add(edge.1.1 as u64);
+    h = h.wrapping_mul(31).wrapping_add(salt);
+    SimpleRng::new(seed::derive_seed(master_seed, h))
+}
 
 // Applies generated doors and archways to room-corridor transitions.
 pub fn apply_doors(
@@ -22,20 +37,25 @@ pub fn apply_doors(
     cols: usize,
     rows: usize,
 ) {
-    layout.doors.clear();
+    layout.doors.retain(|d| d.manual);
 
     if layout.packed_rooms {
-        apply_packed_room_doors(layout, seed, settings);
+        apply_packed_room_doors(layout, seed, settings, cols, rows);
         return;
     }
 
-    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
     let base = (settings.frequency_percent.min(100) as f32) / 100.0;
     let room_hall = (settings.room_hallway_percent.min(100) as f32) / 100.0;
     let locked = (settings.locked_percent.min(100) as f32) / 100.0;
 
     let corridor_cells = corridor_cells(layout, cols, rows);
     let mut seen_edges = HashSet::new();
+    for door in &layout.doors {
+        for edge in door_edges_for(door, cols, rows) {
+            seen_edges.insert(edge);
+        }
+    }
+
     let door_chance = base * room_hall;
     for corridor in &layout.corridors {
         if corridor.path.len() < 2 {
@@ -48,13 +68,14 @@ pub fn apply_doors(
         if let Some(edge) = room_exit_edge(&corridor.path, start_room, true)
             && seen_edges.insert(edge)
         {
-            let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+            let mut edge_rng = get_stable_rng(seed, edge, 0x1111_2222_u64);
+            let place_door = door_chance > 0.0 && edge_rng.next_f32() <= door_chance;
             layout.doors.push(Door {
                 from: edge.0,
                 to: edge.1,
                 width: corridor.width.max(1),
                 span_width: true,
-                locked: place_door && rng.next_f32() <= locked,
+                locked: place_door && edge_rng.next_f32() <= locked,
                 archway: !place_door,
                 secret: false,
                 manual: false,
@@ -64,13 +85,14 @@ pub fn apply_doors(
         if let Some(edge) = room_exit_edge(&corridor.path, end_room, false)
             && seen_edges.insert(edge)
         {
-            let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+            let mut edge_rng = get_stable_rng(seed, edge, 0x1111_2222_u64);
+            let place_door = door_chance > 0.0 && edge_rng.next_f32() <= door_chance;
             layout.doors.push(Door {
                 from: edge.0,
                 to: edge.1,
                 width: corridor.width.max(1),
                 span_width: true,
-                locked: place_door && rng.next_f32() <= locked,
+                locked: place_door && edge_rng.next_f32() <= locked,
                 archway: !place_door,
                 secret: false,
                 manual: false,
@@ -84,13 +106,14 @@ pub fn apply_doors(
 
             for edge in room_collision_edges(&corridor.path, room) {
                 if seen_edges.insert(edge) {
-                    let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+                    let mut edge_rng = get_stable_rng(seed, edge, 0x3333_4444_u64);
+                    let place_door = door_chance > 0.0 && edge_rng.next_f32() <= door_chance;
                     layout.doors.push(Door {
                         from: edge.0,
                         to: edge.1,
                         width: corridor.width.max(1),
                         span_width: true,
-                        locked: place_door && rng.next_f32() <= locked,
+                        locked: place_door && edge_rng.next_f32() <= locked,
                         archway: !place_door,
                         secret: false,
                         manual: false,
@@ -106,32 +129,38 @@ pub fn apply_doors(
             let bottom = (x, y + 1);
             if x + 1 < cols && corridor_cells.contains(&right) {
                 let edge = normalized_cell_edge((x, y), right);
-                if seen_edges.insert(edge) && base > 0.0 && rng.next_f32() <= base {
-                    layout.doors.push(Door {
-                        from: edge.0,
-                        to: edge.1,
-                        width: 1,
-                        span_width: false,
-                        locked: rng.next_f32() <= locked,
-                        archway: false,
-                        secret: false,
-                        manual: false,
-                    });
+                if seen_edges.insert(edge) {
+                    let mut edge_rng = get_stable_rng(seed, edge, 0x5555_6666_u64);
+                    if base > 0.0 && edge_rng.next_f32() <= base {
+                        layout.doors.push(Door {
+                            from: edge.0,
+                            to: edge.1,
+                            width: 1,
+                            span_width: false,
+                            locked: edge_rng.next_f32() <= locked,
+                            archway: false,
+                            secret: false,
+                            manual: false,
+                        });
+                    }
                 }
             }
             if y + 1 < rows && corridor_cells.contains(&bottom) {
                 let edge = normalized_cell_edge((x, y), bottom);
-                if seen_edges.insert(edge) && base > 0.0 && rng.next_f32() <= base {
-                    layout.doors.push(Door {
-                        from: edge.0,
-                        to: edge.1,
-                        width: 1,
-                        span_width: false,
-                        locked: rng.next_f32() <= locked,
-                        archway: false,
-                        secret: false,
-                        manual: false,
-                    });
+                if seen_edges.insert(edge) {
+                    let mut edge_rng = get_stable_rng(seed, edge, 0x5555_6666_u64);
+                    if base > 0.0 && edge_rng.next_f32() <= base {
+                        layout.doors.push(Door {
+                            from: edge.0,
+                            to: edge.1,
+                            width: 1,
+                            span_width: false,
+                            locked: edge_rng.next_f32() <= locked,
+                            archway: false,
+                            secret: false,
+                            manual: false,
+                        });
+                    }
                 }
             }
         }
@@ -141,37 +170,59 @@ pub fn apply_doors(
 }
 
 // Applies packed room doors.
-pub fn apply_packed_room_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorSettings) {
-    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0xD005_5EED_u64));
+pub fn apply_packed_room_doors(
+    layout: &mut DungeonLayout,
+    seed: u64,
+    settings: DoorSettings,
+    cols: usize,
+    rows: usize,
+) {
+    let mut seen_edges = HashSet::new();
+    for door in &layout.doors {
+        for edge in door_edges_for(door, cols, rows) {
+            seen_edges.insert(edge);
+        }
+    }
+
     let door_chance = ((settings.frequency_percent.min(100) as f32) / 100.0)
         * ((settings.room_hallway_percent.min(100) as f32) / 100.0);
     let locked = (settings.locked_percent.min(100) as f32) / 100.0;
 
     for (a_idx, b_idx, shared_edges) in shared_room_boundaries(&layout.rooms) {
+        if shared_edges.is_empty() {
+            continue;
+        }
+
+        let edge = shared_edges[0];
+        let mut edge_rng = get_stable_rng(seed, edge, 0xAAAA_BBBB_u64);
+
         let edge_idx = if shared_edges.len() <= 1 {
             0
         } else {
-            rng.range_inclusive(0, shared_edges.len() - 1)
+            edge_rng.range_inclusive(0, shared_edges.len() - 1)
         };
-        let edge = shared_edges[edge_idx];
-        let place_door = door_chance > 0.0 && rng.next_f32() <= door_chance;
+        let chosen_edge = shared_edges[edge_idx];
 
-        let width = shared_opening_width(
-            &layout.rooms[a_idx],
-            &layout.rooms[b_idx],
-            shared_edges.len(),
-            1,
-        );
-        layout.doors.push(Door {
-            from: edge.0,
-            to: edge.1,
-            width,
-            span_width: width > 1,
-            locked: place_door && rng.next_f32() <= locked,
-            archway: !place_door,
-            secret: false,
-            manual: false,
-        });
+        if seen_edges.insert(chosen_edge) {
+            let place_door = door_chance > 0.0 && edge_rng.next_f32() <= door_chance;
+
+            let width = shared_opening_width(
+                &layout.rooms[a_idx],
+                &layout.rooms[b_idx],
+                shared_edges.len(),
+                1,
+            );
+            layout.doors.push(Door {
+                from: chosen_edge.0,
+                to: chosen_edge.1,
+                width,
+                span_width: width > 1,
+                locked: place_door && edge_rng.next_f32() <= locked,
+                archway: !place_door,
+                secret: false,
+                manual: false,
+            });
+        }
     }
 
     apply_secret_doors(layout, seed, settings);
@@ -185,12 +236,12 @@ pub fn apply_secret_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorS
         return;
     }
 
-    let mut rng = SimpleRng::new(seed::derive_seed(seed, 0x5EC2_E700_u64));
     let room_door_map = room_to_door_indices(layout);
     let eligible_secret_doors = (0..layout.doors.len())
         .filter(|&door_idx| {
             let door = &layout.doors[door_idx];
-            !door.archway
+            !door.manual
+                && !door.archway
                 && !door.locked
                 && door_is_secret_eligible_for_rooms(layout, &room_door_map, door_idx)
         })
@@ -201,7 +252,8 @@ pub fn apply_secret_doors(layout: &mut DungeonLayout, seed: u64, settings: DoorS
             continue;
         }
 
-        if rng.next_f32() <= chance {
+        let mut door_rng = get_stable_rng(seed, (door.from, door.to), 0x7777_8888_u64);
+        if door_rng.next_f32() <= chance {
             door.locked = false;
             door.archway = false;
             door.secret = true;
