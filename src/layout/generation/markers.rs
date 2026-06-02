@@ -132,15 +132,20 @@ pub fn assign_start_end_markers(layouts: &mut Vec<DungeonLayout>, settings: &UiS
             let placed_cell = layout.start_markers[placed_idx].cell;
             if let Some(pos) = available.iter().position(|&r| {
                 let room = &layout.rooms[r];
-                placed_cell.0 >= room.x && placed_cell.0 < room.x + room.width
-                    && placed_cell.1 >= room.y && placed_cell.1 < room.y + room.height
+                placed_cell.0 >= room.x
+                    && placed_cell.0 < room.x + room.width
+                    && placed_cell.1 >= room.y
+                    && placed_cell.1 < room.y + room.height
             }) {
                 available.remove(pos);
             }
         }
         let room_idx = if available.is_empty() {
-            pick_room_index(&(0..layout.rooms.len()).collect::<Vec<_>>(),
-                layout.rooms.len(), seed::derive_seed(settings.seed, 11_000 + idx as u64))
+            pick_room_index(
+                &(0..layout.rooms.len()).collect::<Vec<_>>(),
+                layout.rooms.len(),
+                seed::derive_seed(settings.seed, 11_000 + idx as u64),
+            )
         } else {
             available[0]
         };
@@ -164,15 +169,20 @@ pub fn assign_start_end_markers(layouts: &mut Vec<DungeonLayout>, settings: &UiS
             let placed_cell = layout.end_markers[placed_idx].cell;
             if let Some(pos) = available.iter().position(|&r| {
                 let room = &layout.rooms[r];
-                placed_cell.0 >= room.x && placed_cell.0 < room.x + room.width
-                    && placed_cell.1 >= room.y && placed_cell.1 < room.y + room.height
+                placed_cell.0 >= room.x
+                    && placed_cell.0 < room.x + room.width
+                    && placed_cell.1 >= room.y
+                    && placed_cell.1 < room.y + room.height
             }) {
                 available.remove(pos);
             }
         }
         let room_idx = if available.is_empty() {
-            pick_room_index(&(0..layout.rooms.len()).collect::<Vec<_>>(),
-                layout.rooms.len(), seed::derive_seed(settings.seed, 12_000 + idx as u64))
+            pick_room_index(
+                &(0..layout.rooms.len()).collect::<Vec<_>>(),
+                layout.rooms.len(),
+                seed::derive_seed(settings.seed, 12_000 + idx as u64),
+            )
         } else {
             available[0]
         };
@@ -556,7 +566,11 @@ pub fn get_stair_count(settings: &UiSettings, gap_idx: usize) -> usize {
         settings.min_stairs_per_level
     } else {
         let range_seed = seed::derive_seed(settings.seed, 0x0002_A3B4_u64 + gap_idx as u64);
-        (range_seed as usize % (settings.max_stairs_per_level - settings.min_stairs_per_level + 1))
+        (range_seed as usize
+            % (settings
+                .max_stairs_per_level
+                .saturating_sub(settings.min_stairs_per_level)
+                + 1))
             + settings.min_stairs_per_level
     }
 }

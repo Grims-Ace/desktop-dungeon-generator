@@ -244,34 +244,16 @@ pub fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mu
     ui.label(RichText::new("Levels").strong());
     ui.add_space(8.0);
 
-    ui.label("Min Levels");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_levels, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_levels)
-                    .speed(1.0)
-                    .range(1..=100),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Max Levels");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_levels, 1..=20).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_levels)
-                    .speed(1.0)
-                    .range(1..=100),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Levels",
+        "Max Levels",
+        &mut settings.min_levels,
+        &mut settings.max_levels,
+        1..=20,
+        1..=100,
+    );
 
     ui.add_space(12.0);
     ui.separator();
@@ -294,34 +276,16 @@ pub fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mu
     });
 
     ui.add_space(8.0);
-    ui.label("Min Room Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_room_size, 2..=30).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_room_size)
-                    .speed(1.0)
-                    .range(2..=200),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Max Room Size");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_room_size, 2..=30).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_room_size)
-                    .speed(1.0)
-                    .range(2..=200),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Room Size",
+        "Max Room Size",
+        &mut settings.min_room_size,
+        &mut settings.max_room_size,
+        2..=30,
+        2..=200,
+    );
 
     ui.add_space(8.0);
     result.settings_changed |= ui
@@ -355,34 +319,16 @@ pub fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mu
     });
 
     ui.add_space(8.0);
-    ui.label("Min Corridor Width");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_corridor_width, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_corridor_width)
-                    .speed(1.0)
-                    .range(1..=50),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Max Corridor Width");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_corridor_width, 1..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_corridor_width)
-                    .speed(1.0)
-                    .range(1..=50),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Corridor Width",
+        "Max Corridor Width",
+        &mut settings.min_corridor_width,
+        &mut settings.max_corridor_width,
+        1..=10,
+        1..=50,
+    );
 
     ui.add_space(8.0);
     ui.label("Dead-End Rooms (%)");
@@ -487,34 +433,16 @@ pub fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mu
 
     if settings.windows_enabled {
         ui.add_space(8.0);
-        ui.label("Min Window Width");
-        ui.horizontal(|ui| {
-            result.settings_changed |= ui
-                .add(egui::Slider::new(&mut settings.min_window_width, 1..=5).show_value(false))
-                .changed();
-            result.settings_changed |= ui
-                .add(
-                    egui::DragValue::new(&mut settings.min_window_width)
-                        .speed(1.0)
-                        .range(1..=5),
-                )
-                .changed();
-        });
-
-        ui.add_space(8.0);
-        ui.label("Max Window Width");
-        ui.horizontal(|ui| {
-            result.settings_changed |= ui
-                .add(egui::Slider::new(&mut settings.max_window_width, 1..=5).show_value(false))
-                .changed();
-            result.settings_changed |= ui
-                .add(
-                    egui::DragValue::new(&mut settings.max_window_width)
-                        .speed(1.0)
-                        .range(1..=5),
-                )
-                .changed();
-        });
+        draw_min_max_slider_rows(
+            ui,
+            result,
+            "Min Window Width",
+            "Max Window Width",
+            &mut settings.min_window_width,
+            &mut settings.max_window_width,
+            1..=5,
+            1..=5,
+        );
 
         ui.add_space(8.0);
         ui.label("Window Frequency (%)");
@@ -575,94 +503,40 @@ pub fn draw_layout_tab(ui: &mut egui::Ui, settings: &mut UiSettings, result: &mu
         .changed();
 
     ui.add_space(8.0);
-    ui.label("Min Stair Width");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_stair_width, 1..=5).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_stair_width)
-                    .speed(1.0)
-                    .range(1..=10),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Stair Width",
+        "Max Stair Width",
+        &mut settings.min_stair_width,
+        &mut settings.max_stair_width,
+        1..=5,
+        1..=10,
+    );
 
     ui.add_space(8.0);
-    ui.label("Max Stair Width");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_stair_width, 1..=5).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_stair_width)
-                    .speed(1.0)
-                    .range(1..=10),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Stair Height",
+        "Max Stair Height",
+        &mut settings.min_stair_height,
+        &mut settings.max_stair_height,
+        1..=5,
+        1..=10,
+    );
 
     ui.add_space(8.0);
-    ui.label("Min Stair Height");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_stair_height, 1..=5).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_stair_height)
-                    .speed(1.0)
-                    .range(1..=10),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Max Stair Height");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_stair_height, 1..=5).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_stair_height)
-                    .speed(1.0)
-                    .range(1..=10),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Min Stairs Per Level");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.min_stairs_per_level, 0..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.min_stairs_per_level)
-                    .speed(1.0)
-                    .range(0..=20),
-            )
-            .changed();
-    });
-
-    ui.add_space(8.0);
-    ui.label("Max Stairs Per Level");
-    ui.horizontal(|ui| {
-        result.settings_changed |= ui
-            .add(egui::Slider::new(&mut settings.max_stairs_per_level, 0..=10).show_value(false))
-            .changed();
-        result.settings_changed |= ui
-            .add(
-                egui::DragValue::new(&mut settings.max_stairs_per_level)
-                    .speed(1.0)
-                    .range(0..=20),
-            )
-            .changed();
-    });
+    draw_min_max_slider_rows(
+        ui,
+        result,
+        "Min Stairs Per Level",
+        "Max Stairs Per Level",
+        &mut settings.min_stairs_per_level,
+        &mut settings.max_stairs_per_level,
+        0..=10,
+        0..=20,
+    );
 }
 
 // Render the Add tab controls.
@@ -805,34 +679,22 @@ pub fn draw_start_and_end_tab(
 ) {
     ui.label(RichText::new("Start Markers").strong());
     ui.add_space(8.0);
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min Start Marker Size",
-        &mut settings.min_start_marker_size,
-        1..=10,
-        1..=10,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max Start Marker Size",
+        &mut settings.min_start_marker_size,
         &mut settings.max_start_marker_size,
         1..=10,
         1..=10,
     );
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min Start Marker Count",
-        &mut settings.min_start_marker_count,
-        1..=20,
-        1..=100,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max Start Marker Count",
+        &mut settings.min_start_marker_count,
         &mut settings.max_start_marker_count,
         1..=20,
         1..=100,
@@ -843,34 +705,22 @@ pub fn draw_start_and_end_tab(
     ui.add_space(8.0);
     ui.label(RichText::new("End Markers").strong());
     ui.add_space(8.0);
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min End Marker Size",
-        &mut settings.min_end_marker_size,
-        1..=10,
-        1..=10,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max End Marker Size",
+        &mut settings.min_end_marker_size,
         &mut settings.max_end_marker_size,
         1..=10,
         1..=10,
     );
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min End Marker Count",
-        &mut settings.min_end_marker_count,
-        1..=20,
-        1..=100,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max End Marker Count",
+        &mut settings.min_end_marker_count,
         &mut settings.max_end_marker_count,
         1..=20,
         1..=100,
@@ -896,18 +746,12 @@ pub fn draw_monsters_and_traps_tab(
         0..=100,
         0..=100,
     );
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min Traps Per Room/Corridor",
-        &mut settings.min_traps_per_area,
-        0..=20,
-        0..=100,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max Traps Per Room/Corridor",
+        &mut settings.min_traps_per_area,
         &mut settings.max_traps_per_area,
         0..=20,
         0..=100,
@@ -926,24 +770,17 @@ pub fn draw_monsters_and_traps_tab(
         0..=100,
         0..=100,
     );
-    draw_usize_slider_row(
+    draw_min_max_slider_rows(
         ui,
         result,
         "Min Monsters Per Room/Corridor",
-        &mut settings.min_monsters_per_area,
-        0..=20,
-        0..=100,
-    );
-    draw_usize_slider_row(
-        ui,
-        result,
         "Max Monsters Per Room/Corridor",
+        &mut settings.min_monsters_per_area,
         &mut settings.max_monsters_per_area,
         0..=20,
         0..=100,
     );
 }
-
 // Draws usize slider row.
 pub fn draw_usize_slider_row(
     ui: &mut egui::Ui,
@@ -952,15 +789,56 @@ pub fn draw_usize_slider_row(
     value: &mut usize,
     slider_range: std::ops::RangeInclusive<usize>,
     drag_range: std::ops::RangeInclusive<usize>,
-) {
+) -> bool {
+    let mut changed = false;
     ui.label(label);
     ui.horizontal(|ui| {
-        result.settings_changed |= ui
+        if ui
             .add(egui::Slider::new(value, slider_range).show_value(false))
-            .changed();
-        result.settings_changed |= ui
+            .changed()
+        {
+            changed = true;
+        }
+        if ui
             .add(egui::DragValue::new(value).speed(1.0).range(drag_range))
-            .changed();
+            .changed()
+        {
+            changed = true;
+        }
     });
-    ui.add_space(6.0);
+    result.settings_changed |= changed;
+    changed
+}
+
+// Draws min/max usize slider rows.
+pub fn draw_min_max_slider_rows(
+    ui: &mut egui::Ui,
+    result: &mut SidePanelResult,
+    label_min: &str,
+    label_max: &str,
+    min_value: &mut usize,
+    max_value: &mut usize,
+    slider_range: std::ops::RangeInclusive<usize>,
+    drag_range: std::ops::RangeInclusive<usize>,
+) {
+    if draw_usize_slider_row(
+        ui,
+        result,
+        label_min,
+        min_value,
+        slider_range.clone(),
+        drag_range.clone(),
+    ) {
+        if *min_value > *max_value {
+            *max_value = *min_value;
+        }
+    }
+
+    ui.add_space(8.0);
+
+    if draw_usize_slider_row(ui, result, label_max, max_value, slider_range, drag_range) {
+        if *max_value < *min_value {
+            *min_value = *max_value;
+        }
+    }
 }

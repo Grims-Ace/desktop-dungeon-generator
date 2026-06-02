@@ -10,16 +10,16 @@ use std::thread;
 
 use crate::exporter;
 use crate::interact::{
-    draw_grid, AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, MultiDragState,
-    MultiResizeState, ResizeState, SelectedItem, SelectionBoxDrag,
+    AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, MultiDragState, MultiResizeState,
+    ResizeState, SelectedItem, SelectionBoxDrag, draw_grid,
 };
 use crate::layout::{
-    self, populate_random_markers, populate_stairs, DoorSettings, DungeonLayout, WindowSettings,
+    self, DoorSettings, DungeonLayout, WindowSettings, populate_random_markers, populate_stairs,
 };
 use crate::rendering::draw_layout;
 use crate::saveandload;
 use crate::settings;
-use crate::ui::{draw_legend_panel, draw_level_tabs, draw_side_panel, AddTool, UiSettings};
+use crate::ui::{AddTool, UiSettings, draw_legend_panel, draw_level_tabs, draw_side_panel};
 use eframe::egui;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -541,6 +541,15 @@ pub fn clamp_dependent_settings(settings: &mut UiSettings) {
     }
     if settings.min_levels > settings.max_levels {
         settings.max_levels = settings.min_levels;
+    }
+    if settings.min_stair_width > settings.max_stair_width {
+        settings.max_stair_width = settings.min_stair_width;
+    }
+    if settings.min_stair_height > settings.max_stair_height {
+        settings.max_stair_height = settings.min_stair_height;
+    }
+    if settings.min_stairs_per_level > settings.max_stairs_per_level {
+        settings.max_stairs_per_level = settings.min_stairs_per_level;
     }
 }
 
