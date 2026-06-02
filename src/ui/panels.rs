@@ -21,72 +21,66 @@ pub fn draw_side_panel(
         .default_width(280.0)
         .show_separator_line(true)
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(settings.active_tab == Tab::Generate, "Generate")
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::Generate;
-                    }
-                    if ui
-                        .selectable_label(settings.active_tab == Tab::Layout, "Layout")
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::Layout;
-                    }
-                    if ui
-                        .selectable_label(settings.active_tab == Tab::StartAndEnd, "Start & End")
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::StartAndEnd;
-                    }
-                    if ui
-                        .selectable_label(
-                            settings.active_tab == Tab::MonstersAndTraps,
-                            "Monsters/Traps",
-                        )
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::MonstersAndTraps;
-                    }
-                    if ui
-                        .selectable_label(settings.active_tab == Tab::Add, "Add")
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::Add;
-                    }
-                    if ui
-                        .selectable_label(settings.active_tab == Tab::ExportSave, "Export/Save")
-                        .clicked()
-                    {
-                        settings.active_tab = Tab::ExportSave;
-                    }
-                });
-                ui.separator();
-
-                match settings.active_tab {
-                    Tab::Generate => tabs::draw_generate_tab(
-                        ui,
-                        settings,
-                        &mut result,
-                        export_progress,
-                        num_levels,
-                    ),
-                    Tab::Layout => tabs::draw_layout_tab(ui, settings, &mut result),
-                    Tab::StartAndEnd => tabs::draw_start_and_end_tab(ui, settings, &mut result),
-                    Tab::MonstersAndTraps => {
-                        tabs::draw_monsters_and_traps_tab(ui, settings, &mut result)
-                    }
-                    Tab::Add => tabs::draw_add_tab(ui, settings, &mut result),
-                    Tab::ExportSave => tabs::draw_export_save_tab(
-                        ui,
-                        settings,
-                        &mut result,
-                        export_progress,
-                        num_levels,
-                    ),
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .selectable_label(settings.active_tab == Tab::Generate, "Generate")
+                    .clicked()
+                {
+                    settings.active_tab = Tab::Generate;
                 }
+                if ui
+                    .selectable_label(settings.active_tab == Tab::Layout, "Layout")
+                    .clicked()
+                {
+                    settings.active_tab = Tab::Layout;
+                }
+                if ui
+                    .selectable_label(settings.active_tab == Tab::StartAndEnd, "Start & End")
+                    .clicked()
+                {
+                    settings.active_tab = Tab::StartAndEnd;
+                }
+                if ui
+                    .selectable_label(
+                        settings.active_tab == Tab::MonstersAndTraps,
+                        "Monsters/Traps",
+                    )
+                    .clicked()
+                {
+                    settings.active_tab = Tab::MonstersAndTraps;
+                }
+                if ui
+                    .selectable_label(settings.active_tab == Tab::Add, "Add")
+                    .clicked()
+                {
+                    settings.active_tab = Tab::Add;
+                }
+                if ui
+                    .selectable_label(settings.active_tab == Tab::ExportSave, "Export/Save")
+                    .clicked()
+                {
+                    settings.active_tab = Tab::ExportSave;
+                }
+            });
+            ui.separator();
+
+            egui::ScrollArea::vertical().show(ui, |ui| match settings.active_tab {
+                Tab::Generate => {
+                    tabs::draw_generate_tab(ui, settings, &mut result, export_progress, num_levels)
+                }
+                Tab::Layout => tabs::draw_layout_tab(ui, settings, &mut result),
+                Tab::StartAndEnd => tabs::draw_start_and_end_tab(ui, settings, &mut result),
+                Tab::MonstersAndTraps => {
+                    tabs::draw_monsters_and_traps_tab(ui, settings, &mut result)
+                }
+                Tab::Add => tabs::draw_add_tab(ui, settings, &mut result),
+                Tab::ExportSave => tabs::draw_export_save_tab(
+                    ui,
+                    settings,
+                    &mut result,
+                    export_progress,
+                    num_levels,
+                ),
             });
         });
 
