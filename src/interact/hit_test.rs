@@ -79,7 +79,9 @@ pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry:
         app.hover_corridor_idx = None;
         app.hover_door_idx = None;
         app.hover_marker = None;
-        println!("DEBUG: Hovering over room {}", room_idx);
+        if app.debug_mode {
+            println!("DEBUG: Hovering over room {}", room_idx);
+        }
     } else {
         app.hover_room_idx = None;
         if let Some(corridor_drag) = corridor_drag_at_pointer(app, pointer_pos, geometry) {

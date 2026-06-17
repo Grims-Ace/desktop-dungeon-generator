@@ -72,11 +72,11 @@ pub struct DungeonApp {
     pub multi_drag_state: Option<MultiDragState>,
     pub multi_resize_state: Option<MultiResizeState>,
     pub clipboard_items: Vec<ClipboardItem>,
+    pub debug_mode: bool,
 }
 
-impl Default for DungeonApp {
-    // Provides default settings for this type.
-    fn default() -> Self {
+impl DungeonApp {
+    pub fn new(debug_mode: bool) -> Self {
         let settings = settings::load_settings().unwrap_or_default();
         let mut app = Self {
             settings,
@@ -105,6 +105,7 @@ impl Default for DungeonApp {
             multi_drag_state: None,
             multi_resize_state: None,
             clipboard_items: Vec::new(),
+            debug_mode,
         };
         if app.settings.composition_mode {
             app.enter_composition_layout();
@@ -113,6 +114,13 @@ impl Default for DungeonApp {
             app.refresh_stairs();
         }
         app
+    }
+}
+
+impl Default for DungeonApp {
+    // Provides default settings for this type.
+    fn default() -> Self {
+        Self::new(false)
     }
 }
 
@@ -129,6 +137,19 @@ impl Drop for DungeonApp {
 impl eframe::App for DungeonApp {
     // Runs one UI frame and handles app interaction.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Reset transient states that depend on pointer being down if pointer is released
+        if !ctx.input(|i| i.pointer.primary_down()) {
+            self.drag_state = None;
+            self.multi_drag_state = None;
+            self.selection_box_drag = None;
+            self.add_corridor_drag = None;
+            self.add_door_drag = None;
+        }
+        if !ctx.input(|i| i.pointer.secondary_down()) {
+            self.resize_state = None;
+            self.multi_resize_state = None;
+        }
+
         let panel_result = draw_side_panel(
             ctx,
             &mut self.settings,
@@ -145,11 +166,15 @@ impl eframe::App for DungeonApp {
             for event in &i.events {
                 match event {
                     egui::Event::Copy => {
-                        println!("DEBUG: Received Event::Copy");
+                        if self.debug_mode {
+                            println!("DEBUG: Received Event::Copy");
+                        }
                         copy_requested = true;
                     }
                     egui::Event::Paste(_) => {
-                        println!("DEBUG: Received Event::Paste");
+                        if self.debug_mode {
+                            println!("DEBUG: Received Event::Paste");
+                        }
                         paste_requested = true;
                     }
                     egui::Event::Key {
@@ -158,7 +183,9 @@ impl eframe::App for DungeonApp {
                         modifiers,
                         ..
                     } if modifiers.command || modifiers.ctrl => {
-                        println!("DEBUG: Received Key::C with command/ctrl");
+                        if self.debug_mode {
+                            println!("DEBUG: Received Key::C with command/ctrl");
+                        }
                         copy_requested = true;
                     }
                     egui::Event::Key {
@@ -167,7 +194,9 @@ impl eframe::App for DungeonApp {
                         modifiers,
                         ..
                     } if modifiers.command || modifiers.ctrl => {
-                        println!("DEBUG: Received Key::V with command/ctrl");
+                        if self.debug_mode {
+                            println!("DEBUG: Received Key::V with command/ctrl");
+                        }
                         paste_requested = true;
                     }
                     egui::Event::Key {
@@ -200,19 +229,27 @@ impl eframe::App for DungeonApp {
         if escape_pressed || panel_result.settings_changed {
             self.settings.add_tool = AddTool::None;
             if !self.clipboard_items.is_empty() {
-                println!("DEBUG: Clipboard cleared (Escape or settings changed)");
+                if self.debug_mode {
+                    println!("DEBUG: Clipboard cleared (Escape or settings changed)");
+                }
             }
             self.clipboard_items.clear();
-            println!("DEBUG: UI reset (Escape pressed or settings changed)");
+            if self.debug_mode {
+                println!("DEBUG: UI reset (Escape pressed or settings changed)");
+            }
         }
 
         clamp_dependent_settings(&mut self.settings);
 
         if undo_requested {
-            println!("DEBUG: Executing Undo");
+            if self.debug_mode {
+                println!("DEBUG: Executing Undo");
+            }
             self.undo();
         } else if redo_requested {
-            println!("DEBUG: Executing Redo");
+            if self.debug_mode {
+                println!("DEBUG: Executing Redo");
+            }
             self.redo();
         }
 
@@ -432,7 +469,9 @@ impl eframe::App for DungeonApp {
 
             if copy_requested {
                 if !self.selection.is_empty() {
-                    println!("DEBUG: Copying {} selected items", self.selection.len());
+                    if self.debug_mode {
+                        println!("DEBUG: Copying {} selected items", self.selection.len());
+                    }
                     if let Some(layout) = self.levels.get(self.settings.active_level_index) {
                         let mut items = Vec::new();
                         for selected in &self.selection {
@@ -465,21 +504,27 @@ impl eframe::App for DungeonApp {
                                 }
                             }
                         }
-                        println!("Copied {} items to clipboard", items.len());
+                        if self.debug_mode {
+                            println!("Copied {} items to clipboard", items.len());
+                        }
                         self.clipboard_items = items;
                     }
                 } else if let Some(room_idx) = self.hover_room_idx {
                     if let Some(layout) = self.levels.get(self.settings.active_level_index) {
                         if let Some(room) = layout.rooms.get(room_idx) {
-                            println!(
-                                "Copied room {}: {}x{} at ({}, {})",
-                                room_idx, room.width, room.height, room.x, room.y
-                            );
+                            if self.debug_mode {
+                                println!(
+                                    "Copied room {}: {}x{} at ({}, {})",
+                                    room_idx, room.width, room.height, room.x, room.y
+                                );
+                            }
                             self.clipboard_items = vec![ClipboardItem::Room(room.clone())];
                         }
                     }
                 } else {
-                    println!("Copy requested but nothing is selected or hovered.");
+                    if self.debug_mode {
+                        println!("Copy requested but nothing is selected or hovered.");
+                    }
                 }
             }
 
@@ -496,39 +541,45 @@ impl eframe::App for DungeonApp {
                     if let Some(grid_pos) = crate::interact::pointer_to_grid(pointer_pos, &geometry)
                     {
                         if !self.clipboard_items.is_empty() {
-                            println!(
-                                "Pasting {} items at grid pos: {:?}",
-                                self.clipboard_items.len(),
-                                grid_pos
-                            );
+                            if self.debug_mode {
+                                println!(
+                                    "Pasting {} items at grid pos: {:?}",
+                                    self.clipboard_items.len(),
+                                    grid_pos
+                                );
+                            }
                             self.paste_items(grid_pos);
                         } else {
-                            println!("Paste requested but clipboard is empty.");
+                            if self.debug_mode {
+                                println!("Paste requested but clipboard is empty.");
+                            }
                         }
                     }
                 }
             } else if paste_requested {
-                println!("Paste requested but ignored due to active interaction state:");
-                if self.drag_state.is_some() {
-                    println!("  - drag_state");
-                }
-                if self.multi_drag_state.is_some() {
-                    println!("  - multi_drag_state");
-                }
-                if self.resize_state.is_some() {
-                    println!("  - resize_state");
-                }
-                if self.multi_resize_state.is_some() {
-                    println!("  - multi_resize_state");
-                }
-                if self.add_corridor_drag.is_some() {
-                    println!("  - add_corridor_drag");
-                }
-                if self.add_door_drag.is_some() {
-                    println!("  - add_door_drag");
-                }
-                if self.selection_box_drag.is_some() {
-                    println!("  - selection_box_drag");
+                if self.debug_mode {
+                    println!("Paste requested but ignored due to active interaction state:");
+                    if self.drag_state.is_some() {
+                        println!("  - drag_state");
+                    }
+                    if self.multi_drag_state.is_some() {
+                        println!("  - multi_drag_state");
+                    }
+                    if self.resize_state.is_some() {
+                        println!("  - resize_state");
+                    }
+                    if self.multi_resize_state.is_some() {
+                        println!("  - multi_resize_state");
+                    }
+                    if self.add_corridor_drag.is_some() {
+                        println!("  - add_corridor_drag");
+                    }
+                    if self.add_door_drag.is_some() {
+                        println!("  - add_door_drag");
+                    }
+                    if self.selection_box_drag.is_some() {
+                        println!("  - selection_box_drag");
+                    }
                 }
             }
 

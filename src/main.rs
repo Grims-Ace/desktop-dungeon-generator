@@ -18,11 +18,14 @@ use app::DungeonApp;
 
 // Boot the native app and start the egui event loop.
 fn main() -> eframe::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let debug_mode = args.contains(&"-debug".to_string());
+
     let options = eframe::NativeOptions::default();
 
     eframe::run_native(
         "Desktop Dungeon Generator",
         options,
-        Box::new(|_cc| Ok(Box::new(DungeonApp::default()))),
+        Box::new(move |_cc| Ok(Box::new(DungeonApp::new(debug_mode)))),
     )
 }
