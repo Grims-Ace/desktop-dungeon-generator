@@ -10,8 +10,8 @@ use std::thread;
 
 use crate::exporter;
 use crate::interact::{
-    AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, MultiDragState, MultiResizeState,
-    ResizeState, SelectedItem, SelectionBoxDrag, draw_grid,
+    AddCorridorDrag, AddDoorDrag, DragState, HoverMarker, MarkerKind, MultiDragState,
+    MultiResizeState, ResizeState, SelectedItem, SelectionBoxDrag, draw_grid,
 };
 use crate::layout::{
     self, DoorSettings, DungeonLayout, WindowSettings, populate_random_markers, populate_stairs,
@@ -35,6 +35,14 @@ pub struct AppSnapshot {
     pub settings: UiSettings,
     pub levels: Vec<DungeonLayout>,
     pub suppressed_auto_door_edges: HashSet<((usize, usize), (usize, usize))>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ClipboardItem {
+    Room(crate::layout::Room),
+    Text(crate::layout::TextLabel),
+    Staircase(crate::layout::Staircase),
+    Marker(crate::interact::MarkerKind, crate::layout::AreaMarker),
 }
 
 pub struct DungeonApp {
@@ -63,6 +71,7 @@ pub struct DungeonApp {
     pub selection_box_drag: Option<SelectionBoxDrag>,
     pub multi_drag_state: Option<MultiDragState>,
     pub multi_resize_state: Option<MultiResizeState>,
+    pub clipboard_items: Vec<ClipboardItem>,
 }
 
 impl Default for DungeonApp {
@@ -95,6 +104,7 @@ impl Default for DungeonApp {
             selection_box_drag: None,
             multi_drag_state: None,
             multi_resize_state: None,
+            clipboard_items: Vec::new(),
         };
         if app.settings.composition_mode {
             app.enter_composition_layout();
@@ -126,22 +136,83 @@ impl eframe::App for DungeonApp {
                 .map(|progress| (progress.completed, progress.total)),
             self.levels.len(),
         );
-        let undo_requested = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z));
-        let redo_requested = ctx.input(|i| {
-            (i.modifiers.command && i.key_pressed(egui::Key::Y))
-                || (i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z))
+        let mut copy_requested = false;
+        let mut paste_requested = false;
+        let mut undo_requested = false;
+        let mut redo_requested = false;
+
+        ctx.input(|i| {
+            for event in &i.events {
+                match event {
+                    egui::Event::Copy => {
+                        println!("DEBUG: Received Event::Copy");
+                        copy_requested = true;
+                    }
+                    egui::Event::Paste(_) => {
+                        println!("DEBUG: Received Event::Paste");
+                        paste_requested = true;
+                    }
+                    egui::Event::Key {
+                        key: egui::Key::C,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.command || modifiers.ctrl => {
+                        println!("DEBUG: Received Key::C with command/ctrl");
+                        copy_requested = true;
+                    }
+                    egui::Event::Key {
+                        key: egui::Key::V,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.command || modifiers.ctrl => {
+                        println!("DEBUG: Received Key::V with command/ctrl");
+                        paste_requested = true;
+                    }
+                    egui::Event::Key {
+                        key: egui::Key::Z,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.command || modifiers.ctrl => {
+                        if modifiers.shift {
+                            redo_requested = true;
+                        } else {
+                            undo_requested = true;
+                        }
+                    }
+                    egui::Event::Key {
+                        key: egui::Key::Y,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.command || modifiers.ctrl => {
+                        redo_requested = true;
+                    }
+                    _ => {}
+                }
+            }
         });
+
         let escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
 
         if escape_pressed || panel_result.settings_changed {
             self.settings.add_tool = AddTool::None;
+            if !self.clipboard_items.is_empty() {
+                println!("DEBUG: Clipboard cleared (Escape or settings changed)");
+            }
+            self.clipboard_items.clear();
+            println!("DEBUG: UI reset (Escape pressed or settings changed)");
         }
 
         clamp_dependent_settings(&mut self.settings);
 
         if undo_requested {
+            println!("DEBUG: Executing Undo");
             self.undo();
         } else if redo_requested {
+            println!("DEBUG: Executing Redo");
             self.redo();
         }
 
@@ -359,6 +430,108 @@ impl eframe::App for DungeonApp {
             let geometry = draw_grid(&painter, canvas, self.settings.cols, self.settings.rows);
             crate::interact::update_hover_targets(self, ctx, &geometry);
 
+            if copy_requested {
+                if !self.selection.is_empty() {
+                    println!("DEBUG: Copying {} selected items", self.selection.len());
+                    if let Some(layout) = self.levels.get(self.settings.active_level_index) {
+                        let mut items = Vec::new();
+                        for selected in &self.selection {
+                            match selected {
+                                SelectedItem::Room(idx) => {
+                                    if let Some(room) = layout.rooms.get(*idx) {
+                                        items.push(ClipboardItem::Room(room.clone()));
+                                    }
+                                }
+                                SelectedItem::Text(idx) => {
+                                    if let Some(text) = layout.text_labels.get(*idx) {
+                                        items.push(ClipboardItem::Text(text.clone()));
+                                    }
+                                }
+                                SelectedItem::Staircase(idx) => {
+                                    if let Some(stair) = layout.stairs.get(*idx) {
+                                        items.push(ClipboardItem::Staircase(stair.clone()));
+                                    }
+                                }
+                                SelectedItem::Marker(kind, idx) => {
+                                    let marker = match kind {
+                                        MarkerKind::Start => layout.start_markers.get(*idx),
+                                        MarkerKind::End => layout.end_markers.get(*idx),
+                                        MarkerKind::Trap => layout.trap_markers.get(*idx),
+                                        MarkerKind::Monster => layout.monster_markers.get(*idx),
+                                    };
+                                    if let Some(m) = marker {
+                                        items.push(ClipboardItem::Marker(*kind, m.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        println!("Copied {} items to clipboard", items.len());
+                        self.clipboard_items = items;
+                    }
+                } else if let Some(room_idx) = self.hover_room_idx {
+                    if let Some(layout) = self.levels.get(self.settings.active_level_index) {
+                        if let Some(room) = layout.rooms.get(room_idx) {
+                            println!(
+                                "Copied room {}: {}x{} at ({}, {})",
+                                room_idx, room.width, room.height, room.x, room.y
+                            );
+                            self.clipboard_items = vec![ClipboardItem::Room(room.clone())];
+                        }
+                    }
+                } else {
+                    println!("Copy requested but nothing is selected or hovered.");
+                }
+            }
+
+            if paste_requested
+                && self.drag_state.is_none()
+                && self.multi_drag_state.is_none()
+                && self.resize_state.is_none()
+                && self.multi_resize_state.is_none()
+                && self.add_corridor_drag.is_none()
+                && self.add_door_drag.is_none()
+                && self.selection_box_drag.is_none()
+            {
+                if let Some(pointer_pos) = ctx.pointer_hover_pos() {
+                    if let Some(grid_pos) = crate::interact::pointer_to_grid(pointer_pos, &geometry)
+                    {
+                        if !self.clipboard_items.is_empty() {
+                            println!(
+                                "Pasting {} items at grid pos: {:?}",
+                                self.clipboard_items.len(),
+                                grid_pos
+                            );
+                            self.paste_items(grid_pos);
+                        } else {
+                            println!("Paste requested but clipboard is empty.");
+                        }
+                    }
+                }
+            } else if paste_requested {
+                println!("Paste requested but ignored due to active interaction state:");
+                if self.drag_state.is_some() {
+                    println!("  - drag_state");
+                }
+                if self.multi_drag_state.is_some() {
+                    println!("  - multi_drag_state");
+                }
+                if self.resize_state.is_some() {
+                    println!("  - resize_state");
+                }
+                if self.multi_resize_state.is_some() {
+                    println!("  - multi_resize_state");
+                }
+                if self.add_corridor_drag.is_some() {
+                    println!("  - add_corridor_drag");
+                }
+                if self.add_door_drag.is_some() {
+                    println!("  - add_door_drag");
+                }
+                if self.selection_box_drag.is_some() {
+                    println!("  - selection_box_drag");
+                }
+            }
+
             if response.double_clicked() {
                 if let Some(text_idx) = self.hover_text_idx {
                     if let Some(layout) = self.levels.get(self.settings.active_level_index) {
@@ -449,6 +622,7 @@ impl eframe::App for DungeonApp {
 
             crate::interact::draw_add_overlay(self, &painter, &geometry);
             crate::interact::draw_add_tool_ghost(self, &painter, &geometry);
+            crate::interact::draw_paste_ghost(self, &painter, &geometry);
             crate::interact::draw_resize_overlay(self, &painter, &geometry);
             crate::interact::draw_corridor_hover_overlay(self, &painter, &geometry);
             crate::interact::draw_door_hover_overlay(self, &painter, &geometry);
@@ -780,6 +954,122 @@ impl DungeonApp {
             self.settings.cols,
             self.settings.rows,
         );
+    }
+
+    pub fn paste_items(&mut self, grid_pos: (f32, f32)) {
+        if self.clipboard_items.is_empty() {
+            return;
+        }
+        self.push_undo_snapshot();
+        if self.settings.active_level_index >= self.levels.len() {
+            return;
+        }
+
+        // Calculate bounding box of clipboard items to find their center
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+
+        for item in &self.clipboard_items {
+            let (ix, iy, iw, ih) = match item {
+                ClipboardItem::Room(r) => (r.x as f32, r.y as f32, r.width as f32, r.height as f32),
+                ClipboardItem::Text(t) => (t.cell.0 as f32, t.cell.1 as f32, 1.0, 1.0),
+                ClipboardItem::Staircase(s) => (
+                    s.cell.0 as f32,
+                    s.cell.1 as f32,
+                    s.width as f32,
+                    s.height as f32,
+                ),
+                ClipboardItem::Marker(_, m) => (
+                    m.cell.0 as f32,
+                    m.cell.1 as f32,
+                    m.size as f32,
+                    m.size as f32,
+                ),
+            };
+            min_x = min_x.min(ix);
+            min_y = min_y.min(iy);
+            max_x = max_x.max(ix + iw);
+            max_y = max_y.max(iy + ih);
+        }
+
+        let center_x = (min_x + max_x) / 2.0;
+        let center_y = (min_y + max_y) / 2.0;
+
+        let delta_x = grid_pos.0 - center_x;
+        let delta_y = grid_pos.1 - center_y;
+
+        // Offset all items and clamp them to the grid
+        let active_idx = self.settings.active_level_index;
+        let mut rooms_to_add = Vec::new();
+        let mut text_to_add = Vec::new();
+        let mut stairs_to_add = Vec::new();
+        let mut markers_to_add = Vec::new();
+
+        for item in &self.clipboard_items {
+            match item {
+                ClipboardItem::Room(r) => {
+                    let mut new_room = r.clone();
+                    let nx = (r.x as f32 + delta_x).round() as isize;
+                    let ny = (r.y as f32 + delta_y).round() as isize;
+                    new_room.x = nx
+                        .clamp(0, (self.settings.cols as isize - r.width as isize).max(0))
+                        as usize;
+                    new_room.y = ny
+                        .clamp(0, (self.settings.rows as isize - r.height as isize).max(0))
+                        as usize;
+                    rooms_to_add.push(new_room);
+                }
+                ClipboardItem::Text(t) => {
+                    let mut new_text = t.clone();
+                    let nx = (t.cell.0 as f32 + delta_x).round() as isize;
+                    let ny = (t.cell.1 as f32 + delta_y).round() as isize;
+                    new_text.cell.0 = nx.clamp(0, self.settings.cols as isize - 1) as usize;
+                    new_text.cell.1 = ny.clamp(0, self.settings.rows as isize - 1) as usize;
+                    text_to_add.push(new_text);
+                }
+                ClipboardItem::Staircase(s) => {
+                    let mut new_stair = s.clone();
+                    let nx = (s.cell.0 as f32 + delta_x).round() as isize;
+                    let ny = (s.cell.1 as f32 + delta_y).round() as isize;
+                    new_stair.cell.0 = nx
+                        .clamp(0, (self.settings.cols as isize - s.width as isize).max(0))
+                        as usize;
+                    new_stair.cell.1 = ny
+                        .clamp(0, (self.settings.rows as isize - s.height as isize).max(0))
+                        as usize;
+                    stairs_to_add.push(new_stair);
+                }
+                ClipboardItem::Marker(kind, m) => {
+                    let mut new_marker = m.clone();
+                    let nx = (m.cell.0 as f32 + delta_x).round() as isize;
+                    let ny = (m.cell.1 as f32 + delta_y).round() as isize;
+                    new_marker.cell.0 = nx
+                        .clamp(0, (self.settings.cols as isize - m.size as isize).max(0))
+                        as usize;
+                    new_marker.cell.1 = ny
+                        .clamp(0, (self.settings.rows as isize - m.size as isize).max(0))
+                        as usize;
+                    markers_to_add.push((*kind, new_marker));
+                }
+            }
+        }
+
+        let layout = &mut self.levels[active_idx];
+        layout.rooms.extend(rooms_to_add);
+        layout.text_labels.extend(text_to_add);
+        layout.stairs.extend(stairs_to_add);
+        for (kind, marker) in markers_to_add {
+            match kind {
+                MarkerKind::Start => layout.start_markers.push(marker),
+                MarkerKind::End => layout.end_markers.push(marker),
+                MarkerKind::Trap => layout.trap_markers.push(marker),
+                MarkerKind::Monster => layout.monster_markers.push(marker),
+            }
+        }
+
+        self.refresh_doors();
     }
 }
 

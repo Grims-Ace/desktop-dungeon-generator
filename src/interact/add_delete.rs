@@ -1029,3 +1029,97 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
         AddTool::None | AddTool::Corridor => {}
     }
 }
+
+// Draws a ghost preview of the items in the clipboard.
+pub fn draw_paste_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: &GridGeometry) {
+    if app.clipboard_items.is_empty() {
+        return;
+    }
+    let Some(pointer_pos) = painter.ctx().pointer_hover_pos() else {
+        return;
+    };
+    let Some(grid_pos) = pointer_to_grid(pointer_pos, geometry) else {
+        return;
+    };
+
+    // Calculate bounding box of clipboard items to find their center
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+
+    for item in &app.clipboard_items {
+        let (ix, iy, iw, ih) = match item {
+            crate::app::ClipboardItem::Room(r) => {
+                (r.x as f32, r.y as f32, r.width as f32, r.height as f32)
+            }
+            crate::app::ClipboardItem::Text(t) => (t.cell.0 as f32, t.cell.1 as f32, 1.0, 1.0),
+            crate::app::ClipboardItem::Staircase(s) => (
+                s.cell.0 as f32,
+                s.cell.1 as f32,
+                s.width as f32,
+                s.height as f32,
+            ),
+            crate::app::ClipboardItem::Marker(_, m) => (
+                m.cell.0 as f32,
+                m.cell.1 as f32,
+                m.size as f32,
+                m.size as f32,
+            ),
+        };
+        min_x = min_x.min(ix);
+        min_y = min_y.min(iy);
+        max_x = max_x.max(ix + iw);
+        max_y = max_y.max(iy + ih);
+    }
+
+    let center_x = (min_x + max_x) / 2.0;
+    let center_y = (min_y + max_y) / 2.0;
+
+    let delta_x = grid_pos.0 - center_x;
+    let delta_y = grid_pos.1 - center_y;
+
+    let ghost_alpha = 0.35;
+    let fill = Color32::from_rgb(100, 160, 100).gamma_multiply(ghost_alpha);
+    let stroke = Stroke::new(
+        1.5,
+        Color32::from_rgb(180, 240, 180).gamma_multiply(ghost_alpha + 0.3),
+    );
+
+    for item in &app.clipboard_items {
+        let (ix, iy, iw, ih) = match item {
+            crate::app::ClipboardItem::Room(r) => {
+                (r.x as f32, r.y as f32, r.width as f32, r.height as f32)
+            }
+            crate::app::ClipboardItem::Text(t) => (t.cell.0 as f32, t.cell.1 as f32, 1.0, 1.0),
+            crate::app::ClipboardItem::Staircase(s) => (
+                s.cell.0 as f32,
+                s.cell.1 as f32,
+                s.width as f32,
+                s.height as f32,
+            ),
+            crate::app::ClipboardItem::Marker(_, m) => (
+                m.cell.0 as f32,
+                m.cell.1 as f32,
+                m.size as f32,
+                m.size as f32,
+            ),
+        };
+
+        let nx = (ix + delta_x).round() as isize;
+        let ny = (iy + delta_y).round() as isize;
+
+        // Clamp to grid boundaries for preview
+        let clamped_x = nx.clamp(0, (app.settings.cols as isize - iw as isize).max(0)) as usize;
+        let clamped_y = ny.clamp(0, (app.settings.rows as isize - ih as isize).max(0)) as usize;
+
+        let left = geometry.rect.left() + clamped_x as f32 * geometry.cell_size;
+        let top = geometry.rect.top() + clamped_y as f32 * geometry.cell_size;
+        let right = left + iw as f32 * geometry.cell_size;
+        let bottom = top + ih as f32 * geometry.cell_size;
+        let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+
+        painter.rect_filled(rect, 4.0, fill);
+        painter.rect_stroke(rect, 4.0, stroke, egui::StrokeKind::Middle);
+    }
+}

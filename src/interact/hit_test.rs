@@ -3,8 +3,8 @@
  */
 
 use super::{
-    door_edges_for, marker_contains_cell, normalized_edge, pointer_to_grid, resize_hit_cells,
     CorridorDragState, GridGeometry, HoverMarker, MarkerDragState, MarkerKind, StaircaseDragState,
+    door_edges_for, marker_contains_cell, normalized_edge, pointer_to_grid, resize_hit_cells,
 };
 use crate::app::DungeonApp;
 use eframe::egui;
@@ -79,6 +79,7 @@ pub fn update_hover_targets(app: &mut DungeonApp, ctx: &egui::Context, geometry:
         app.hover_corridor_idx = None;
         app.hover_door_idx = None;
         app.hover_marker = None;
+        println!("DEBUG: Hovering over room {}", room_idx);
     } else {
         app.hover_room_idx = None;
         if let Some(corridor_drag) = corridor_drag_at_pointer(app, pointer_pos, geometry) {
