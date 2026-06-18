@@ -509,8 +509,41 @@ impl eframe::App for DungeonApp {
                         }
                         self.clipboard_items = items;
                     }
-                } else if let Some(room_idx) = self.hover_room_idx {
-                    if let Some(layout) = self.levels.get(self.settings.active_level_index) {
+                } else if let Some(layout) = self.levels.get(self.settings.active_level_index) {
+                    if let Some(text_idx) = self.hover_text_idx {
+                        if let Some(text) = layout.text_labels.get(text_idx) {
+                            if self.debug_mode {
+                                println!("Copied text label {}", text_idx);
+                            }
+                            self.clipboard_items = vec![ClipboardItem::Text(text.clone())];
+                        }
+                    } else if let Some(hover_m) = self.hover_marker {
+                        let (kind, idx) = match hover_m {
+                            HoverMarker::Start(idx) => (MarkerKind::Start, idx),
+                            HoverMarker::End(idx) => (MarkerKind::End, idx),
+                            HoverMarker::Trap(idx) => (MarkerKind::Trap, idx),
+                            HoverMarker::Monster(idx) => (MarkerKind::Monster, idx),
+                        };
+                        let marker = match kind {
+                            MarkerKind::Start => layout.start_markers.get(idx),
+                            MarkerKind::End => layout.end_markers.get(idx),
+                            MarkerKind::Trap => layout.trap_markers.get(idx),
+                            MarkerKind::Monster => layout.monster_markers.get(idx),
+                        };
+                        if let Some(m) = marker {
+                            if self.debug_mode {
+                                println!("Copied marker {:?}", hover_m);
+                            }
+                            self.clipboard_items = vec![ClipboardItem::Marker(kind, m.clone())];
+                        }
+                    } else if let Some(stair_idx) = self.hover_stair_idx {
+                        if let Some(stair) = layout.stairs.get(stair_idx) {
+                            if self.debug_mode {
+                                println!("Copied staircase {}", stair_idx);
+                            }
+                            self.clipboard_items = vec![ClipboardItem::Staircase(stair.clone())];
+                        }
+                    } else if let Some(room_idx) = self.hover_room_idx {
                         if let Some(room) = layout.rooms.get(room_idx) {
                             if self.debug_mode {
                                 println!(
@@ -519,6 +552,10 @@ impl eframe::App for DungeonApp {
                                 );
                             }
                             self.clipboard_items = vec![ClipboardItem::Room(room.clone())];
+                        }
+                    } else {
+                        if self.debug_mode {
+                            println!("Copy requested but nothing is selected or hovered.");
                         }
                     }
                 } else {
