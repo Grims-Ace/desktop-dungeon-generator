@@ -155,6 +155,8 @@ pub fn draw_legend_panel(ctx: &egui::Context, settings: &mut UiSettings) -> bool
             ui.label("• Delete / Backspace: Remove hovered room, corridor, door, text, or marker");
             ui.label("• Ctrl+Z: Undo");
             ui.label("• Ctrl+Y: Redo");
+            ui.label("• Ctrl+C: Copy hovered room or selection");
+            ui.label("• Ctrl+V / Left Click: Paste copied items");
             ui.label("• Left click + drag: Move hovered room");
             ui.label("• Right click: Cancel add tool");
             ui.label("• Right click + drag: Resize hovered room");
