@@ -601,8 +601,37 @@ impl eframe::App for DungeonApp {
                 self.delete_level(level_idx);
             }
 
-            let multi_consumed =
-                crate::interact::handle_multi_select(self, ctx, &response, &geometry);
+            // --- Paste Mode Mouse Interaction ---
+            let in_paste_mode = !self.clipboard_items.is_empty();
+            if in_paste_mode {
+                if response.secondary_clicked() {
+                    if self.debug_mode {
+                        println!("DEBUG: Right-click dismissed paste mode.");
+                    }
+                    self.clipboard_items.clear();
+                } else if response.clicked() {
+                    if let Some(pointer_pos) = response.interact_pointer_pos() {
+                        if let Some(grid_pos) =
+                            crate::interact::pointer_to_grid(pointer_pos, &geometry)
+                        {
+                            if self.debug_mode {
+                                println!(
+                                    "Left-click pasting {} items at grid pos: {:?}",
+                                    self.clipboard_items.len(),
+                                    grid_pos
+                                );
+                            }
+                            self.paste_items(grid_pos);
+                        }
+                    }
+                }
+            }
+
+            let multi_consumed = if in_paste_mode {
+                true
+            } else {
+                crate::interact::handle_multi_select(self, ctx, &response, &geometry)
+            };
             let resizing = if !multi_consumed {
                 crate::interact::handle_resize(self, ctx, &response, &geometry)
             } else {
@@ -611,7 +640,9 @@ impl eframe::App for DungeonApp {
             if !resizing && !multi_consumed {
                 crate::interact::handle_drag(self, ctx, &response, &geometry);
             }
-            crate::interact::handle_add_tool(self, &response, &geometry);
+            if !in_paste_mode {
+                crate::interact::handle_add_tool(self, &response, &geometry);
+            }
             if self.pending_delete {
                 if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                     crate::interact::delete_at_pointer(self, pointer_pos, &geometry);
