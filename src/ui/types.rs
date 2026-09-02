@@ -135,6 +135,7 @@ pub struct UiSettings {
     pub export_height: u32,
     pub allow_export_aspect_change: bool,
     pub export_show_grid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_export_path: Option<String>,
     pub add_tool: AddTool,
     pub add_text_value: String,
@@ -156,6 +157,7 @@ pub struct UiSettings {
     pub min_levels: usize,
     pub max_levels: usize,
     pub active_level_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub overlay_level_index: Option<usize>,
     pub export_level_index: usize,
     pub trap_frequency_percent: usize,
