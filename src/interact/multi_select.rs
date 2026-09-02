@@ -617,7 +617,7 @@ pub fn draw_selection_box(app: &DungeonApp, painter: &egui::Painter, geometry: &
     painter.rect_stroke(
         rect,
         0.0,
-        Stroke::new(1.5, Color32::from_rgba_unmultiplied(100, 160, 255, 200)),
+        Stroke::new(1.5_f32, Color32::from_rgba_unmultiplied(100, 160, 255, 200)),
         egui::StrokeKind::Middle,
     );
 }
@@ -636,7 +636,7 @@ pub fn draw_selection_highlights(
     }
     let layout = &app.levels[app.settings.active_level_index];
     let color = Color32::from_rgba_unmultiplied(100, 180, 255, 220);
-    let stroke = Stroke::new(2.0, color);
+    let stroke = Stroke::new(2.0_f32, color);
 
     for item in &app.selection {
         match item {

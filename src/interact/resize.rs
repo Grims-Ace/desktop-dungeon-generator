@@ -369,7 +369,7 @@ pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: 
                     painter.rect_stroke(
                         rect,
                         0.0,
-                        Stroke::new(2.0, Color32::from_gray(180)),
+                        Stroke::new(2.0_f32, Color32::from_gray(180)),
                         egui::StrokeKind::Middle,
                     );
                     let pos = crate::interact::cell_center(
@@ -423,7 +423,7 @@ pub fn draw_resize_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: 
             painter.rect_stroke(
                 rect,
                 0.0,
-                Stroke::new(2.0, Color32::from_gray(180)),
+                Stroke::new(2.0_f32, Color32::from_gray(180)),
                 egui::StrokeKind::Middle,
             );
         }
@@ -446,7 +446,7 @@ pub fn draw_room_resize_visuals(
     show_handles: bool,
 ) {
     let color = Color32::from_gray(170);
-    let stroke = Stroke::new(1.5, color);
+    let stroke = Stroke::new(1.5_f32, color);
 
     let left = geometry.rect.left() + room.x as f32 * geometry.cell_size;
     let top = geometry.rect.top() + room.y as f32 * geometry.cell_size;
@@ -491,7 +491,7 @@ pub fn draw_staircase_resize_visuals(
     show_handles: bool,
 ) {
     let color = Color32::from_gray(170);
-    let stroke = Stroke::new(1.5, color);
+    let stroke = Stroke::new(1.5_f32, color);
 
     let left = geometry.rect.left() + stair.cell.0 as f32 * geometry.cell_size;
     let top = geometry.rect.top() + stair.cell.1 as f32 * geometry.cell_size;
@@ -527,10 +527,10 @@ pub fn draw_resize_handle(
     let half = size * 0.5;
     let rect = egui::Rect::from_center_size(corner, egui::vec2(size, size));
     painter.rect_filled(rect, 2.0, Color32::from_gray(30));
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, color), egui::StrokeKind::Middle);
+    painter.rect_stroke(rect, 2.0, Stroke::new(1.0_f32, color), egui::StrokeKind::Middle);
 
     let center = corner;
-    let stroke = Stroke::new(1.0, color);
+    let stroke = Stroke::new(1.0_f32, color);
     match which {
         ResizeCorner::TopLeft => {
             painter.line_segment(

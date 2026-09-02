@@ -18,7 +18,7 @@ pub fn draw_legend_entry(ui: &mut egui::Ui, color: Color32, label: &str) {
         ui.painter().rect_stroke(
             rect,
             0.0,
-            Stroke::new(1.0, Color32::WHITE),
+            Stroke::new(1.0_f32, Color32::WHITE),
             egui::StrokeKind::Middle,
         );
         ui.add_space(6.0);
@@ -49,7 +49,7 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
         ui.painter().rect_stroke(
             rect,
             0.0,
-            Stroke::new(1.0, Color32::BLACK),
+            Stroke::new(1.0_f32, Color32::BLACK),
             egui::StrokeKind::Middle,
         );
 
@@ -57,11 +57,11 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
             LegendStyle::Crosshatch => {
                 ui.painter().line_segment(
                     [rect.left_top(), rect.right_bottom()],
-                    Stroke::new(1.2, Color32::BLACK),
+                    Stroke::new(1.2_f32, Color32::BLACK),
                 );
                 ui.painter().line_segment(
                     [rect.right_top(), rect.left_bottom()],
-                    Stroke::new(1.2, Color32::BLACK),
+                    Stroke::new(1.2_f32, Color32::BLACK),
                 );
             }
             LegendStyle::Dots => {
@@ -84,14 +84,14 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
                         egui::pos2(rect.left() + 1.0, rect.center().y),
                         egui::pos2(rect.right() - 1.0, rect.center().y),
                     ],
-                    Stroke::new(2.0, Color32::BLACK),
+                    Stroke::new(2.0_f32, Color32::BLACK),
                 );
             }
             LegendStyle::Label(prefix) => {
                 ui.painter()
                     .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
                 ui.painter()
-                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
+                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0_f32, Color32::BLACK));
                 let font_size = 10.0;
                 let font_id = egui::FontId::monospace(font_size);
                 let text_width = prefix.len() as f32 * font_size * 0.6;
@@ -112,7 +112,7 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
                 ui.painter()
                     .circle_filled(rect.center(), 6.0, Color32::from_gray(180));
                 ui.painter()
-                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0, Color32::BLACK));
+                    .circle_stroke(rect.center(), 6.0, Stroke::new(1.0_f32, Color32::BLACK));
                 let font_size = 10.0;
                 let font_id = egui::FontId::monospace(font_size);
                 let text_width = font_size * 0.6;
@@ -133,7 +133,7 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
+                Stroke::new(2.0_f32, Color32::BLACK),
                 6.0,
                 3.0,
             ),
@@ -141,7 +141,7 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
+                Stroke::new(2.0_f32, Color32::BLACK),
                 3.0,
                 2.0,
             ),
@@ -149,19 +149,19 @@ pub fn draw_legend_entry_colorblind(ui: &mut egui::Ui, label: &str, style: Legen
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
+                Stroke::new(2.0_f32, Color32::BLACK),
             ),
             LegendStyle::DashDotLine => draw_dash_dot_line(
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
+                Stroke::new(2.0_f32, Color32::BLACK),
             ),
             LegendStyle::DashDotDotLine => draw_dash_dot_dot_line(
                 ui.painter(),
                 egui::pos2(rect.left() + 1.0, rect.center().y),
                 egui::pos2(rect.right() - 1.0, rect.center().y),
-                Stroke::new(2.0, Color32::BLACK),
+                Stroke::new(2.0_f32, Color32::BLACK),
             ),
         }
 

@@ -134,7 +134,7 @@ pub fn draw_layout(
                 painter,
                 geometry,
                 room,
-                Stroke::new(1.5, Color32::BLACK.gamma_multiply(alpha)),
+                Stroke::new(1.5_f32, Color32::BLACK.gamma_multiply(alpha)),
             );
         }
     }
@@ -277,7 +277,7 @@ pub fn draw_layout(
             painter.rect_stroke(
                 text_label_rect(geometry, label).expand(2.0),
                 0.0,
-                Stroke::new(2.0, Color32::from_rgb(255, 220, 120).gamma_multiply(alpha)),
+                Stroke::new(2.0_f32, Color32::from_rgb(255, 220, 120).gamma_multiply(alpha)),
                 egui::StrokeKind::Middle,
             );
         }
@@ -388,7 +388,7 @@ pub fn draw_staircase(
         rect,
         4.0,
         Stroke::new(
-            if is_hovered { 3.0 } else { 2.0 },
+            if is_hovered { 3.0_f32 } else { 2.0_f32 },
             stroke_color.gamma_multiply(alpha),
         ),
         egui::StrokeKind::Middle,
@@ -408,7 +408,7 @@ pub fn draw_staircase(
                 egui::pos2(rect.left() + 2.0, y),
                 egui::pos2(rect.right() - 2.0, y),
             ],
-            Stroke::new(1.5, line_color.gamma_multiply(alpha)),
+            Stroke::new(1.5_f32, line_color.gamma_multiply(alpha)),
         );
     }
 }
@@ -455,7 +455,7 @@ pub fn draw_area_marker(
         rect,
         4.0,
         Stroke::new(
-            if hovered { 3.0 } else { 2.0 },
+            if hovered { 3.0_f32 } else { 2.0_f32 },
             stroke_color.gamma_multiply(alpha),
         ),
         egui::StrokeKind::Middle,

@@ -36,7 +36,7 @@ pub fn draw_grid(
         egui::vec2(grid_width, grid_height),
     );
 
-    let stroke = Stroke::new(1.0, Color32::from_gray(160));
+    let stroke = Stroke::new(1.0_f32, Color32::from_gray(160));
     painter.rect_stroke(grid_rect, 0.0, stroke, egui::StrokeKind::Middle);
 
     for col in 1..cols {

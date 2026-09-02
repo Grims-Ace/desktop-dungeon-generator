@@ -811,7 +811,7 @@ pub fn draw_add_overlay(app: &DungeonApp, painter: &egui::Painter, geometry: &Gr
 
     let start = cell_center(geometry, drag.start_cell.0, drag.start_cell.1);
     let end = cell_center(geometry, drag.current_cell.0, drag.current_cell.1);
-    let stroke = Stroke::new(2.0, Color32::WHITE);
+    let stroke = Stroke::new(2.0_f32, Color32::WHITE);
     painter.circle_filled(start, 3.0, Color32::WHITE);
     crate::rendering::draw_dashed_line(painter, start, end, stroke, 8.0, 6.0);
 }
@@ -854,7 +854,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                 rect,
                 4.0,
                 Stroke::new(
-                    1.5,
+                    1.5_f32,
                     Color32::from_rgb(150, 200, 240).gamma_multiply(ghost_alpha + 0.3),
                 ),
                 egui::StrokeKind::Middle,
@@ -881,7 +881,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                 rect.expand(4.0),
                 4.0,
                 Stroke::new(
-                    1.0,
+                    1.0_f32,
                     Color32::from_rgb(180, 180, 220).gamma_multiply(ghost_alpha + 0.2),
                 ),
                 egui::StrokeKind::Middle,
@@ -919,7 +919,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                 rect,
                 4.0,
                 Stroke::new(
-                    1.5,
+                    1.5_f32,
                     Color32::from_rgb(255, 255, 255).gamma_multiply(ghost_alpha + 0.2),
                 ),
                 egui::StrokeKind::Middle,
@@ -962,7 +962,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                 rect,
                 4.0,
                 Stroke::new(
-                    1.5,
+                    1.5_f32,
                     Color32::from_rgb(220, 180, 80).gamma_multiply(ghost_alpha + 0.2),
                 ),
                 egui::StrokeKind::Middle,
@@ -978,7 +978,7 @@ pub fn draw_add_tool_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: 
                         egui::pos2(rect.left() + 2.0, y),
                         egui::pos2(rect.right() - 2.0, y),
                     ],
-                    Stroke::new(1.5, line_color),
+                    Stroke::new(1.5_f32, line_color),
                 );
             }
         }
@@ -1082,7 +1082,7 @@ pub fn draw_paste_ghost(app: &DungeonApp, painter: &egui::Painter, geometry: &Gr
     let ghost_alpha = 0.35;
     let fill = Color32::from_rgb(100, 160, 100).gamma_multiply(ghost_alpha);
     let stroke = Stroke::new(
-        1.5,
+        1.5_f32,
         Color32::from_rgb(180, 240, 180).gamma_multiply(ghost_alpha + 0.3),
     );
 

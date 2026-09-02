@@ -474,7 +474,7 @@ pub fn draw_corridor_hover_overlay(
     };
 
     let color = Color32::from_gray(170);
-    let stroke = Stroke::new(2.0, color);
+    let stroke = Stroke::new(2.0_f32, color);
     for pair in corridor.path.windows(2) {
         let a = cell_center(geometry, pair[0].0, pair[0].1);
         let b = cell_center(geometry, pair[1].0, pair[1].1);
@@ -496,7 +496,7 @@ pub fn draw_door_hover_overlay(app: &DungeonApp, painter: &egui::Painter, geomet
         return;
     };
     let color = Color32::from_gray(200);
-    let stroke = Stroke::new(2.0, color);
+    let stroke = Stroke::new(2.0_f32, color);
     crate::rendering::draw_door_line(
         painter,
         geometry,
